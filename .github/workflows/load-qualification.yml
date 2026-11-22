@@ -14,6 +14,10 @@ on:
         description: Concurrent live readers (0–64)
         default: '16'
         required: true
+      streams:
+        description: Stream count (1–64); keep at or below writers for every reader to receive writes
+        default: '4'
+        required: true
 permissions:
   contents: read
 concurrency:
@@ -33,6 +37,7 @@ jobs:
       DS_LOAD_SECONDS: ${{ inputs.seconds }}
       DS_LOAD_WRITERS: ${{ inputs.writers }}
       DS_LOAD_LIVE_READERS: ${{ inputs.readers }}
+      DS_LOAD_STREAMS: ${{ inputs.streams }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

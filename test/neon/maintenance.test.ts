@@ -64,6 +64,9 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
   expect(stats.changes).toBe(128)
   expect(stats.sealed).toBe(1)
   expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1 AND NOT processed`, [stream.id])).rows[0].count).toBe('3')
+  // Completed outbox work must not grow with every append. The three pending
+  // changes still carry the next transaction's durable delivery intent.
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1`, [stream.id])).rows[0].count).toBe('3')
   const wake = await request('wake')
   expect((await wake.json() as { type: string }[]).some((value) => value.type === 'wake')).toBe(true)
   const first = await request('fair/source')
@@ -72,4 +75,6 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
   const rest = await request(`fair/source?offset=${first.headers.get('Stream-Next-Offset')}`)
   expect(await rest.text()).toBe('xxx')
   expect(rest.headers.get('Stream-Up-To-Date')).toBe('true')
+  await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 8, freezeHot: false })
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1`, [stream.id])).rows[0].count).toBe('0')
 })

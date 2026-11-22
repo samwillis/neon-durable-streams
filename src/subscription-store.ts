@@ -393,7 +393,7 @@ export class PostgresSubscriptions {
         // registration whose at-tail backfill has not committed yet.
         const processed = await client.query(`WITH batch AS (SELECT c.stream_id, c.version FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id = c.stream_id
           WHERE NOT c.processed AND s.tenant_id = $1 ORDER BY c.created_at, c.stream_id, c.version LIMIT 128 FOR UPDATE OF c SKIP LOCKED)
-          UPDATE ${this.schema}.stream_changes c SET processed = true FROM batch b WHERE c.stream_id = b.stream_id AND c.version = b.version`, [change.tenant_id])
+          DELETE FROM ${this.schema}.stream_changes c USING batch b WHERE c.stream_id = b.stream_id AND c.version = b.version`, [change.tenant_id])
         return processed.rowCount ?? 0
       }
       const subscribers = await client.query<Sub>(`SELECT s.* FROM ${this.schema}.subscriptions s WHERE s.tenant_id = $1 AND s.deleted_at IS NULL
@@ -413,12 +413,16 @@ export class PostgresSubscriptions {
       const active = await this.activePath(client, change.tenant_id, change.path)
       for (const sub of subscribers.rows) await this.applyChange(client, sub, change, active)
       if (subscribers.rows.length < 16) {
-        const processed = await client.query(`UPDATE ${this.schema}.stream_changes SET processed = true
+        // Member cursors/pending wake intent and job consumption commit
+        // together. Registration cannot depend on a completed job: it holds
+        // the exclusive registry barrier and establishes its own tail baseline.
+        // Stream versions live on the stream, independently of outbox retention.
+        const processed = await client.query(`DELETE FROM ${this.schema}.stream_changes
           WHERE stream_id = $1 AND version >= $2 AND version <= $3 AND NOT processed`, [change.stream_id, change.version, through])
         return processed.rowCount ?? 0
       }
-      await client.query(`UPDATE ${this.schema}.stream_changes SET processed = $3, fanout_after = $4 WHERE stream_id = $1 AND version = $2`,
-        [change.stream_id, change.version, subscribers.rows.length < 16, subscribers.rows.length === 16 ? subscribers.rows.at(-1)!.id : null])
+      await client.query(`UPDATE ${this.schema}.stream_changes SET fanout_after = $3 WHERE stream_id = $1 AND version = $2`,
+        [change.stream_id, change.version, subscribers.rows.at(-1)!.id])
       return 1
     })
   }

@@ -1,0 +1,163 @@
+{
+  "harnessSha256": "3b160052ec78c67493f47f7a1c67fdd5c481224ece1706f9d6eca90e50f558bd",
+  "harnessCommitAtStart": "a086e87d53122184b8acd75f18033c480bd36aa2",
+  "generatedAt": "2026-11-22T22:25:04.907Z",
+  "deployedSourceCommit": "a086e87d53122184b8acd75f18033c480bd36aa2",
+  "deployedSourceDirty": "yes",
+  "deploymentId": "e531995a-2ebf-40ea-8bde-ab90ed833be3",
+  "bundleSha256": "7f0d5989a0e41d1693d537f806734f8e1848e0f6bda0ec5ce185152d01bc9726",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 10,
+    "writers": 4,
+    "readers": 16,
+    "streams": 4,
+    "writingStreams": 4,
+    "readersOnWritingStreams": 16,
+    "idleReaders": 0,
+    "recordBytes": 1024,
+    "replayConcurrency": 4,
+    "realtimeProbe": true,
+    "maintenanceHints": "on",
+    "hasCron": "yes",
+    "liveFallbackMs": "5000",
+    "liveValidationMs": "1000",
+    "cronChunks": "64",
+    "cronSubscriptionWork": "64",
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 10.074512667,
+  "acknowledgedAppends": 260,
+  "replayedRecords": 260,
+  "appendsPerSecond": 25.807699944797736,
+  "appendLatencyMs": {
+    "samples": 260,
+    "p50": 74.67,
+    "p95": 553.58,
+    "p99": 1391.43,
+    "max": 2101.5494169999997
+  },
+  "observedLiveLatencyMs": {
+    "samples": 1040,
+    "p50": 79.42,
+    "p95": 549.31,
+    "p99": 1383.35,
+    "max": 2103.787167
+  },
+  "observedHeadCoverageMs": {
+    "samples": 260,
+    "p50": 71.86,
+    "p95": 547.41,
+    "p99": 1377.81,
+    "max": 2096.80525
+  },
+  "liveBytes": 1064960,
+  "rotations": 0,
+  "liveVerification": {
+    "verifiedReaders": 16,
+    "receivedRecords": [
+      75,
+      46,
+      78,
+      61,
+      75,
+      46,
+      78,
+      61,
+      75,
+      46,
+      78,
+      61,
+      75,
+      46,
+      78,
+      61
+    ],
+    "orderedSha256MatchesReplay": true
+  },
+  "connectionsBefore": 22,
+  "connectionsAfter": 22,
+  "backlog": [
+    {
+      "phase": "before-writes",
+      "elapsedSeconds": 0.8412967500000001,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "0a92620e-ea49-46e3-9891-a179b41bbc3a",
+        "processUptimeSeconds": 588.110430832,
+        "memory": {
+          "rss": 88150016,
+          "heapTotal": 31416320,
+          "heapUsed": 16513952,
+          "external": 10720014,
+          "arrayBuffers": 222005
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "after-writes",
+      "elapsedSeconds": 10.283708542000001,
+      "frozenChunks": 2,
+      "localPayloadBytes": 22528,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "4f67c7e2-3733-430a-a3c1-75e7e692e54e",
+        "processUptimeSeconds": 597.522320546,
+        "memory": {
+          "rss": 125132800,
+          "heapTotal": 52350976,
+          "heapUsed": 30725200,
+          "external": 13387242,
+          "arrayBuffers": 2743327
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "after-replay",
+      "elapsedSeconds": 11.269985583000002,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "0a4b8ae3-26c0-4f26-b8c2-a98ed116d3c4",
+        "processUptimeSeconds": 788.651567471,
+        "memory": {
+          "rss": 134012928,
+          "heapTotal": 32837632,
+          "heapUsed": 22178016,
+          "external": 11190133,
+          "arrayBuffers": 546575
+        },
+        "pool": {
+          "total": 2,
+          "idle": 2,
+          "waiting": 0
+        }
+      }
+    }
+  ],
+  "liveDrainSeconds": 0.0005087920000005397,
+  "drainSeconds": 0.41672362500000054,
+  "replaySeconds": 0.49616462500000125,
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}

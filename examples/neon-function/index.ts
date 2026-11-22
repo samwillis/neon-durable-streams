@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { attachDatabasePool, waitUntil } from '@neon/functions'
 import { isScheduleTriggerInvocation, parseTriggerDelivery } from '@neon/functions/triggers'
 import pg from 'pg'
@@ -26,10 +26,15 @@ function authenticate(request: Request): Principal | null {
   return identities.find((identity) => timingSafeEqual(identity.digest, supplied))?.principal ?? null
 }
 const maintenanceKey = digest(required('DS_MAINTENANCE_KEY'))
+function maintenanceAuthorized(request: Request): boolean {
+  const key = request.headers.get('x-ds-maintenance-key')
+  return !!key && key.length <= 1024 && timingSafeEqual(digest(key), maintenanceKey)
+}
 const origins: unknown = JSON.parse(process.env.DS_ALLOWED_ORIGINS_JSON ?? '[]')
 if (!Array.isArray(origins) || origins.some((origin) => typeof origin !== 'string')) throw new Error('Invalid DS_ALLOWED_ORIGINS_JSON')
 const pool = new pg.Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 10_000, query_timeout: 15_000 })
 attachDatabasePool(pool)
+const instanceId = randomUUID()
 const notifier = createNeonRealtimeNotifier({ url: required('DS_REALTIME_URL'), secret: required('DS_REALTIME_SECRET'),
   database: new URL(required('DATABASE_URL')).pathname.slice(1), onError: () => console.error('Realtime delivery degraded') })
 const objects = createS3ChunkStorage({ endpoint: required('AWS_ENDPOINT_URL_S3'), region: required('AWS_REGION'), bucket: required('DS_BUCKET') })
@@ -86,15 +91,16 @@ export default {
       return Response.json(await streams.maintain({ maxChunks: cronChunks, maxSubscriptionWork: cronSubscriptions, timeBudgetMs: 40_000 }))
     }
     if (path === '/_maintenance') {
-      const supplied = request.headers.get('x-ds-maintenance-key')
-      if (request.method !== 'POST' || !supplied || supplied.length > 1024 || !timingSafeEqual(digest(supplied), maintenanceKey)) return new Response(null, { status: 401 })
+      if (request.method !== 'POST' || !maintenanceAuthorized(request)) return new Response(null, { status: 401 })
       return Response.json(await streams.maintain({ maxChunks: 8, timeBudgetMs: 10_000 }))
     }
     if (path === '/health') {
       if (!authenticate(request)) return new Response(null, { status: 401 })
       const health = await streams.inspectHealth()
-      return Response.json({ ...health, build: required('DS_BUILD_HASH'), deploymentId: process.env.DS_DEPLOYMENT_ID ?? required('DS_BUILD_HASH') },
-        { status: health.ready ? 200 : 503 })
+      return Response.json({ ...health, build: required('DS_BUILD_HASH'), deploymentId: process.env.DS_DEPLOYMENT_ID ?? required('DS_BUILD_HASH'),
+        ...(maintenanceAuthorized(request) ? { runtime: { instanceId, processUptimeSeconds: process.uptime(), memory: process.memoryUsage(),
+          pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount } } } : {}) },
+        { status: health.ready ? 200 : 503, headers: { 'Cache-Control': 'no-store' } })
     }
     const response = await streams.fetch(request)
     if (hintMode === 'on' && response.ok && ['PUT', 'POST', 'DELETE'].includes(request.method)) hintMaintenance()

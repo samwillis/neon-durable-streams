@@ -17,6 +17,8 @@ const seconds = integer('DS_LOAD_SECONDS', 60, 10, 3600)
 const writers = integer('DS_LOAD_WRITERS', 4, 1, 32)
 const readers = integer('DS_LOAD_LIVE_READERS', 16, 0, 64)
 const streamCount = integer('DS_LOAD_STREAMS', 8, 1, 64)
+const writingStreams = Math.min(writers, streamCount)
+const readersOnWritingStreams = Array.from({ length: readers }, (_, index) => index % streamCount).filter((index) => index < writingStreams).length
 const recordBytes = integer('DS_LOAD_PAYLOAD_BYTES', 1024, 128, 65536)
 const realtimeProbe = env.DS_LOAD_REALTIME_PROBE === '1'
 if (realtimeProbe && (!env.NEON_REALTIME_URL || !env.NEON_REALTIME_SECRET)) throw new Error('Realtime head probe requires this branch\'s Realtime credentials')
@@ -60,12 +62,19 @@ const timings = (values) => {
 }
 let started, finished, connectionsBefore, connectionsAfter, frozenAfter, report, drainSeconds, replaySeconds, liveDrainSeconds
 let sampler, sampling
-const sample = async () => {
+const sample = async (phase = 'writing') => {
   const row = (await pool.query(`SELECT
     (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".chunks c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE c.state = 'frozen' AND s.path LIKE $1) AS frozen_chunks,
     (SELECT COALESCE(sum(a.payload_bytes), 0) FROM "${env.TEST_FUNCTION_SCHEMA}".appends a JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = a.stream_id WHERE a.payload IS NOT NULL AND s.path LIKE $1) AS local_payload_bytes,
-    (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".stream_changes c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE NOT c.processed AND s.path LIKE $1) AS pending_changes, (SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()) AS database_connections`, [`${run}/%`])).rows[0]
-  backlog.push({ elapsedSeconds: started ? (performance.now() - started) / 1000 : 0, frozenChunks: Number(row.frozen_chunks), localPayloadBytes: Number(row.local_payload_bytes), pendingChanges: Number(row.pending_changes), databaseConnections: Number(row.database_connections) })
+    (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".stream_changes c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE NOT c.processed AND s.path LIKE $1) AS pending_changes,
+    (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".stream_changes c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE s.path LIKE $1) AS retained_changes,
+    (SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()) AS database_connections`, [`${run}/%`])).rows[0]
+  const response = await request('health', 'GET', undefined, { 'x-ds-maintenance-key': env.TEST_FUNCTION_MAINTENANCE_KEY })
+  if (!response.ok) throw new Error(`Runtime sampling failed: HTTP ${response.status}`)
+  const health = await response.json()
+  if (health.build !== env.TEST_FUNCTION_BUNDLE_SHA) throw new Error('Runtime sampling reached a different build')
+  backlog.push({ phase, elapsedSeconds: started ? (performance.now() - started) / 1000 : 0, frozenChunks: Number(row.frozen_chunks), localPayloadBytes: Number(row.local_payload_bytes),
+    pendingChanges: Number(row.pending_changes), retainedChanges: Number(row.retained_changes), databaseConnections: Number(row.database_connections), runtime: health.runtime ?? null })
 }
 try {
   connectionsBefore = Number((await pool.query('SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()')).rows[0].count)
@@ -131,7 +140,7 @@ try {
   }
   await Promise.all(ready)
   started = performance.now()
-  await sample()
+  await sample('before-writes')
   sampler = setInterval(() => {
     if (sampling) return
     sampling = sample().catch((error) => { errors.push({ phase: 'sampling', name: error.name }) }).finally(() => { sampling = undefined })
@@ -163,7 +172,7 @@ try {
     }
   }))
   finished = performance.now()
-  clearInterval(sampler); await sampling; await sample()
+  clearInterval(sampler); await sampling; await sample('after-writes')
   // Let every reader reach the final acknowledged checkpoint before measuring
   // latency. Otherwise the last slow notifications would be censored at stop.
   const liveDrainStarted = performance.now(), liveDeadline = liveDrainStarted + 20_000
@@ -230,6 +239,7 @@ try {
     verifiedLiveReaders++
   }
   if (frozenAfter) throw new Error('Maintenance did not seal all workload payloads')
+  await sample('after-replay')
   connectionsAfter = Number((await pool.query('SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()')).rows[0].count)
 } catch (error) { errors.push({ phase: 'qualification', name: error.name, message: error.message }) }
 finally {
@@ -240,7 +250,7 @@ finally {
   await pool.end()
   report = { harnessSha256, harnessCommitAtStart, generatedAt: new Date().toISOString(),
     deployedSourceCommit: env.TEST_FUNCTION_SOURCE_COMMIT ?? null, deployedSourceDirty: env.TEST_FUNCTION_SOURCE_DIRTY ?? null, deploymentId: env.TEST_FUNCTION_DEPLOYMENT_ID ?? null,
-    bundleSha256: env.TEST_FUNCTION_BUNDLE_SHA, node: process.version, profile: { seconds, writers, readers, streams: streamCount, recordBytes, replayConcurrency: 4, realtimeProbe, maintenanceHints: env.TEST_FUNCTION_MAINTENANCE_HINTS ?? 'unknown', hasCron: env.TEST_FUNCTION_HAS_CRON ?? 'unknown', liveFallbackMs: env.TEST_FUNCTION_LIVE_FALLBACK_MS ?? null, liveValidationMs: env.TEST_FUNCTION_LIVE_VALIDATION_MS ?? null, cronChunks: env.TEST_FUNCTION_CRON_CHUNKS ?? null, cronSubscriptionWork: env.TEST_FUNCTION_CRON_SUBSCRIPTION_WORK ?? null, storage: 'actual Neon PG18/Realtime/Object Storage/Functions' },
+    bundleSha256: env.TEST_FUNCTION_BUNDLE_SHA, node: process.version, profile: { seconds, writers, readers, streams: streamCount, writingStreams, readersOnWritingStreams, idleReaders: readers - readersOnWritingStreams, recordBytes, replayConcurrency: 4, realtimeProbe, maintenanceHints: env.TEST_FUNCTION_MAINTENANCE_HINTS ?? 'unknown', hasCron: env.TEST_FUNCTION_HAS_CRON ?? 'unknown', liveFallbackMs: env.TEST_FUNCTION_LIVE_FALLBACK_MS ?? null, liveValidationMs: env.TEST_FUNCTION_LIVE_VALIDATION_MS ?? null, cronChunks: env.TEST_FUNCTION_CRON_CHUNKS ?? null, cronSubscriptionWork: env.TEST_FUNCTION_CRON_SUBSCRIPTION_WORK ?? null, storage: 'actual Neon PG18/Realtime/Object Storage/Functions' },
     elapsedSeconds: started && finished ? (finished - started) / 1000 : null, acknowledgedAppends: appends, replayedRecords: replayed,
     appendsPerSecond: started && finished ? appends / ((finished - started) / 1000) : null,
     appendLatencyMs: timings(ackLatency), observedLiveLatencyMs: timings(liveLatency), observedHeadCoverageMs: timings(headLatency), liveBytes, rotations,
