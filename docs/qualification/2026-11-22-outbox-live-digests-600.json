@@ -1,0 +1,638 @@
+{
+  "harnessSha256": "3b160052ec78c67493f47f7a1c67fdd5c481224ece1706f9d6eca90e50f558bd",
+  "harnessCommitAtStart": "373a0193306b71d7d75fd2e5cb5e9ff16675b308",
+  "generatedAt": "2026-11-22T22:37:39.798Z",
+  "deployedSourceCommit": "373a0193306b71d7d75fd2e5cb5e9ff16675b308",
+  "deployedSourceDirty": "no",
+  "deploymentId": "7c28169b-4300-495e-a9aa-cbc698275121",
+  "bundleSha256": "7f0d5989a0e41d1693d537f806734f8e1848e0f6bda0ec5ce185152d01bc9726",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 600,
+    "writers": 4,
+    "readers": 16,
+    "streams": 4,
+    "writingStreams": 4,
+    "readersOnWritingStreams": 16,
+    "idleReaders": 0,
+    "recordBytes": 1024,
+    "replayConcurrency": 4,
+    "realtimeProbe": true,
+    "maintenanceHints": "on",
+    "hasCron": "yes",
+    "liveFallbackMs": "5000",
+    "liveValidationMs": "1000",
+    "cronChunks": "64",
+    "cronSubscriptionWork": "64",
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 600.0299003750001,
+  "acknowledgedAppends": 38272,
+  "replayedRecords": 38272,
+  "appendsPerSecond": 63.78348808297917,
+  "appendLatencyMs": {
+    "samples": 38272,
+    "p50": 59.6,
+    "p95": 73.46,
+    "p99": 130.02,
+    "max": 1385.5074590000004
+  },
+  "observedLiveLatencyMs": {
+    "samples": 153088,
+    "p50": 60.96,
+    "p95": 95.42,
+    "p99": 548.51,
+    "max": 1334.6388339999994
+  },
+  "observedHeadCoverageMs": {
+    "samples": 38272,
+    "p50": 57.05,
+    "p95": 80.54,
+    "p99": 2633.61,
+    "max": 5529.271457999945
+  },
+  "liveBytes": 156762112,
+  "rotations": 159,
+  "liveVerification": {
+    "verifiedReaders": 16,
+    "receivedRecords": [
+      9591,
+      9576,
+      9538,
+      9567,
+      9591,
+      9576,
+      9538,
+      9567,
+      9591,
+      9576,
+      9538,
+      9567,
+      9591,
+      9576,
+      9538,
+      9567
+    ],
+    "orderedSha256MatchesReplay": true
+  },
+  "connectionsBefore": 22,
+  "connectionsAfter": 27,
+  "backlog": [
+    {
+      "phase": "before-writes",
+      "elapsedSeconds": 0.173588749999999,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "ae0b2568-80bf-4ab5-9022-3ad80cdac642",
+        "processUptimeSeconds": 654.37144324,
+        "memory": {
+          "rss": 91074560,
+          "heapTotal": 35348480,
+          "heapUsed": 17080072,
+          "external": 10727817,
+          "arrayBuffers": 222454
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 30.441467083000003,
+      "frozenChunks": 0,
+      "localPayloadBytes": 210944,
+      "pendingChanges": 2,
+      "retainedChanges": 2,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "4a9a56b3-386a-4576-aea6-51824591cadf",
+        "processUptimeSeconds": 651.671386423,
+        "memory": {
+          "rss": 167841792,
+          "heapTotal": 87478272,
+          "heapUsed": 43053536,
+          "external": 16803116,
+          "arrayBuffers": 6159033
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 60.404646583,
+      "frozenChunks": 0,
+      "localPayloadBytes": 308224,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "8416bbc5-2894-42cb-9908-0fbb8ef83dd3",
+        "processUptimeSeconds": 677.805893289,
+        "memory": {
+          "rss": 115822592,
+          "heapTotal": 36098048,
+          "heapUsed": 22194704,
+          "external": 11383812,
+          "arrayBuffers": 739841
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 90.405525625,
+      "frozenChunks": 0,
+      "localPayloadBytes": 356352,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "b1a6fca6-1634-4a81-9082-3ac85314d4e1",
+        "processUptimeSeconds": 711.455747453,
+        "memory": {
+          "rss": 144396288,
+          "heapTotal": 90509312,
+          "heapUsed": 21152248,
+          "external": 11445994,
+          "arrayBuffers": 808948
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 120.42965391599999,
+      "frozenChunks": 0,
+      "localPayloadBytes": 436224,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "459387a0-859e-42e7-bf5f-87ef792aeb46",
+        "processUptimeSeconds": 737.700378994,
+        "memory": {
+          "rss": 119574528,
+          "heapTotal": 33624064,
+          "heapUsed": 26663216,
+          "external": 12174542,
+          "arrayBuffers": 1530179
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 150.40027008299998,
+      "frozenChunks": 0,
+      "localPayloadBytes": 275456,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "29a2c94a-7658-4c91-8d00-3fb48a08d6b0",
+        "processUptimeSeconds": 767.729211737,
+        "memory": {
+          "rss": 178278400,
+          "heapTotal": 92459008,
+          "heapUsed": 44441488,
+          "external": 17331124,
+          "arrayBuffers": 6693406
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 180.3921325,
+      "frozenChunks": 0,
+      "localPayloadBytes": 380928,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "fe0a3f67-5c40-4151-893d-140b737c2115",
+        "processUptimeSeconds": 801.431642142,
+        "memory": {
+          "rss": 153931776,
+          "heapTotal": 43585536,
+          "heapUsed": 26724408,
+          "external": 12324155,
+          "arrayBuffers": 1680581
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 210.426051458,
+      "frozenChunks": 0,
+      "localPayloadBytes": 288768,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "8416bbc5-2894-42cb-9908-0fbb8ef83dd3",
+        "processUptimeSeconds": 827.824684639,
+        "memory": {
+          "rss": 183496704,
+          "heapTotal": 93655040,
+          "heapUsed": 39080416,
+          "external": 15856993,
+          "arrayBuffers": 5219795
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 240.41806,
+      "frozenChunks": 0,
+      "localPayloadBytes": 445440,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "4a9a56b3-386a-4576-aea6-51824591cadf",
+        "processUptimeSeconds": 861.645561441,
+        "memory": {
+          "rss": 189177856,
+          "heapTotal": 95227904,
+          "heapUsed": 34121520,
+          "external": 14388319,
+          "arrayBuffers": 3744369
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 270.417125916,
+      "frozenChunks": 0,
+      "localPayloadBytes": 145408,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "29a2c94a-7658-4c91-8d00-3fb48a08d6b0",
+        "processUptimeSeconds": 887.743016408,
+        "memory": {
+          "rss": 183373824,
+          "heapTotal": 93917184,
+          "heapUsed": 42863992,
+          "external": 17065849,
+          "arrayBuffers": 6428091
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 300.43274699999995,
+      "frozenChunks": 0,
+      "localPayloadBytes": 41984,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "a337dc14-a907-4eec-808d-284b2a99d1f8",
+        "processUptimeSeconds": 858.631590833,
+        "memory": {
+          "rss": 187351040,
+          "heapTotal": 97062912,
+          "heapUsed": 27946288,
+          "external": 12849842,
+          "arrayBuffers": 2205764
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 330.415968083,
+      "frozenChunks": 0,
+      "localPayloadBytes": 32768,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 22,
+      "runtime": {
+        "instanceId": "442b2207-da92-4e54-9454-3b6771f9768f",
+        "processUptimeSeconds": 951.371665711,
+        "memory": {
+          "rss": 173867008,
+          "heapTotal": 95752192,
+          "heapUsed": 31714632,
+          "external": 14143697,
+          "arrayBuffers": 3500123
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 360.437082541,
+      "frozenChunks": 0,
+      "localPayloadBytes": 379904,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 20,
+      "runtime": {
+        "instanceId": "404140d1-b255-44c4-800c-4401e69ff6bd",
+        "processUptimeSeconds": 977.777749014,
+        "memory": {
+          "rss": 191631360,
+          "heapTotal": 97325056,
+          "heapUsed": 26764872,
+          "external": 13639289,
+          "arrayBuffers": 2995267
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 390.41571970800004,
+      "frozenChunks": 0,
+      "localPayloadBytes": 433152,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 20,
+      "runtime": {
+        "instanceId": "459387a0-859e-42e7-bf5f-87ef792aeb46",
+        "processUptimeSeconds": 1007.749594703,
+        "memory": {
+          "rss": 189186048,
+          "heapTotal": 97587200,
+          "heapUsed": 47774176,
+          "external": 17457378,
+          "arrayBuffers": 6813148
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 420.431334125,
+      "frozenChunks": 0,
+      "localPayloadBytes": 436224,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 20,
+      "runtime": {
+        "instanceId": "f8417f5c-e037-4932-944c-39c7dd564b82",
+        "processUptimeSeconds": 1037.913955658,
+        "memory": {
+          "rss": 190889984,
+          "heapTotal": 98111488,
+          "heapUsed": 34210992,
+          "external": 13355792,
+          "arrayBuffers": 2711938
+        },
+        "pool": {
+          "total": 2,
+          "idle": 2,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 450.417386166,
+      "frozenChunks": 0,
+      "localPayloadBytes": 409600,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 20,
+      "runtime": {
+        "instanceId": "18e8dfec-3d14-459e-8414-27617655762b",
+        "processUptimeSeconds": 1067.832871419,
+        "memory": {
+          "rss": 190857216,
+          "heapTotal": 96800768,
+          "heapUsed": 51614680,
+          "external": 18475196,
+          "arrayBuffers": 7831398
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 480.426787,
+      "frozenChunks": 0,
+      "localPayloadBytes": 492544,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 16,
+      "runtime": {
+        "instanceId": "29a2c94a-7658-4c91-8d00-3fb48a08d6b0",
+        "processUptimeSeconds": 1097.754220622,
+        "memory": {
+          "rss": 190435328,
+          "heapTotal": 98635776,
+          "heapUsed": 50013464,
+          "external": 15703002,
+          "arrayBuffers": 5048773
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 510.433477041,
+      "frozenChunks": 0,
+      "localPayloadBytes": 450560,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 16,
+      "runtime": {
+        "instanceId": "4a9a56b3-386a-4576-aea6-51824591cadf",
+        "processUptimeSeconds": 1131.664086339,
+        "memory": {
+          "rss": 193216512,
+          "heapTotal": 96608256,
+          "heapUsed": 26574992,
+          "external": 11798380,
+          "arrayBuffers": 1154766
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 540.414319291,
+      "frozenChunks": 0,
+      "localPayloadBytes": 365568,
+      "pendingChanges": 1,
+      "retainedChanges": 1,
+      "databaseConnections": 16,
+      "runtime": {
+        "instanceId": "91578815-f598-48e2-9f3b-805f5b0c323e",
+        "processUptimeSeconds": 1161.756112336,
+        "memory": {
+          "rss": 199921664,
+          "heapTotal": 96014336,
+          "heapUsed": 31214896,
+          "external": 13650287,
+          "arrayBuffers": 3006433
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "writing",
+      "elapsedSeconds": 570.4150247910001,
+      "frozenChunks": 0,
+      "localPayloadBytes": 285696,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 27,
+      "runtime": {
+        "instanceId": "df5a1c22-a5a1-4c2d-a001-b0d4bb30d2df",
+        "processUptimeSeconds": 1192.072143995,
+        "memory": {
+          "rss": 197533696,
+          "heapTotal": 97062912,
+          "heapUsed": 35333320,
+          "external": 15320675,
+          "arrayBuffers": 4676709
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "after-writes",
+      "elapsedSeconds": 600.2614094580001,
+      "frozenChunks": 0,
+      "localPayloadBytes": 354304,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 27,
+      "runtime": {
+        "instanceId": "2ac8c817-f282-4da6-9b69-95d54e98c553",
+        "processUptimeSeconds": 1221.362429835,
+        "memory": {
+          "rss": 203091968,
+          "heapTotal": 97918976,
+          "heapUsed": 31941560,
+          "external": 13675357,
+          "arrayBuffers": 3031279
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    },
+    {
+      "phase": "after-replay",
+      "elapsedSeconds": 616.9040062910001,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 0,
+      "retainedChanges": 0,
+      "databaseConnections": 27,
+      "runtime": {
+        "instanceId": "ae0b2568-80bf-4ab5-9022-3ad80cdac642",
+        "processUptimeSeconds": 1271.106476343,
+        "memory": {
+          "rss": 200536064,
+          "heapTotal": 46469120,
+          "heapUsed": 28710488,
+          "external": 16564960,
+          "arrayBuffers": 5921234
+        },
+        "pool": {
+          "total": 2,
+          "idle": 2,
+          "waiting": 0
+        }
+      }
+    }
+  ],
+  "liveDrainSeconds": 0.00009270899998955429,
+  "drainSeconds": 0.6392672920000041,
+  "replaySeconds": 15.782825041000033,
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}
