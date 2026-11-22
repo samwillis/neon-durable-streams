@@ -534,16 +534,18 @@ export class PostgresSubscriptions {
       }
     })
   }
-  async maintain(maximum = 8): Promise<{ changes: number; deliveries: number; links: number }> {
+  async maintain(maximum = 8): Promise<{ changes: number; deliveries: number; links: number; worked: boolean }> {
     await this.assertReady()
-    if (this.shutdown.signal.aborted) return { changes: 0, deliveries: 0, links: 0 }
+    if (this.shutdown.signal.aborted) return { changes: 0, deliveries: 0, links: 0, worked: false }
     let changes = 0, deliveries = 0, links = 0
+    let preparedAny = false
     for (let i = 0; i < maximum; i++) { const n = await this.dispatch(); changes += n; if (!n) break }
     for (let i = 0; i < maximum; i++) { if (!await this.recoverLink()) break; links++ }
     for (let i = 0; i < maximum; i++) {
       let prepared: { job?: WebhookJob; worked: boolean }
       try { prepared = await this.prepareDelivery() } catch (error) { this.report(error); break }
       if (!prepared.worked) break
+      preparedAny = true
       const job = prepared.job
       if (!job) continue
       let result = { ok: false, done: false }
@@ -557,7 +559,7 @@ export class PostgresSubscriptions {
       await this.finishDelivery(job, result)
       deliveries++
     }
-    return { changes, deliveries, links }
+    return { changes, deliveries, links, worked: preparedAny || changes > 0 || links > 0 }
   }
   close(): void { this.shutdown.abort() }
 }

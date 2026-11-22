@@ -1,0 +1,174 @@
+{
+  "harnessSha256": "d2708aedf06548f0a69c6ee6c5343d7979d335c650439a6dd02f1169fc7cd96c",
+  "generatedAt": "2026-11-22T19:32:48.071Z",
+  "commit": "b22c1675f7eb5c32b52f39be39279c819ea5f21f",
+  "bundleSha256": "6020396ec0b27839aeee6e63810e5e50f368ebf14ba38bd28ae3cc06b7002724",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 600,
+    "writers": 4,
+    "readers": 16,
+    "streams": 8,
+    "recordBytes": 1024,
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 600.065524875,
+  "acknowledgedAppends": 38360,
+  "replayedRecords": 38360,
+  "appendsPerSecond": 63.92635205628717,
+  "appendLatencyMs": {
+    "samples": 38360,
+    "p50": 60.18,
+    "p95": 75.93,
+    "p99": 117.4,
+    "max": 1807.922083
+  },
+  "observedLiveLatencyMs": {
+    "samples": 76720,
+    "p50": 79.01,
+    "p95": 4429.1,
+    "p99": 7416.64,
+    "max": 9488.661374999996
+  },
+  "liveBytes": 78561280,
+  "rotations": 144,
+  "connectionsBefore": 11,
+  "connectionsAfter": 18,
+  "backlog": [
+    {
+      "elapsedSeconds": 0.024735583000000134,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 8
+    },
+    {
+      "elapsedSeconds": 30.22994675,
+      "frozenChunks": 12,
+      "localPayloadBytes": 1922048,
+      "pendingChanges": 1885
+    },
+    {
+      "elapsedSeconds": 60.208450958,
+      "frozenChunks": 25,
+      "localPayloadBytes": 2838528,
+      "pendingChanges": 1756
+    },
+    {
+      "elapsedSeconds": 90.21617975,
+      "frozenChunks": 41,
+      "localPayloadBytes": 4856832,
+      "pendingChanges": 3727
+    },
+    {
+      "elapsedSeconds": 120.2228975,
+      "frozenChunks": 53,
+      "localPayloadBytes": 5825536,
+      "pendingChanges": 3649
+    },
+    {
+      "elapsedSeconds": 150.215660625,
+      "frozenChunks": 69,
+      "localPayloadBytes": 7902208,
+      "pendingChanges": 5677
+    },
+    {
+      "elapsedSeconds": 180.230821208,
+      "frozenChunks": 82,
+      "localPayloadBytes": 9449472,
+      "pendingChanges": 5524
+    },
+    {
+      "elapsedSeconds": 210.28373916599998,
+      "frozenChunks": 93,
+      "localPayloadBytes": 10790912,
+      "pendingChanges": 7474
+    },
+    {
+      "elapsedSeconds": 240.259547958,
+      "frozenChunks": 109,
+      "localPayloadBytes": 12743680,
+      "pendingChanges": 7717
+    },
+    {
+      "elapsedSeconds": 270.235504666,
+      "frozenChunks": 120,
+      "localPayloadBytes": 14136320,
+      "pendingChanges": 9217
+    },
+    {
+      "elapsedSeconds": 300.22228008300004,
+      "frozenChunks": 135,
+      "localPayloadBytes": 15694848,
+      "pendingChanges": 9084
+    },
+    {
+      "elapsedSeconds": 330.23996583300004,
+      "frozenChunks": 146,
+      "localPayloadBytes": 17172480,
+      "pendingChanges": 11039
+    },
+    {
+      "elapsedSeconds": 360.236024458,
+      "frozenChunks": 162,
+      "localPayloadBytes": 19079168,
+      "pendingChanges": 11493
+    },
+    {
+      "elapsedSeconds": 390.243123208,
+      "frozenChunks": 174,
+      "localPayloadBytes": 19822592,
+      "pendingChanges": 12603
+    },
+    {
+      "elapsedSeconds": 420.257646,
+      "frozenChunks": 190,
+      "localPayloadBytes": 21901312,
+      "pendingChanges": 13353
+    },
+    {
+      "elapsedSeconds": 450.2415025,
+      "frozenChunks": 206,
+      "localPayloadBytes": 22962176,
+      "pendingChanges": 14645
+    },
+    {
+      "elapsedSeconds": 480.26847833299996,
+      "frozenChunks": 222,
+      "localPayloadBytes": 24994816,
+      "pendingChanges": 15478
+    },
+    {
+      "elapsedSeconds": 510.2371725,
+      "frozenChunks": 234,
+      "localPayloadBytes": 25881600,
+      "pendingChanges": 16334
+    },
+    {
+      "elapsedSeconds": 540.26038325,
+      "frozenChunks": 246,
+      "localPayloadBytes": 27767808,
+      "pendingChanges": 17024
+    },
+    {
+      "elapsedSeconds": 570.2676969160001,
+      "frozenChunks": 258,
+      "localPayloadBytes": 29182976,
+      "pendingChanges": 18050
+    },
+    {
+      "elapsedSeconds": 600.2460572080001,
+      "frozenChunks": 274,
+      "localPayloadBytes": 31114240,
+      "pendingChanges": 18912
+    },
+    {
+      "elapsedSeconds": 600.29351075,
+      "frozenChunks": 274,
+      "localPayloadBytes": 31114240,
+      "pendingChanges": 18912
+    }
+  ],
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}

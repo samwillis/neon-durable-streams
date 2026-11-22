@@ -9,13 +9,17 @@ export async function admitLive(guard: InstallationGuard, schema: string, lifeti
   const id = randomUUID()
   await guard.run({}, async (client) => {
     const capacity = await client.query<{ max_readers: number }>(`SELECT max_readers FROM ${identifier}.live_capacity FOR UPDATE`)
-    await client.query(`DELETE FROM ${identifier}.live_leases WHERE expires_at <= clock_timestamp()`)
-    const used = await client.query<{ count: string }>(`SELECT count(*) FROM ${identifier}.live_leases`)
-    if (!capacity.rows[0] || Number(used.rows[0]!.count) >= capacity.rows[0].max_readers) {
+    if (!capacity.rows[0]) throw new Error('Missing installation live capacity')
+    // Take the count in a new statement after acquiring the capacity lock, so
+    // it sees the previous admission's commit even if lock acquisition waited.
+    const admitted = await client.query(`WITH expired AS (
+      DELETE FROM ${identifier}.live_leases WHERE expires_at <= clock_timestamp()
+    ) INSERT INTO ${identifier}.live_leases (id, serving_epoch, expires_at)
+      SELECT $1, serving_epoch, clock_timestamp() + $2 * interval '1 millisecond' FROM ${identifier}.installation
+      WHERE (SELECT count(*) FROM ${identifier}.live_leases WHERE expires_at > clock_timestamp()) < $3 RETURNING id`, [id, lifetimeMs, capacity.rows[0].max_readers])
+    if (!admitted.rowCount) {
       throw new StreamError(429, 'INSTALLATION_LIVE_LIMIT', 'Installation live reader capacity reached', { 'Retry-After': '1' })
     }
-    await client.query(`INSERT INTO ${identifier}.live_leases (id, serving_epoch, expires_at)
-      SELECT $1, serving_epoch, clock_timestamp() + $2 * interval '1 millisecond' FROM ${identifier}.installation`, [id, lifetimeMs])
   })
-  return () => guard.run({}, async (client) => { await client.query(`DELETE FROM ${identifier}.live_leases WHERE id = $1`, [id]) })
+  return () => guard.releaseLiveLease(id)
 }

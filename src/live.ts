@@ -1,9 +1,10 @@
 import { admitLive } from './admission.js'
 import { randomInt } from 'node:crypto'
 import { StreamError } from './errors.js'
-import type { HeadWatch, StreamNotifier } from './neon.js'
-import { mediaType } from './payload.js'
+import type { HeadWatch, StreamNotifier, StreamHead } from './neon.js'
+import { mediaType, formatPayloads } from './payload.js'
 import type { PostgresStreamStore, ReadResult } from './store.js'
+import { PayloadWindow } from './live-payload.js'
 
 export interface LiveOptions {
   /** Consumer-owned notifier. Production Neon servers use createNeonRealtimeNotifier. */
@@ -14,6 +15,10 @@ export interface LiveOptions {
   readonly maxSseDurationMs?: number
   /** Per instance, additionally bounded by installation-wide database admission. */
   readonly maxReaders?: number
+  readonly maxBufferedBytes?: number
+  readonly maxBufferedFrames?: number
+  readonly payloadWindowMs?: number
+  readonly validationIntervalMs?: number
 }
 
 export function responseCursor(previous: string | null, now = Date.now()): string {
@@ -33,9 +38,12 @@ interface Channel {
   watch?: HeadWatch
   timer?: ReturnType<typeof setTimeout>
   waiters: Set<() => void>
+  head: StreamHead | null | undefined
+  validation: Pick<ReadResult, 'stream' | 'validatedAt' | 'validUntil'>
+  validating?: Promise<Pick<ReadResult, 'stream' | 'validatedAt' | 'validUntil'>>
 }
 
-/** Realtime is an invalidation hint. All bytes and EOF signals come from replay. */
+/** Authorized durable replay plus bounded, contiguous committed Realtime payloads. */
 export class LiveReads {
   private readonly channels = new Map<string, Channel>()
   private readonly active = new Set<AbortController>()
@@ -45,6 +53,10 @@ export class LiveReads {
   private readonly heartbeat: number
   private readonly duration: number
   private readonly maximum: number
+  private readonly bufferBytes: number
+  private readonly bufferFrames: number
+  private readonly windowMs: number
+  private readonly validationMs: number
   private closed = false
 
   constructor(private readonly store: PostgresStreamStore, private readonly schema: string,
@@ -54,18 +66,23 @@ export class LiveReads {
     this.heartbeat = options.heartbeatMs ?? 15_000
     this.duration = options.maxSseDurationMs ?? 60_000
     this.maximum = options.maxReaders ?? 80
+    this.bufferBytes = options.maxBufferedBytes ?? 2 * 1024 * 1024
+    this.bufferFrames = options.maxBufferedFrames ?? 256
+    this.windowMs = options.payloadWindowMs ?? 10_000
+    this.validationMs = options.validationIntervalMs ?? 1000
     for (const [value, min, max] of [[this.timeout, 1, 300_000], [this.fallback, 100, 60_000],
-      [this.heartbeat, 100, 60_000], [this.duration, 100, 300_000], [this.maximum, 1, 100_000]]) {
+      [this.heartbeat, 100, 60_000], [this.duration, 100, 300_000], [this.maximum, 1, 100_000],
+      [this.bufferBytes, 1, 64 * 1024 * 1024], [this.bufferFrames, 1, 4096], [this.windowMs, 100, 60_000], [this.validationMs, 100, 60_000]]) {
       if (!Number.isSafeInteger(value) || value! < min! || value! > max!) throw new RangeError('Invalid live read limits')
     }
     if (typeof options.notifier?.watch !== 'function') throw new TypeError('Live reads require a notifier')
   }
 
-  private channel(tenant: string, id: string, version: string) {
+  private channel(tenant: string, id: string, initial: ReadResult) {
     const key = JSON.stringify([tenant, id])
     let channel = this.channels.get(key)
     if (!channel) {
-      const current: Channel = { version, revision: 0, references: 0, disposed: false, waiters: new Set() }
+      const current: Channel = { version: initial.stream.change_version, revision: 0, references: 0, disposed: false, waiters: new Set(), head: undefined, validation: initial }
       this.channels.set(key, current)
       const update = (next: string | null) => {
         if (current.disposed || next === current.version) return
@@ -77,7 +94,11 @@ export class LiveReads {
       }
       try {
         current.watch = this.options.notifier.watch({ schema: this.schema, tenantId: tenant, streamId: id },
-          (head) => update(head && !head.deleted ? head.version : null))
+          (head) => {
+            if (head && current.version !== null && BigInt(head.version) < BigInt(current.version)) return
+            current.head = head
+            update(head && !head.deleted ? head.version : null)
+          })
         void current.watch.ready.catch(this.report)
       } catch (error) { this.report(error) }
       const poll = async () => {
@@ -94,6 +115,18 @@ export class LiveReads {
     watched.references++
     return {
       revision: () => watched.revision,
+      head: () => watched.head,
+      wake: () => { if (!watched.disposed) { watched.revision++; for (const wake of [...watched.waiters]) wake() } },
+      observe: (value: Pick<ReadResult, 'stream' | 'validatedAt' | 'validUntil'>) => {
+        if (value.validatedAt >= watched.validation.validatedAt) watched.validation = value
+      },
+      validate: async () => {
+        const previous = watched.validation
+        if (performance.now() - previous.validatedAt < this.validationMs && performance.now() < previous.validUntil) return previous
+        watched.validating ??= this.store.validateGeneration(tenant, id).then((value) => { watched.validation = value; return value })
+          .finally(() => { delete watched.validating })
+        return watched.validating
+      },
       wait: (revision: number, timeoutMs: number, signal: AbortSignal) => new Promise<void>((resolve, reject) => {
         if (signal.aborted) { reject(signal.reason); return }
         if (watched.revision !== revision || watched.disposed) { resolve(); return }
@@ -137,6 +170,7 @@ export class LiveReads {
     }
     let releaseAdmission: (() => Promise<void>) | undefined
     let subscription: ReturnType<LiveReads['channel']> | undefined
+    let payload: PayloadWindow | undefined
     let released = false
     const release = () => {
       if (released) return
@@ -151,6 +185,7 @@ export class LiveReads {
         void work.finally(() => this.releases.delete(work))
       }
       request.signal.removeEventListener('abort', canceled)
+      payload?.close()
       subscription?.release()
       this.active.delete(abort)
     }
@@ -173,18 +208,51 @@ export class LiveReads {
         release()
         return new Response(initial.hasData ? new Uint8Array(initial.body) : null, { status: initial.hasData ? 200 : 204, headers })
       }
-      subscription = this.channel(tenant, id, initial.stream.change_version)
+      subscription = this.channel(tenant, id, initial)
       const channel = subscription
+      channel.observe(initial)
+      if (this.options.notifier.watchAppends) payload = new PayloadWindow({ notifier: this.options.notifier, schema: this.schema, tenantId: tenant, streamId: id,
+        installation: await this.store.guard.snapshot(), maxBytes: this.bufferBytes, maxFrames: this.bufferFrames, windowMs: this.windowMs, wake: channel.wake, report: this.report }, initial)
+      const replay = async (at: string) => {
+        const revision = payload?.revision ?? -1
+        const result = await this.store.readGeneration(tenant, id, at)
+        channel.observe(result); payload?.reconcile(result, revision)
+        return result
+      }
+      const page = async (at: string): Promise<ReadResult> => {
+        if (!payload || payload.needsReplay || !payload.verified) return replay(at)
+        const head = channel.head()
+        if (head === null || head?.deleted) return replay(at)
+        const validation = await channel.validate()
+        const metadata = head && BigInt(head.version) >= BigInt(validation.stream.change_version)
+          ? { ...validation.stream, tail_offset: head.offset, change_version: head.version, closed: head.closed } : validation.stream
+        const batch = payload.take(at, this.store.replayLimits.maxBytes, this.store.replayLimits.maxFrames, metadata.tail_offset)
+        if (!batch && payload.needsReplay) return replay(at)
+        const next = batch?.next ?? at
+        if (metadata.closed && next < metadata.tail_offset && !batch?.frames.length) return replay(at)
+        return { stream: metadata, body: formatPayloads((batch?.frames ?? []).map((frame) => frame.payload), metadata.content_type),
+          next, upToDate: !batch?.ahead && next >= metadata.tail_offset, hasData: Boolean(batch?.frames.length), validatedAt: validation.validatedAt, validUntil: validation.validUntil }
+      }
+      const waitForPage = async (at: string, deadline: number): Promise<ReadResult> => {
+        let awaitingPayload: number | undefined
+        for (;;) {
+          assertActive()
+          const revision = channel.revision()
+          const result = await page(at)
+          assertActive()
+          if (result.hasData || result.stream.closed || Date.now() >= deadline) return result
+          if (!result.upToDate) {
+            awaitingPayload ??= performance.now()
+            if (performance.now() - awaitingPayload >= 50) return replay(at)
+          } else awaitingPayload = undefined
+          const wait = Math.min(deadline - Date.now(), payload ? this.validationMs : Infinity, Math.max(1, result.validUntil - performance.now()),
+            awaitingPayload === undefined ? Infinity : Math.max(1, 50 - (performance.now() - awaitingPayload)))
+          await channel.wait(revision, wait, abort.signal)
+        }
+      }
       if (!isSse) {
         const deadline = Date.now() + this.timeout
-        let result: ReadResult
-        for (;;) {
-          const revision = channel.revision()
-          assertActive()
-          result = await this.store.readGeneration(tenant, id, initial.next)
-          if (result.hasData || result.stream.closed || Date.now() >= deadline) break
-          await channel.wait(revision, deadline - Date.now(), abort.signal)
-        }
+        const result = await waitForPage(initial.next, deadline)
         assertActive()
         headers.set('Stream-Next-Offset', result.next)
         headers.set('Stream-Cursor', responseCursor(cursor))
@@ -225,17 +293,10 @@ export class LiveReads {
             let result = first
             first = undefined
             if (!result) {
-              const revision = channel.revision()
-              result = await this.store.readGeneration(tenant, id, next)
+              result = await waitForPage(next, Date.now() + this.heartbeat)
               if (ending) return
-              if (!result.hasData && !result.stream.closed) {
-                await channel.wait(revision, this.heartbeat, abort.signal)
-                if (ending) return
-                result = await this.store.readGeneration(tenant, id, next)
-                if (ending) return
-                assertActive()
-                if (!result.hasData && !result.stream.closed) { controller.enqueue(Buffer.from(': heartbeat\n\n')); return }
-              }
+              assertActive()
+              if (!result.hasData && !result.stream.closed) { controller.enqueue(Buffer.from(': heartbeat\n\n')); return }
             }
             if (ending) return
             assertActive()

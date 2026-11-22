@@ -4,6 +4,7 @@ import { build } from 'esbuild'
 import { zipSync } from 'fflate'
 import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
+import { execFileSync } from 'node:child_process'
 import { deployTestWebhook } from './neon-test-webhook.mjs'
 import { migrate } from '../dist/migrations.js'
 import { createS3ChunkStorage } from '../dist/s3.js'
@@ -30,6 +31,8 @@ if (!/^ds_test_[a-f0-9]{32}$/.test(schema)) throw new Error('Invalid Function te
 const userKey = previous?.TEST_FUNCTION_API_KEY ?? secret()
 const otherKey = previous?.TEST_FUNCTION_OTHER_KEY ?? secret()
 const maintenanceKey = previous?.TEST_FUNCTION_MAINTENANCE_KEY ?? secret()
+const hintMode = process.env.NEON_TEST_MAINTENANCE_HINTS ?? 'off'
+if (!['on', 'off'].includes(hintMode)) throw new Error('Invalid test maintenance hint mode')
 if (process.env.GITHUB_ACTIONS === 'true') for (const value of [userKey, otherKey, maintenanceKey]) console.log(`::add-mask::${value}`)
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
 const direct = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED, max: 1 })
@@ -42,6 +45,8 @@ const bundle = await build({ entryPoints: ['examples/neon-function/index.ts'], b
 if (bundle.outputFiles.length !== 1) throw new Error('Expected a single self-contained Function bundle')
 const code = bundle.outputFiles[0].contents
 const hash = createHash('sha256').update(code).digest('hex')
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+const sourceDirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', 'src', 'examples/neon-function', 'package.json', 'pnpm-lock.yaml'], { encoding: 'utf8' }).trim() ? 'yes' : 'no'
 const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'durablestreams', runtime: 'nodejs24',
   zip: new File([zipSync({ 'index.mjs': code })], 'durable-streams.zip', { type: 'application/zip' }),
   environment: JSON.stringify({ DS_SCHEMA: schema, DS_ENVIRONMENT_ID: branchId, DS_BUCKET: process.env.NEON_TEST_BUCKET,
@@ -49,7 +54,8 @@ const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'dur
     DS_KEYRING_JSON: process.env.DURABLE_STREAMS_KEYRING,
     DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
     DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash,
-    DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: '60000' }),
+    DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: '60000', DS_LIVE_VALIDATION_MS: '60000',
+    DS_MAINTENANCE_HINTS: hintMode, DS_CRON_MAX_CHUNKS: '64', DS_CRON_SUBSCRIPTION_WORK: '64' }),
 })
 let url
 const deadline = Date.now() + 180_000
@@ -62,12 +68,16 @@ while (Date.now() < deadline) {
 if (!url) throw new Error('Neon Function deployment did not become active')
 const triggerName = 'durable-streams-maintenance'
 const existing = (await neon.triggers.list({ projectId, branchId })).find((item) => item.name === triggerName)
-if (!existing) await neon.triggers.create({ projectId, branchId, type: 'schedule', name: triggerName,
+const noCron = process.env.NEON_TEST_NO_CRON === '1'
+if (noCron && existing) throw new Error('Cron-free qualification requires a fresh isolated branch')
+if (!noCron && !existing) await neon.triggers.create({ projectId, branchId, type: 'schedule', name: triggerName,
   function_slug: 'durablestreams', function_path: '/_trigger', schedule: { cron: '* * * * *' } })
 const receiver = await deployTestWebhook({ neon, projectId, branchId, schema, sourceUrl: url, previous })
 const values = { ...receiver, TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
-  TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash }
-if (process.env.GITHUB_ACTIONS === 'true') for (const value of Object.values(values)) console.log(`::add-mask::${value}`)
+  TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash,
+  TEST_FUNCTION_SOURCE_COMMIT: sourceCommit, TEST_FUNCTION_SOURCE_DIRTY: sourceDirty,
+  TEST_FUNCTION_MAINTENANCE_HINTS: hintMode, TEST_FUNCTION_HAS_CRON: noCron ? 'no' : 'yes', TEST_FUNCTION_CRON_CHUNKS: '64', TEST_FUNCTION_CRON_SUBSCRIPTION_WORK: '64' }
+if (process.env.GITHUB_ACTIONS === 'true') for (const [key, value] of Object.entries(values)) if (/_KEY$|_URL$/.test(key)) console.log(`::add-mask::${value}`)
 const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
 if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
 else await writeFile(outputFile, environment, { mode: 0o600 })

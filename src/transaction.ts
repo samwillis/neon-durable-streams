@@ -19,13 +19,15 @@ export async function transaction<T>(
   let releaseError: Error | undefined
   let phase: 'begin' | 'work' | 'commit' = 'begin'
   try {
-    await client.query(options.readOnly
+    const begin = options.readOnly
       ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'
-      : 'BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE')
-    await client.query(`SELECT set_config('synchronous_commit', 'on', true),
-      set_config('statement_timeout', $1, true), set_config('lock_timeout', $2, true),
-      set_config('idle_in_transaction_session_timeout', $1, true), set_config('transaction_timeout', $1, true)`,
-    [String(timeout), String(lockTimeout)])
+      : 'BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE'
+    // Both interpolated values were validated as bounded positive integers.
+    // One simple-protocol round trip preserves explicit BEGIN/SET LOCAL while
+    // avoiding a network round trip before any application SQL can execute.
+    await client.query(`${begin}; SELECT set_config('synchronous_commit', 'on', true),
+      set_config('statement_timeout', '${timeout}', true), set_config('lock_timeout', '${lockTimeout}', true),
+      set_config('idle_in_transaction_session_timeout', '${timeout}', true), set_config('transaction_timeout', '${timeout}', true)`)
     phase = 'work'
     const result = await work(client)
     phase = 'commit'

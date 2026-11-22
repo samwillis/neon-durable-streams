@@ -90,3 +90,35 @@ jobs:
       - name: Delete this run's Neon branch
         if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
         run: pnpm neon:test:delete
+
+  hints:
+    name: Neon append-hint delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      NEON_PARENT_BRANCH_ID: ${{ vars.NEON_PARENT_BRANCH_ID }}
+      NEON_TEST_BRANCH_LABEL: hints
+      NEON_TEST_MAINTENANCE_HINTS: 'on'
+      NEON_TEST_NO_CRON: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require real Neon credentials
+        run: test -n "$NEON_API_KEY" && test -n "$NEON_PROJECT_ID" && test -n "$NEON_PARENT_BRANCH_ID"
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Provision a separate isolated Neon branch
+        run: pnpm neon:test:create
+      - name: Deploy with append hints and no scheduled worker
+        run: pnpm neon:test:deploy
+      - name: Prove hinted Realtime wakes and full-chunk sealing
+        run: pnpm test:hints
+      - name: Delete the hint test branch
+        if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
+        run: pnpm neon:test:delete

@@ -8,10 +8,10 @@ Implementation is underway. Package/toolchain, explicit migrations, typed auth/m
 
 - One TypeScript package, ESM, Node.js 24, explicit Neon/migration entrypoints, consumer-owned clients, no implicit provisioning or migrations. Use a checked-in lockfile and Vitest/fast-check-based test tooling, with the exact dependencies qualified during setup.
 - Postgres owns the durable hot log, metadata, producer state, fork graph, outbox, jobs, and subscription state. A hot chunk contains append rows. Immutable content-addressed sealed objects hold archived frames and indexes.
-- Each write transaction uses one checked-out connection, explicit READ COMMITTED, transaction-local synchronous commit on, bounded timeouts, and scoped locks. Multi-statement replay planning uses explicit REPEATABLE READ. SQL object names are fully qualified.
+- Each write transaction uses one checked-out connection, explicit READ COMMITTED, transaction-local synchronous commit on, bounded timeouts, and scoped locks. Initial replay captures frames under the namespace/stream locks; background generation replay uses REPEATABLE READ. SQL object names are fully qualified.
 - Initial path coordination uses persistent `ds_paths` namespace rows keyed by installation/tenant/canonical path. Insert-or-find the claim, then lock it for lifecycle changes and resolve/revalidate the active stream UUID. Unique constraints and a deterministic path/stream lock order supplement this protocol. Account for the retained namespace metadata in capacity tests.
 - Append transactions persist bounded stream-change outbox records. Durable matching/fan-out uses per-stream change versions, processing status, and resumable progress; append latency does not scale linearly with subscription count.
-- Realtime watches small durable heads, with bounded, coalesced SQL fallback. Neither Realtime delivery nor post-response execution is required for append durability.
+- Realtime relays committed append payloads after authorized catch-up, using simple unordered raw queries, contiguous-offset checks in the Function, bounded windows, and durable replay on gaps. Small head and installation watches preserve lifecycle/epoch validation. Neither Realtime delivery nor post-response execution is required for append durability. See the [payload contract](realtime-payload-v1.md).
 - Destructive GC requires a transactional retirement/pin/publication protocol and an explicit recovery-retention policy. Retain objects until that protocol is implemented and qualified.
 - Complete conformance includes forks and subscriptions. The exact pinned upstream source remains the target until the matching published artifact is verified.
 
@@ -82,3 +82,13 @@ Validate the packed npm artifact in a separate consumer project using documented
 | Scheduled/pre-release qualification | Full pinned conformance, all fault/upgrade/restore suites, consumer tarball installation, deployed HTTPS webhook fixture, and recorded load/soak runs |
 
 Map every safety invariant to a test or drill. Record suite commit, package/dependency versions, configuration, workload, failure point, and random seed where relevant. Local Postgres/S3 tests provide repeatable development evidence; they do not certify provider-specific behavior.
+
+## Capacity qualification findings
+
+The ten-minute 1 KiB-record baseline safely replayed 38,360 appends but accumulated 274 frozen chunks and 18,912 pending changes under the old recovery-only cron budget. Live p95 reached 4.43 seconds. This blocks steady-state qualification. The next profile interleaves work classes, coalesces bounded changes, raises catch-up pages within the byte cap, uses full-chunk append hints, and reserves cron recovery. Separate required Neon branches qualify hints with no cron and cron recovery with hints disabled. See the recorded [qualification evidence](qualification/README.md); the revised profile still needs its own sustained run.
+
+## Realtime payload direction
+
+The user requests direct committed-payload delivery through Neon Realtime after initial authorization and durable catch-up. Use simple unordered append queries with a lower-offset predicate; order, deduplicate, and check contiguous durable offsets in the Function. Raw (`materialize: false`) updates avoid accumulating the result in the SDK. Bound both local buffering and the lifetime/lower-offset window of the server-side view. Durable PG/Object Storage replay remains authoritative for gaps, sealing removals/null payloads, reconnect/replacement snapshots, forks, lifecycle, and recovery validation. Final EOF follows contiguous final bytes. Preserve auth expiry and serving-epoch fencing.
+
+Matched head/materialized, head/raw, append/materialized, and append/raw diagnostics on the unchanged baseline were all fast over 30/120 seconds. The head query already has no ORDER BY. These results establish payload-query viability; they do not explain the earlier latency outliers or isolate capacity. The matched scripts/reports supplied by the investigation side chat are retained under `/tmp/neon-rt-query-shapes.mjs` and `/tmp/neon-rt-shapes-{30,120}.json` during this session. Integrate regression coverage for ordering, subscription races, duplicate/replacement events, sealing, forks, slow readers, auth/epoch changes, and rerun the full unfiltered Neon suite.

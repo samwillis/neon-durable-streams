@@ -129,6 +129,8 @@ export async function finishRecovery(pool: Pool, options: OperationTarget & { re
     }
     validRecovery(row, options.token)
     if (!row.recovery_complete) throw new StorageCompatibilityError('Verify every sealed manifest before activating this installation')
+    const readers = await client.query(`SELECT 1 FROM ${schema}.live_leases WHERE expires_at > clock_timestamp() AND serving_epoch <> $1 LIMIT 1`, [row.serving_epoch])
+    if (readers.rowCount) throw new StorageCompatibilityError('Drain active live readers or wait for their bounded leases before activating recovery')
     // Process eviction can leave durable claims and leases behind. UUID tokens
     // invalidate callbacks issued on either side of a point-in-time rollback.
     await client.query(`UPDATE ${schema}.chunks SET claim_token = NULL, claim_until = NULL, claim_epoch = claim_epoch + 1 WHERE state = 'frozen'`)

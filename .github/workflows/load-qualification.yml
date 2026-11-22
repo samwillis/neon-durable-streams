@@ -27,6 +27,7 @@ jobs:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
       NEON_PARENT_BRANCH_ID: ${{ vars.NEON_PARENT_BRANCH_ID }}
+      NEON_TEST_MAINTENANCE_HINTS: 'on'
       DS_LOAD_SECONDS: ${{ inputs.seconds }}
       DS_LOAD_WRITERS: ${{ inputs.writers }}
       DS_LOAD_LIVE_READERS: ${{ inputs.readers }}

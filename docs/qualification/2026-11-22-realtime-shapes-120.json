@@ -1,0 +1,184 @@
+{
+  "generatedAt": "2026-11-22T19:56:50.443Z",
+  "bundleSha256": "930df346abcc730af30bcc3b3a847cb08c1b33c17ec56fd78b7119c54d6140f4",
+  "profile": {
+    "seconds": 120,
+    "writers": 4,
+    "streams": 4,
+    "sseReaders": 8,
+    "recordBytes": 1024,
+    "orderBy": false
+  },
+  "appends": 6408,
+  "elapsedSeconds": 121.856401625,
+  "appendLatencyMs": {
+    "samples": 6408,
+    "p50": 71.98,
+    "p95": 93.19,
+    "p99": 160.49,
+    "max": 2061.4266659999994
+  },
+  "queries": [
+    {
+      "name": "head-materialized",
+      "latencyMs": {
+        "samples": 6408,
+        "p50": 70.63,
+        "p95": 91.88,
+        "p99": 152,
+        "max": 2062.083500000008
+      },
+      "missing": 0,
+      "updates": 6412,
+      "rows": 0,
+      "changes": 0,
+      "moves": 0,
+      "removes": 0,
+      "decodedBytes": 0,
+      "states": {
+        "connecting": 4,
+        "live": 4,
+        "closed": 4
+      },
+      "diagnostics": {
+        "subscription_started": 4,
+        "connection_attempt_started": 1,
+        "query_refresh_scheduled": 12,
+        "connection_ready": 1,
+        "subscription_admitted": 4,
+        "subscription_baseline_sync_started": 4,
+        "subscription_baseline_sync_completed": 4,
+        "subscription_state_changed": 8,
+        "subscription_live": 4,
+        "connection_publication_committed": 6408,
+        "query_refresh_callback_started": 8,
+        "query_refresh_callback_succeeded": 8,
+        "subscription_renewal_started": 8,
+        "subscription_renewed": 8,
+        "subscription_unsubscribed": 4,
+        "client_closed": 1
+      }
+    },
+    {
+      "name": "head-raw",
+      "latencyMs": {
+        "samples": 6408,
+        "p50": 71.56,
+        "p95": 92.61,
+        "p99": 146.1,
+        "max": 2063.1378750000003
+      },
+      "missing": 0,
+      "updates": 6412,
+      "rows": 4,
+      "changes": 6408,
+      "moves": 0,
+      "removes": 0,
+      "decodedBytes": 0,
+      "states": {
+        "connecting": 4,
+        "live": 4,
+        "closed": 4
+      },
+      "diagnostics": {
+        "subscription_started": 4,
+        "connection_attempt_started": 1,
+        "query_refresh_scheduled": 12,
+        "connection_ready": 1,
+        "subscription_admitted": 4,
+        "subscription_baseline_sync_started": 4,
+        "subscription_baseline_sync_completed": 4,
+        "subscription_state_changed": 8,
+        "subscription_live": 4,
+        "connection_publication_committed": 6408,
+        "query_refresh_callback_started": 8,
+        "query_refresh_callback_succeeded": 8,
+        "subscription_renewal_started": 8,
+        "subscription_renewed": 8,
+        "subscription_unsubscribed": 4,
+        "client_closed": 1
+      }
+    },
+    {
+      "name": "appends-materialized",
+      "latencyMs": {
+        "samples": 6408,
+        "p50": 71.77,
+        "p95": 101.18,
+        "p99": 151.16,
+        "max": 2062.678165999998
+      },
+      "missing": 0,
+      "updates": 6540,
+      "rows": 0,
+      "changes": 0,
+      "moves": 0,
+      "removes": 0,
+      "decodedBytes": 1567670272,
+      "states": {
+        "connecting": 4,
+        "live": 4,
+        "closed": 4
+      },
+      "diagnostics": {
+        "subscription_started": 4,
+        "connection_attempt_started": 1,
+        "query_refresh_scheduled": 12,
+        "connection_ready": 1,
+        "subscription_admitted": 4,
+        "subscription_baseline_sync_started": 4,
+        "subscription_baseline_sync_completed": 4,
+        "subscription_state_changed": 8,
+        "subscription_live": 4,
+        "connection_publication_committed": 6536,
+        "query_refresh_callback_started": 8,
+        "query_refresh_callback_succeeded": 8,
+        "subscription_renewal_started": 8,
+        "subscription_renewed": 8,
+        "subscription_unsubscribed": 4,
+        "client_closed": 1
+      }
+    },
+    {
+      "name": "appends-raw",
+      "latencyMs": {
+        "samples": 6408,
+        "p50": 71.04,
+        "p95": 101.76,
+        "p99": 151.71,
+        "max": 2060.1509159999987
+      },
+      "missing": 0,
+      "updates": 6540,
+      "rows": 4,
+      "changes": 6536,
+      "moves": 0,
+      "removes": 0,
+      "decodedBytes": 6561792,
+      "states": {
+        "connecting": 4,
+        "live": 4,
+        "closed": 4
+      },
+      "diagnostics": {
+        "subscription_started": 4,
+        "connection_attempt_started": 1,
+        "query_refresh_scheduled": 12,
+        "connection_ready": 1,
+        "subscription_admitted": 4,
+        "subscription_baseline_sync_started": 4,
+        "subscription_baseline_sync_completed": 4,
+        "subscription_state_changed": 8,
+        "subscription_live": 4,
+        "connection_publication_committed": 6536,
+        "query_refresh_callback_started": 8,
+        "query_refresh_callback_succeeded": 8,
+        "subscription_renewal_started": 8,
+        "subscription_renewed": 8,
+        "subscription_unsubscribed": 4,
+        "client_closed": 1
+      }
+    }
+  ],
+  "errors": []
+}

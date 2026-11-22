@@ -1,0 +1,94 @@
+{
+  "harnessSha256": "8d9dff564b260ef45c31d097bb2d97a18fc07ea7d5370f2d35f3874192356a36",
+  "harnessCommitAtStart": "b22c1675f7eb5c32b52f39be39279c819ea5f21f",
+  "generatedAt": "2026-11-22T19:47:00.860Z",
+  "deployedSourceCommit": null,
+  "deployedSourceDirty": null,
+  "bundleSha256": "6020396ec0b27839aeee6e63810e5e50f368ebf14ba38bd28ae3cc06b7002724",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 120,
+    "writers": 4,
+    "readers": 16,
+    "streams": 8,
+    "recordBytes": 1024,
+    "replayConcurrency": 4,
+    "realtimeProbe": true,
+    "maintenanceHints": "unknown",
+    "cronChunks": null,
+    "cronSubscriptionWork": null,
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 120.07802550000001,
+  "acknowledgedAppends": 7729,
+  "replayedRecords": 7729,
+  "appendsPerSecond": 64.36648144251838,
+  "appendLatencyMs": {
+    "samples": 7729,
+    "p50": 59.05,
+    "p95": 75.33,
+    "p99": 134.9,
+    "max": 1055.9517079999932
+  },
+  "observedLiveLatencyMs": {
+    "samples": 15458,
+    "p50": 79.57,
+    "p95": 6159.15,
+    "p99": 7782.7,
+    "max": 8590.422583000007
+  },
+  "observedHeadCoverageMs": {
+    "samples": 7729,
+    "p50": 61.95,
+    "p95": 6102.33,
+    "p99": 7736.14,
+    "max": 8528.917707999994
+  },
+  "liveBytes": 15828992,
+  "rotations": 32,
+  "connectionsBefore": 16,
+  "connectionsAfter": 20,
+  "backlog": [
+    {
+      "elapsedSeconds": 0.025852750000000015,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 8
+    },
+    {
+      "elapsedSeconds": 30.23143,
+      "frozenChunks": 12,
+      "localPayloadBytes": 887808,
+      "pendingChanges": 602
+    },
+    {
+      "elapsedSeconds": 60.232511625,
+      "frozenChunks": 28,
+      "localPayloadBytes": 2948096,
+      "pendingChanges": 2614
+    },
+    {
+      "elapsedSeconds": 90.237579459,
+      "frozenChunks": 36,
+      "localPayloadBytes": 4573184,
+      "pendingChanges": 2455
+    },
+    {
+      "elapsedSeconds": 120.226891834,
+      "frozenChunks": 52,
+      "localPayloadBytes": 6556672,
+      "pendingChanges": 4392
+    },
+    {
+      "elapsedSeconds": 120.261219417,
+      "frozenChunks": 52,
+      "localPayloadBytes": 6556672,
+      "pendingChanges": 4392
+    }
+  ],
+  "drainSeconds": 14.009944374999991,
+  "replaySeconds": 5.022161332999996,
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}

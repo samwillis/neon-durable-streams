@@ -28,7 +28,7 @@ const servers: DurableStreamsServer[] = []
 const subscriptions = new Set<string>()
 const server = (maxStreams = 1000, authorize: (context: AuthorizationContext) => boolean = () => true) => {
   const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema }, storage: { objects, targetChunkBytes: 32, maxChunkFrames: 8 },
-    live: { notifier, fallbackIntervalMs: 60_000 }, subscriptions: { keyring, allowLocalhostWebhooks: true, maxStreams },
+    live: { notifier, fallbackIntervalMs: 60_000, validationIntervalMs: 60_000 }, subscriptions: { keyring, allowLocalhostWebhooks: true, maxStreams },
     auth: { authenticate: (request) => { const key = request.headers.get('authorization'); return key === 'Bearer a' || key === 'Bearer b' ? { tenantId: key.slice(-1), subject: 'fixture' } : null }, authorize },
     onError: (error) => reported.push(error) })
   servers.push(handler)
@@ -261,11 +261,12 @@ test('synchronous webhook completion acks only its snapshot and wakes again for 
 })
 
 test('webhook retries honor a persisted deadline after a fresh handler and keep stable signing keys', async () => {
+  await maintain()
   const name = 'retry-state'
   const webhook = await receiver(async (_notification, index) => ({ status: index ? 200 : 500, done: Boolean(index) }))
   const created = await register(name, { type: 'webhook', pattern: 'retry-events/*', webhook: { url: webhook.url } })
   await request('retry-events/a', 'PUT', 'retry payload')
-  await maintain()
+  await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
   expect(webhook.received).toHaveLength(1)
   await pool.query(`UPDATE "${schema}".subscriptions SET retry_at = clock_timestamp() + interval '30 seconds', next_work_at = clock_timestamp() + interval '30 seconds' WHERE name = $1`, [name])
   const fresh = server()

@@ -42,19 +42,27 @@ export interface ServerOptions {
   readonly live?: LiveOptions
   readonly storage?: StorageOptions
   readonly subscriptions?: SubscriptionOptions
-  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly bodyTimeoutMs?: number }
+  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly maxPageFrames?: number; readonly bodyTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
   /** Contains no bodies, credentials, paths, or subscription tokens. */
   readonly onEvent?: (event: ServerEvent) => void
 }
 export interface MaintenanceResult { readonly frozen: number; readonly sealed: number; readonly retired: number; readonly changes: number; readonly deliveries: number; readonly links: number }
+export interface MaintenanceOptions {
+  readonly maxChunks?: number
+  readonly maxSubscriptionWork?: number
+  /** Finish the current bounded round, then stop claiming work at this budget. */
+  readonly timeBudgetMs?: number
+  /** Hints can upload already-frozen chunks without sealing tiny hot tails. */
+  readonly freezeHot?: boolean
+}
 export type ServerEvent =
   | { readonly type: 'request'; readonly method: string; readonly status: number; readonly durationMs: number }
   | { readonly type: 'maintenance'; readonly success: boolean; readonly durationMs: number; readonly result?: MaintenanceResult }
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
   readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log' | 'tiered'; features: readonly string[] }>
-  readonly maintain: (options?: { readonly maxChunks?: number; readonly maxSubscriptionWork?: number }) => Promise<MaintenanceResult>
+  readonly maintain: (options?: MaintenanceOptions) => Promise<MaintenanceResult>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
 
@@ -146,9 +154,11 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
-  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage, options.postgres.environmentId, {
-    ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
-    ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}),
+  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', {
+    maxStoredBytes: options.limits?.maxStoredBytes, maxPageBytes: options.limits?.maxPageBytes, maxPageFrames: options.limits?.maxPageFrames,
+    storage: options.storage, environmentId: options.postgres.environmentId,
+    timeouts: { ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
+      ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}) },
   })
   const report = (error: unknown) => observe(options.onError, error)
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
@@ -274,13 +284,27 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       const work = (async () => {
         const maximum = input?.maxSubscriptionWork ?? 16
         if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid subscription maintenance batch')
-        if (input?.maxChunks !== undefined && (!Number.isSafeInteger(input.maxChunks) || input.maxChunks < 1 || input.maxChunks > 128)) throw new RangeError('Invalid chunk maintenance batch')
-        const stats = subscriptions ? await subscriptions.maintain(maximum) : { changes: 0, deliveries: 0, links: 0 }
-        return { ...await store.maintain(input), ...stats }
+        const chunks = input?.maxChunks ?? 8
+        if (!Number.isSafeInteger(chunks) || chunks < 1 || chunks > 128) throw new RangeError('Invalid chunk maintenance batch')
+        if (input?.timeBudgetMs !== undefined && (!Number.isSafeInteger(input.timeBudgetMs) || input.timeBudgetMs < 1 || input.timeBudgetMs > 300_000)) throw new RangeError('Invalid maintenance time budget')
+        if (input?.freezeHot !== undefined && typeof input.freezeHot !== 'boolean') throw new TypeError('Invalid hot chunk rotation policy')
+        const until = input?.timeBudgetMs === undefined ? Infinity : started + input.timeBudgetMs
+        const total: Record<keyof MaintenanceResult, number> = { frozen: 0, sealed: 0, retired: 0, changes: 0, deliveries: 0, links: 0 }
+        // Every round gives each work class a chance. A continuously busy
+        // outbox must not consume the entire deadline before delivery/sealing.
+        for (let i = 0; i < Math.max(chunks, maximum) && !closed; i++) {
+          const current = {
+            ...(subscriptions && i < maximum ? await subscriptions.maintain(1) : { changes: 0, deliveries: 0, links: 0, worked: false }),
+            ...(i < chunks ? await store.maintain({ maxChunks: 1, freezeHot: input?.freezeHot ?? true }) : { frozen: 0, sealed: 0, retired: 0 }),
+          }
+          for (const key of Object.keys(total) as (keyof MaintenanceResult)[]) total[key] += current[key]
+          if (!Object.values(current).some(Boolean) || performance.now() >= until) break
+        }
+        return total
       })()
       pending.add(work)
       void work.finally(() => pending.delete(work)).catch(() => {})
-      void work.then((result) => observe(options.onEvent, { type: 'maintenance', success: true, durationMs: performance.now() - started, result }, report),
+      void work.then((result) => observe(options.onEvent, { type: 'maintenance', success: true, durationMs: performance.now() - started, result: { ...result } }, report),
         () => observe(options.onEvent, { type: 'maintenance', success: false, durationMs: performance.now() - started }, report))
       return work
     },

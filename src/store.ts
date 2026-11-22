@@ -29,6 +29,8 @@ export interface StreamMetadata extends QueryResultRow {
   last_seq: string | null
   ttl_seconds: number | null
   expires_at: Date | null
+  accessed_at: Date
+  valid_for_ms?: string | null
   deleted_at: Date | null
   source_id: string | null
   fork_offset: string | null
@@ -72,7 +74,18 @@ export interface ReadResult {
   readonly next: string
   readonly upToDate: boolean
   readonly hasData: boolean
+  readonly validatedAt: number
+  readonly validUntil: number
 }
+interface StoreOptions {
+  readonly maxStoredBytes?: number | undefined
+  readonly maxPageBytes?: number | undefined
+  readonly maxPageFrames?: number | undefined
+  readonly storage?: StorageOptions | undefined
+  readonly environmentId?: string | undefined
+  readonly timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'> | undefined
+}
+interface ReplayPlan extends Omit<ReadResult, 'body'> { readonly frames: readonly StoredFrame[] }
 
 /** Transactional stream state and bounded replay planning. */
 export class PostgresStreamStore {
@@ -80,21 +93,25 @@ export class PostgresStreamStore {
   readonly guard: InstallationGuard
   private ready: Promise<void> | undefined
   private readonly chunks: ChunkManager | undefined
+  private readonly maxStoredBytes: number
+  private readonly maxPageBytes: number
+  private readonly maxPageFrames: number
 
   constructor(
     private readonly pool: Pool,
     schema: string,
-    private readonly maxStoredBytes = 1024 * 1024,
-    private readonly maxPageBytes = 2 * 1024 * 1024,
-    storage?: StorageOptions,
-    environmentId?: string,
-    timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'>,
+    options: StoreOptions = {},
   ) {
+    const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 128, storage, environmentId, timeouts } = options
+    this.maxStoredBytes = maxStoredBytes
+    this.maxPageBytes = maxPageBytes
+    this.maxPageFrames = maxPageFrames
     this.schema = validateSchema(schema)
     this.guard = new InstallationGuard(pool, schema, environmentId, timeouts)
     this.chunks = storage ? new ChunkManager(pool, schema, storage, this.guard) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
-      || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024) {
+      || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024
+      || !Number.isSafeInteger(maxPageFrames) || maxPageFrames < 1 || maxPageFrames > 1024) {
       throw new RangeError('Invalid payload/page limits')
     }
   }
@@ -122,6 +139,8 @@ export class PostgresStreamStore {
     const id = claimed.rows[0]?.active_stream_id
     if (!id) return undefined
     const result = await client.query<LockedStream>(`SELECT s.*,
+      CASE WHEN s.expires_at IS NOT NULL OR s.ttl_seconds IS NOT NULL THEN
+        EXTRACT(epoch FROM (COALESCE(s.expires_at, s.accessed_at + s.ttl_seconds * interval '1 second') - clock_timestamp())) * 1000 END AS valid_for_ms,
       COALESCE(s.expires_at <= clock_timestamp() OR
         s.accessed_at + s.ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
       FROM ${this.schema}.streams s
@@ -242,7 +261,7 @@ export class PostgresStreamStore {
     if (!result.rowCount) throw new StreamError(400, 'OFFSET_NOT_BOUNDARY', 'Offset is not a returned boundary')
   }
 
-  private async framePlan(client: PoolClient, id: string, start: string, limit = 16, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
+  private async framePlan(client: PoolClient, id: string, start: string, limit = this.maxPageFrames, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
     const result = await client.query<StoredFrame>(`${this.lineage()}, candidates AS (
         SELECT f.* FROM lineage l CROSS JOIN LATERAL (
           SELECT stream_id, end_offset, payload_bytes FROM ${this.schema}.appends
@@ -456,39 +475,71 @@ export class PostgresStreamStore {
   }
 
   async read(tenant: string, path: string, offset: string): Promise<ReadResult> {
+    const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
-    const accessed = await this.withStream(tenant, path, async (client, stream) => {
+    const plan = await this.withStream(tenant, path, async (client, stream) => {
       if (stream.ttl_seconds !== null) {
-        await client.query(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1`, [stream.id])
+        const renewed = await client.query<{ accessed_at: Date; valid_for_ms: string }>(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1
+          RETURNING accessed_at, EXTRACT(epoch FROM (accessed_at + ttl_seconds * interval '1 second' - clock_timestamp())) * 1000 AS valid_for_ms`, [stream.id])
+        stream.accessed_at = renewed.rows[0]!.accessed_at
+        stream.valid_for_ms = renewed.rows[0]!.valid_for_ms
         await this.scheduleExpiry(client, stream)
       }
-      return stream
+      // The generation/tail are locked and lineage ranges are immutable.
+      // The frame query captures local bytes or a sealed reference atomically,
+      // including concurrent publication, before releasing these locks.
+      return this.planRead(client, stream, offset, observedAt)
     })
-    return this.readGeneration(tenant, accessed.id, offset)
+    return this.materializeRead(plan)
   }
+
+  private async planRead(client: PoolClient, stream: StreamMetadata, offset: string, observedAt: number): Promise<ReplayPlan> {
+    const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
+    await this.boundary(client, stream, start)
+    const frames = await this.framePlan(client, stream.id, start)
+    const next = frames.at(-1)?.end_offset ?? start
+    return { stream, frames, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
+      validatedAt: observedAt, validUntil: observedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
+  }
+
+  private async materializeRead(plan: ReplayPlan): Promise<ReadResult> {
+    const frames = await this.materialize(plan.frames)
+    if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
+    return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
+      validatedAt: plan.validatedAt, validUntil: plan.validUntil }
+  }
+
+  private async generation(client: PoolClient, tenant: string, id: string): Promise<LockedStream> {
+    const metadata = await client.query<LockedStream>(`SELECT s.*, COALESCE(expires_at <= clock_timestamp()
+      OR accessed_at + ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired,
+      CASE WHEN expires_at IS NOT NULL OR ttl_seconds IS NOT NULL THEN EXTRACT(epoch FROM
+        (COALESCE(expires_at, accessed_at + ttl_seconds * interval '1 second') - clock_timestamp())) * 1000 END AS valid_for_ms
+      FROM ${this.schema}.streams s WHERE tenant_id = $1 AND id = $2`, [tenant, id])
+    const stream = metadata.rows[0]
+    if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream no longer exists')
+    if (stream.deleted_at || stream.expired) throw new StreamError(stream.ref_count ? 410 : 404, 'STREAM_UNAVAILABLE', 'Stream is unavailable')
+    return stream
+  }
+
+  async validateGeneration(tenant: string, id: string): Promise<Pick<ReadResult, 'stream' | 'validatedAt' | 'validUntil'>> {
+    const validatedAt = performance.now()
+    const stream = await this.transaction({ readOnly: true }, (client) => this.generation(client, tenant, id))
+    return { stream, validatedAt, validUntil: validatedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
+  }
+
+  get replayLimits(): { maxBytes: number; maxFrames: number } { return { maxBytes: this.maxPageBytes - 2, maxFrames: this.maxPageFrames } }
 
   /** An active live read must never switch to a recreated path generation. */
   async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
+    const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     const plan = await this.transaction({ readOnly: true }, async (client) => {
-      const metadata = await client.query<LockedStream>(`SELECT s.*, COALESCE(expires_at <= clock_timestamp()
-        OR accessed_at + ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
-        FROM ${this.schema}.streams s WHERE tenant_id = $1 AND id = $2`, [tenant, id])
-      const stream = metadata.rows[0]
-      if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream no longer exists')
-      if (stream.deleted_at || stream.expired) throw new StreamError(stream.ref_count ? 410 : 404, 'STREAM_UNAVAILABLE', 'Stream is unavailable')
-      const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
-      await this.boundary(client, stream, start)
-      const frames = await this.framePlan(client, stream.id, start)
-      const next = frames.at(-1)?.end_offset ?? start
-      return { stream, frames, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0 }
+      return this.planRead(client, await this.generation(client, tenant, id), offset, observedAt)
     })
-    const frames = await this.materialize(plan.frames)
-    if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
-    return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData }
+    return this.materializeRead(plan)
   }
 
-  async maintain(options: { readonly maxChunks?: number } = {}): Promise<{ frozen: number; sealed: number; retired: number }> {
+  async maintain(options: { readonly maxChunks?: number; readonly freezeHot?: boolean } = {}): Promise<{ frozen: number; sealed: number; retired: number }> {
     await this.assertReady()
     const maximum = options.maxChunks ?? 8
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')

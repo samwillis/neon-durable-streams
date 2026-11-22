@@ -22,7 +22,7 @@ const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, 
 }, live: {
   notifier: { watch(input, listener) { const watch = notifier.watch(input, listener); registered?.(watch); return watch } },
   // No timeout or polling can deliver the live appends in these tests.
-  longPollTimeoutMs: 30_000, fallbackIntervalMs: 60_000,
+  longPollTimeoutMs: 30_000, fallbackIntervalMs: 60_000, validationIntervalMs: 60_000,
 }, onError: (error) => errors.push(error) })
 const request = (path: string, method = 'GET', body?: string, headers?: Record<string, string>, signal?: AbortSignal) => handler.fetch(new Request(`https://fixture.test/v1/stream/${path}`, {
   method, headers: { 'Content-Type': 'text/plain', ...headers }, ...(body !== undefined ? { body } : {}), ...(signal ? { signal } : {}),

@@ -45,6 +45,7 @@ export class InstallationGuard {
     }
     return row
   }
+  async snapshot(): Promise<InstallationIdentity> { return { ...await this.pin() } }
   async run<T>(options: TransactionOptions, work: (client: PoolClient) => Promise<T>): Promise<T> {
     // Pin outside the transaction: a pool with one connection must also work.
     await this.pin()
@@ -52,5 +53,9 @@ export class InstallationGuard {
       await this.check(client, options.readOnly ?? false)
       return work(client)
     })
+  }
+  /** Relinquishing a random owned slot remains safe after an epoch fence. */
+  async releaseLiveLease(id: string): Promise<void> {
+    await transaction(this.pool, this.timeouts, async (client) => { await client.query(`DELETE FROM ${this.schema}.live_leases WHERE id = $1`, [id]) })
   }
 }

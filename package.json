@@ -62,7 +62,8 @@
     "neon:test:deploy": "pnpm build && node scripts/neon-test-function.mjs",
     "test:function": "vitest run --project function",
     "test:recovery": "vitest run --project recovery",
-    "qualify:load": "node scripts/qualify-load.mjs"
+    "qualify:load": "node scripts/qualify-load.mjs",
+    "test:hints": "vitest run --project hints"
   },
   "peerDependencies": {
     "pg": "^8.16.3"

@@ -62,7 +62,9 @@ if (operation === 'delete') {
   console.log('Private Neon Object Storage bucket ready; credentials saved without logging them.')
 } else if (operation === 'create') {
   const suffix = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}` : `${Date.now()}`
-  const name = `ds-test-${suffix}`
+  const label = process.env.NEON_TEST_BRANCH_LABEL
+  if (label !== undefined && !/^[a-z]{1,16}$/.test(label)) throw new Error('Invalid test branch label')
+  const name = `ds-test-${suffix}${label ? `-${label}` : ''}`
   const parentId = process.env.NEON_PARENT_BRANCH_ID ?? (await neon.branches.getDefault({ projectId })).id
   // Refuse stale state before allocating infrastructure. An exclusive handle
   // also prevents two local runs from overwriting each other's cleanup identity.

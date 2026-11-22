@@ -44,3 +44,9 @@ A future reclamation migration must establish the pin and retirement barriers be
 ## Evidence
 
 Tests run against real Neon Object Storage and Postgres, including hot/sealed replay from a fresh handler, exact large JSON numbers and UTF-8 indexes, producer retry after sealing, an upload whose response is lost, worker claim replacement, corrupt download rejection, storage-identity mismatch, and SIGKILL immediately after publication. Unit/property checks include the independent binary fixture, generated binary frames, truncation, and wrong-generation objects.
+
+## Maintenance scheduling
+
+`maintain` interleaves one bounded subscription pass with lifecycle/chunk work, so continuous outbox traffic cannot exclude delivery and sealing. `timeBudgetMs` stops new rounds after the deadline; the current round finishes and may overrun by its bounded SQL/object/webhook I/O. It is a soft budget, not cancellation of an ambiguous publication. Count limits remain in force. Set `freezeHot: false` on append hints: full chunks frozen by the write path can upload, while a small hot tail stays in Postgres. An explicit cron/manual pass uses the default `freezeHot: true` to flush idle tails. The example uses at most two coalesced hint passes, tracked by one Neon `waitUntil` owner, plus a durable minute-level cron with 64 chunk and subscription work units and a 40-second soft budget.
+
+The replay default is 128 frames per page, still subject to the 2 MiB byte budget. This aligns small-record catch-up pages with default chunk frame counts and reduces repeated full-object reads. `limits.maxPageFrames` is configurable up to 1024; object checksums and exact boundaries are still validated before bytes are returned.

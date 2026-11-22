@@ -92,13 +92,13 @@ export class ChunkManager {
     return true
   }
 
-  async maintain(input: { readonly maxChunks?: number } = {}): Promise<{ frozen: number; sealed: number }> {
+  async maintain(input: { readonly maxChunks?: number; readonly freezeHot?: boolean } = {}): Promise<{ frozen: number; sealed: number }> {
     const maximum = input.maxChunks ?? 8
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')
     await this.assertBinding()
     let frozen = 0, sealed = 0
     for (let i = 0; i < maximum; i++) {
-      const rotated = await this.guard.run({}, async (client) => {
+      const rotated = input.freezeHot === false ? false : await this.guard.run({}, async (client) => {
         const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
