@@ -1,0 +1,55 @@
+name: Deployed Neon load qualification
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Workload duration in seconds (10–3600)
+        default: '1800'
+        required: true
+      writers:
+        description: Concurrent sequential writers (1–32)
+        default: '4'
+        required: true
+      readers:
+        description: Concurrent live readers (0–64)
+        default: '16'
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: neon-load-qualification
+  cancel-in-progress: false
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      NEON_PARENT_BRANCH_ID: ${{ vars.NEON_PARENT_BRANCH_ID }}
+      DS_LOAD_SECONDS: ${{ inputs.seconds }}
+      DS_LOAD_WRITERS: ${{ inputs.writers }}
+      DS_LOAD_LIVE_READERS: ${{ inputs.readers }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Provision isolated Neon services
+        run: pnpm neon:test:create
+      - name: Deploy the consumer and scheduled recovery
+        run: pnpm neon:test:deploy
+      - name: Concurrent appends, Realtime readers, sealing, and exact replay
+        run: pnpm qualify:load
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('qualification-results/*.json') != '' }}
+        with:
+          name: neon-load-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/*.json
+      - name: Delete the load test branch
+        if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
+        run: pnpm neon:test:delete

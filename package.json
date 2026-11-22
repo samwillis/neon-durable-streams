@@ -61,7 +61,8 @@
     "neon:test:delete": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs delete",
     "neon:test:deploy": "pnpm build && node scripts/neon-test-function.mjs",
     "test:function": "vitest run --project function",
-    "test:recovery": "vitest run --project recovery"
+    "test:recovery": "vitest run --project recovery",
+    "qualify:load": "node scripts/qualify-load.mjs"
   },
   "peerDependencies": {
     "pg": "^8.16.3"

@@ -4,6 +4,7 @@ import { build } from 'esbuild'
 import { zipSync } from 'fflate'
 import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
+import { deployTestWebhook } from './neon-test-webhook.mjs'
 import { migrate } from '../dist/migrations.js'
 import { createS3ChunkStorage } from '../dist/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../dist/subscriptions.js'
@@ -63,7 +64,8 @@ const triggerName = 'durable-streams-maintenance'
 const existing = (await neon.triggers.list({ projectId, branchId })).find((item) => item.name === triggerName)
 if (!existing) await neon.triggers.create({ projectId, branchId, type: 'schedule', name: triggerName,
   function_slug: 'durablestreams', function_path: '/_trigger', schedule: { cron: '* * * * *' } })
-const values = { TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
+const receiver = await deployTestWebhook({ neon, projectId, branchId, schema, sourceUrl: url, previous })
+const values = { ...receiver, TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
   TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash }
 if (process.env.GITHUB_ACTIONS === 'true') for (const value of Object.values(values)) console.log(`::add-mask::${value}`)
 const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'

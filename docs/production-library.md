@@ -215,7 +215,7 @@ The full protocol gate has passed (338/338 with subscriptions enabled), alongsid
 | Published artifact | Install the packed/published package in a separate example app; verify declarations, exports, migrations, licensing, reproducibility/provenance, and deployment. |
 | Operational handoff | Runnable example deployment, capacity/limit measurements, dashboards/alerts, backup policy, dependency support matrix, and tested runbooks. |
 
-The unchanged upstream webhook fixtures bind to test-runner loopback, so they can run against the local handler with real remote storage. Deployed webhook qualification additionally needs a reachable HTTPS receiver. Use both; a green local suite alone does not certify Neon ingress or lifecycle behavior.
+The unchanged upstream webhook fixtures bind to test-runner loopback, so they can run against the local handler with real remote storage. Required deployed webhook qualification now uses a separate Neon Function as a reachable HTTPS receiver, checking signatures, synchronous/asynchronous completion, and retries. Both paths are required; a green local suite alone does not certify Neon ingress or lifecycle behavior.
 
 ## Platform qualifications still needed
 

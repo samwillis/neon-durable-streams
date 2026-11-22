@@ -2,7 +2,7 @@ name: Library checks
 on: [push, pull_request, workflow_dispatch]
 concurrency:
   group: library-checks-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -47,7 +47,7 @@ jobs:
       - run: pnpm build
       - name: Deploy the consumer Function and its recovery trigger on this branch
         run: pnpm neon:test:deploy
-      - name: Actual Neon Function ingress, SSE, sealed replay, and scheduled recovery
+      - name: Actual Function ingress, HTTPS webhooks, SSE, sealed replay, and cron recovery
         run: pnpm test:function
       - name: Real Neon Realtime and Object Storage integration
         run: pnpm test:neon

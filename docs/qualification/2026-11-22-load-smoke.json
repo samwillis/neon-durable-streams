@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-11-22T19:13:36.860Z",
+  "commit": "5b2cd97ac554e261f9886aeeb59065b12a751af1",
+  "bundleSha256": "6020396ec0b27839aeee6e63810e5e50f368ebf14ba38bd28ae3cc06b7002724",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 20,
+    "writers": 4,
+    "readers": 16,
+    "streams": 8,
+    "recordBytes": 1024,
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 20.044563083,
+  "acknowledgedAppends": 1009,
+  "replayedRecords": 1009,
+  "appendsPerSecond": 50.33783953394042,
+  "appendLatencyMs": {
+    "samples": 1009,
+    "p50": 69.87,
+    "p95": 81.1,
+    "p99": 425.53,
+    "max": 1242.1279999999997
+  },
+  "observedLiveLatencyMs": {
+    "samples": 2010,
+    "p50": 86.3,
+    "p95": 99.25,
+    "p99": 441.63,
+    "max": 1257.220542
+  },
+  "liveBytes": 2058240,
+  "rotations": 0,
+  "connectionsBefore": 10,
+  "connectionsAfter": 11,
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}

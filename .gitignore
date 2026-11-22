@@ -8,3 +8,4 @@ coverage/
 .neon-test-state*.json
 *.tgz
 .DS_Store
+qualification-results/
