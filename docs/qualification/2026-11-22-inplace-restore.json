@@ -1,0 +1,69 @@
+{
+  "passed": true,
+  "stages": [
+    "deploy initial Function and cron",
+    "seed binary, JSON, fork, and subscription state",
+    "observe live future bytes before rollback",
+    "stop scheduling, quiesce, and drain the active reader",
+    "restore only the recorded disposable branch at its own WAL position",
+    "verify rollback and reconcile before exposing ingress",
+    "redeploy fresh instances and validate public protocol continuity",
+    "resume scheduling after public validation"
+  ],
+  "stageTimes": [
+    {
+      "stage": "deploy initial Function and cron",
+      "elapsedMs": 7592
+    },
+    {
+      "stage": "seed binary, JSON, fork, and subscription state",
+      "elapsedMs": 17698
+    },
+    {
+      "stage": "observe live future bytes before rollback",
+      "elapsedMs": 19703
+    },
+    {
+      "stage": "stop scheduling, quiesce, and drain the active reader",
+      "elapsedMs": 22749
+    },
+    {
+      "stage": "restore only the recorded disposable branch at its own WAL position",
+      "elapsedMs": 31568
+    },
+    {
+      "stage": "verify rollback and reconcile before exposing ingress",
+      "elapsedMs": 38545
+    },
+    {
+      "stage": "redeploy fresh instances and validate public protocol continuity",
+      "elapsedMs": 41953
+    },
+    {
+      "stage": "resume scheduling after public validation",
+      "elapsedMs": 142377
+    }
+  ],
+  "durationMs": 143374,
+  "verifiedChunks": 3,
+  "generatedAt": "2026-11-22T21:20:36.347Z",
+  "testSha256": "4de6c475905bdb513130beb4a05c2beef0deb737114f103416461fef6903debb",
+  "node": "v24.22.2",
+  "region": "eu-central-1",
+  "branchId": "br-falling-lab-bgwxz6t2",
+  "preservedBranchId": "br-morning-lab-bgqwrd8p",
+  "endpointPreserved": true,
+  "originalEpoch": "d91ab82d-eac2-4b08-a545-d198e80487b8",
+  "recoveryEpoch": "7de57255-82e6-4db2-b921-e594ab489278",
+  "hotReplayAcrossSealing": true,
+  "restoredRealtime": true,
+  "discardedOffsetRejected": true,
+  "unexpiredTokenFenced": true,
+  "cronResumedAfterValidation": true,
+  "sourceCommit": "29fa8f0efbf659f9d8151560fb4013c0d7ce8f0d",
+  "sourceDirty": "yes",
+  "deploymentId": "253c5e9e-8432-4e84-b6f5-0f6fcaa83de8",
+  "previousDeploymentId": "221845e8-971e-4d42-99e5-8fed5166ed74",
+  "memoryMiB": 2048,
+  "deployedBundle": "097d1fa0d71e4225ded8d68eb7a0b99d8cfd18530f47b055983f732cebb53f22"
+}

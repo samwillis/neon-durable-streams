@@ -7,7 +7,7 @@ const neon = createNeonClient({ apiKey, throwOnError: true, waitForReadiness: tr
 const cutoff = Date.now() - 26 * 3600_000
 const branches = await neon.branches.list({ projectId }).all()
 // These names are reserved for this repository's disposable test tooling.
-const owned = /^ds-test-(?:\d+(?:-\d+)?(?:-(?:hints|load))?|recovery-[a-f0-9-]{36})$/
+const owned = /^ds-test-(?:\d+(?:-\d+)?(?:-(?:hints|load))?|(?:recovery|inplace|preserved)-[a-f0-9-]{36})$/
 const stale = branches.filter((branch) => owned.test(branch.name) && !branch.default && !branch.protected
   && Date.parse(branch.created_at) < cutoff).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
 let removed = 0

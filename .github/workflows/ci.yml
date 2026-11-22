@@ -70,9 +70,21 @@ jobs:
         with:
           name: transaction-tests-${{ github.run_id }}-${{ github.run_attempt }}
           path: integration-test-summary.json
-      - name: Point-in-time Neon branch adoption and sealed recovery
+      - name: Point-in-time branch adoption and stopped-Function in-place restore
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
         run: pnpm test:recovery
+      - name: Preserve in-place restore evidence
+        if: ${{ always() && hashFiles('qualification-results/inplace-restore.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: inplace-restore-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/inplace-restore.json
+      - name: Preserve Function rollout readiness probes
+        if: ${{ always() && hashFiles('qualification-results/function-readiness-*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-readiness-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/function-readiness-*.json
       - name: Full upstream conformance suite (subscriptions enabled)
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
         run: pnpm test:conformance --reporter=default --reporter=json --outputFile=conformance-results.json
@@ -87,6 +99,9 @@ jobs:
         env:
           NEON_TEST_STATE_FILE: .neon-test-state-recovery.json
         run: pnpm neon:test:delete
+      - name: Delete interrupted in-place restore branches
+        if: ${{ always() && hashFiles('.neon-test-state-inplace.json') != '' }}
+        run: node scripts/neon-test-inplace-cleanup.mjs
       - name: Delete this run's Neon branch
         if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
         run: pnpm neon:test:delete
@@ -119,6 +134,12 @@ jobs:
         run: pnpm neon:test:deploy
       - name: Prove hinted Realtime wakes and full-chunk sealing
         run: pnpm test:hints
+      - name: Preserve Function rollout readiness probes
+        if: ${{ always() && hashFiles('qualification-results/function-readiness-*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-readiness-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/function-readiness-*.json
       - name: Delete the hint test branch
         if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
         run: pnpm neon:test:delete

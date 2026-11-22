@@ -92,7 +92,9 @@ export default {
     }
     if (path === '/health') {
       if (!authenticate(request)) return new Response(null, { status: 401 })
-      return Response.json({ ...await streams.inspectHealth(), build: required('DS_BUILD_HASH') })
+      const health = await streams.inspectHealth()
+      return Response.json({ ...health, build: required('DS_BUILD_HASH'), deploymentId: process.env.DS_DEPLOYMENT_ID ?? required('DS_BUILD_HASH') },
+        { status: health.ready ? 200 : 503 })
     }
     const response = await streams.fetch(request)
     if (hintMode === 'on' && response.ok && ['PUT', 'POST', 'DELETE'].includes(request.method)) hintMaintenance()

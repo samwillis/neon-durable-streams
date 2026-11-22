@@ -239,7 +239,7 @@ finally {
   headNotifier?.close()
   await pool.end()
   report = { harnessSha256, harnessCommitAtStart, generatedAt: new Date().toISOString(),
-    deployedSourceCommit: env.TEST_FUNCTION_SOURCE_COMMIT ?? null, deployedSourceDirty: env.TEST_FUNCTION_SOURCE_DIRTY ?? null,
+    deployedSourceCommit: env.TEST_FUNCTION_SOURCE_COMMIT ?? null, deployedSourceDirty: env.TEST_FUNCTION_SOURCE_DIRTY ?? null, deploymentId: env.TEST_FUNCTION_DEPLOYMENT_ID ?? null,
     bundleSha256: env.TEST_FUNCTION_BUNDLE_SHA, node: process.version, profile: { seconds, writers, readers, streams: streamCount, recordBytes, replayConcurrency: 4, realtimeProbe, maintenanceHints: env.TEST_FUNCTION_MAINTENANCE_HINTS ?? 'unknown', hasCron: env.TEST_FUNCTION_HAS_CRON ?? 'unknown', liveFallbackMs: env.TEST_FUNCTION_LIVE_FALLBACK_MS ?? null, liveValidationMs: env.TEST_FUNCTION_LIVE_VALIDATION_MS ?? null, cronChunks: env.TEST_FUNCTION_CRON_CHUNKS ?? null, cronSubscriptionWork: env.TEST_FUNCTION_CRON_SUBSCRIPTION_WORK ?? null, storage: 'actual Neon PG18/Realtime/Object Storage/Functions' },
     elapsedSeconds: started && finished ? (finished - started) / 1000 : null, acknowledgedAppends: appends, replayedRecords: replayed,
     appendsPerSecond: started && finished ? appends / ((finished - started) / 1000) : null,

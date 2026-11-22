@@ -19,6 +19,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 | `DS_MAINTENANCE_KEY` | Separate random server-side credential for manual maintenance |
 | `DS_MAINTENANCE_TRIGGER_NAME` | Exact name of the configured scheduled recovery trigger |
 | `DS_BUILD_HASH` | Deployed bundle/build identifier returned by authenticated health |
+| `DS_DEPLOYMENT_ID` | Optional unique rollout identifier; returned by health separately from the code hash; defaults to `DS_BUILD_HASH` |
 | `DS_ALLOWED_ORIGINS_JSON` | Optional exact browser-origin allowlist; defaults to `[]` |
 | `DS_PUBLIC_BASE_URL` | Optional canonical stream mount URL for `Location` headers |
 | `DS_MAINTENANCE_HINTS` | `on` by default; coalesced bounded work after successful mutations; `off` isolates cron qualification |
@@ -38,7 +39,7 @@ Configure a Neon schedule trigger with `function_path: /_trigger`, the exact con
 
 For manual or application-scheduler work, POST `/_maintenance` with `x-ds-maintenance-key`. This credential is distinct from application API keys. Manual invocations process at most eight chunks. Scheduled invocations default to 64 chunks and 64 subscription work rounds, with a 40-second soft budget. Large backlogs need repeated calls and capacity monitoring. The default write path starts bounded coalesced maintenance using Neon `waitUntil`. Only the invocation starting a pass retains it. Hints upload already-frozen chunks and dispatch subscriptions, preserving small hot tails. The cron trigger recovers work after process loss or when there are no further requests. A one-minute cron cadence does not provide subsecond job recovery.
 
-`GET /health` requires an application bearer key and reports storage mode, implemented capabilities, and the build hash. Shutdown releases owned clients after a bounded drain. Interrupted uploads remain recoverable through persisted frozen frames and expiring worker claims.
+`GET /health` requires an application bearer key and reports readiness, storage mode, implemented capabilities, the build hash, and deployment ID. It returns 503 while shutting down. Deployment verification requires three consecutive one-second probes with `ready: true` and both expected identifiers; sanitized probe traces are retained as qualification artifacts. Use a new deployment ID when deploying identical code after recovery, so a response from an earlier deployment cannot satisfy the rollout check. Shutdown releases owned clients after a bounded drain. Interrupted uploads remain recoverable through persisted frozen frames and expiring worker claims.
 
 ## Qualification
 

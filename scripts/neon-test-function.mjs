@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
-import { appendFile, readFile, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { build } from 'esbuild'
 import { zipSync } from 'fflate'
 import { createNeonClient } from '@neon/sdk'
@@ -53,6 +53,7 @@ if (bundle.outputFiles.length !== 1) throw new Error('Expected a single self-con
 const code = bundle.outputFiles[0].contents
 const hash = createHash('sha256').update(code).digest('hex')
 const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+const deploymentId = randomUUID()
 const sourceDirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all', '--', 'src', 'examples/neon-function', 'package.json', 'pnpm-lock.yaml'], { encoding: 'utf8' }).trim() ? 'yes' : 'no'
 const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'durablestreams', runtime: 'nodejs24',
   zip: new File([zipSync({ 'index.mjs': code })], 'durable-streams.zip', { type: 'application/zip' }),
@@ -60,7 +61,7 @@ const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'dur
     DS_REALTIME_URL: process.env.NEON_REALTIME_URL, DS_REALTIME_SECRET: process.env.NEON_REALTIME_SECRET,
     DS_KEYRING_JSON: process.env.DURABLE_STREAMS_KEYRING,
     DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
-    DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash,
+    DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash, DS_DEPLOYMENT_ID: deploymentId,
     DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: liveFallbackMs, DS_LIVE_VALIDATION_MS: liveValidationMs,
     DS_MAINTENANCE_HINTS: hintMode, DS_CRON_MAX_CHUNKS: '64', DS_CRON_SUBSCRIPTION_WORK: '64' }),
 })
@@ -82,7 +83,7 @@ if (!noCron && !existing) await neon.triggers.create({ projectId, branchId, type
 const receiver = await deployTestWebhook({ neon, projectId, branchId, schema, sourceUrl: url, previous })
 const values = { ...receiver, TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
   TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash,
-  TEST_FUNCTION_SOURCE_COMMIT: sourceCommit, TEST_FUNCTION_SOURCE_DIRTY: sourceDirty,
+  TEST_FUNCTION_SOURCE_COMMIT: sourceCommit, TEST_FUNCTION_SOURCE_DIRTY: sourceDirty, TEST_FUNCTION_DEPLOYMENT_ID: deploymentId,
   TEST_FUNCTION_MAINTENANCE_HINTS: hintMode, TEST_FUNCTION_HAS_CRON: noCron ? 'no' : 'yes', TEST_FUNCTION_CRON_CHUNKS: '64', TEST_FUNCTION_CRON_SUBSCRIPTION_WORK: '64',
   TEST_FUNCTION_LIVE_FALLBACK_MS: liveFallbackMs, TEST_FUNCTION_LIVE_VALIDATION_MS: liveValidationMs }
 if (process.env.GITHUB_ACTIONS === 'true') for (const [key, value] of Object.entries(values)) if (/_KEY$|_URL$/.test(key)) console.log(`::add-mask::${value}`)
@@ -91,12 +92,29 @@ if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment
 else await writeFile(outputFile, environment, { mode: 0o600 })
 // Deployment readiness is not runtime readiness. Verify the actual HTTP handler.
 let ready = false
+let consecutiveReady = 0
+const readinessProbes = []
+const readinessStarted = performance.now()
 while (Date.now() < deadline) {
   try {
     const response = await fetch(new URL('health', url), { headers: { Authorization: `Bearer ${userKey}` }, signal: AbortSignal.timeout(15_000) })
-    if (response.ok && (await response.json()).build === hash) { ready = true; break }
-  } catch { /* cold start or rolling deployment; bounded retry */ }
+    let matches = false
+    if (response.ok) {
+      const health = await response.json()
+      matches = health.ready === true && health.build === hash && health.deploymentId === deploymentId
+    } else await response.arrayBuffer()
+    readinessProbes.push({ status: response.status, matches, elapsedMs: Math.round(performance.now() - readinessStarted) })
+    consecutiveReady = matches ? consecutiveReady + 1 : 0
+    if (consecutiveReady >= 3) { ready = true; break }
+  } catch {
+    consecutiveReady = 0
+    readinessProbes.push({ status: 'network-error', matches: false, elapsedMs: Math.round(performance.now() - readinessStarted) })
+  }
   await new Promise((resolve) => setTimeout(resolve, 1000))
 }
+await mkdir('qualification-results', { recursive: true })
+await writeFile(`qualification-results/function-readiness-${branchId}-${deploymentId}.json`, JSON.stringify({
+  branchId, deploymentId, bundleSha256: hash, ready, consecutiveReady, durationMs: Math.round(performance.now() - readinessStarted), probes: readinessProbes,
+}, null, 2) + '\n')
 if (!ready) throw new Error('Deployed Function failed its authenticated runtime health check')
 console.log(`Deployed and verified the current bundle on test branch ${branchId}.`)

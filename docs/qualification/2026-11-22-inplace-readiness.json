@@ -1,0 +1,462 @@
+{
+  "initial": {
+    "branchId": "br-falling-lab-bgwxz6t2",
+    "deploymentId": "221845e8-971e-4d42-99e5-8fed5166ed74",
+    "bundleSha256": "097d1fa0d71e4225ded8d68eb7a0b99d8cfd18530f47b055983f732cebb53f22",
+    "ready": true,
+    "consecutiveReady": 3,
+    "durationMs": 2406,
+    "probes": [
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 315
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 1359
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 2406
+      }
+    ]
+  },
+  "restored": {
+    "branchId": "br-falling-lab-bgwxz6t2",
+    "deploymentId": "253c5e9e-8432-4e84-b6f5-0f6fcaa83de8",
+    "bundleSha256": "097d1fa0d71e4225ded8d68eb7a0b99d8cfd18530f47b055983f732cebb53f22",
+    "ready": true,
+    "consecutiveReady": 3,
+    "durationMs": 89493,
+    "probes": [
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 224
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 1271
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 2313
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 3357
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 4398
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 5439
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 7106
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 8147
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 9188
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 10231
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 11274
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 12316
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 13359
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 14401
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 15445
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 16484
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 17527
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 18570
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 19615
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 20657
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 21700
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 22742
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 23786
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 24828
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 25874
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 26928
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 27972
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 29014
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 30054
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 31097
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 32138
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 33182
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 34233
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 35276
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 36320
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 37371
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 38411
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 39454
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 40499
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 41540
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 42581
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 43625
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 44667
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 45709
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 46759
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 47799
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 48842
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 49889
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 50930
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 51971
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 53010
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 54052
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 55093
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 56140
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 57188
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 58231
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 59277
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 60403
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 61466
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 62539
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 63582
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 64645
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 65690
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 66734
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 67774
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 68814
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 69857
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 70897
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 71941
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 72984
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 74024
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 75064
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 76103
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 77145
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 78183
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 79221
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 80266
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 81307
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 82354
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 83395
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 85304
+      },
+      {
+        "status": 502,
+        "matches": false,
+        "elapsedMs": 86343
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 87389
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 88433
+      },
+      {
+        "status": 200,
+        "matches": true,
+        "elapsedMs": 89493
+      }
+    ]
+  }
+}

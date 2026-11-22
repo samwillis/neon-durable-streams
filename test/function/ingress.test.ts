@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, expect, test } from 'vitest'
 
-const { TEST_FUNCTION_URL, TEST_FUNCTION_API_KEY, TEST_FUNCTION_OTHER_KEY, TEST_FUNCTION_MAINTENANCE_KEY, TEST_FUNCTION_SCHEMA, TEST_FUNCTION_BUNDLE_SHA, TEST_DATABASE_URL } = process.env
-if (!TEST_FUNCTION_URL || !TEST_FUNCTION_API_KEY || !TEST_FUNCTION_OTHER_KEY || !TEST_FUNCTION_MAINTENANCE_KEY || !TEST_FUNCTION_SCHEMA || !TEST_FUNCTION_BUNDLE_SHA || !TEST_DATABASE_URL) throw new Error('Deployed Neon Function credentials required; ingress qualification cannot skip')
+const { TEST_FUNCTION_URL, TEST_FUNCTION_API_KEY, TEST_FUNCTION_OTHER_KEY, TEST_FUNCTION_MAINTENANCE_KEY, TEST_FUNCTION_SCHEMA, TEST_FUNCTION_BUNDLE_SHA, TEST_FUNCTION_DEPLOYMENT_ID, TEST_DATABASE_URL } = process.env
+if (!TEST_FUNCTION_URL || !TEST_FUNCTION_API_KEY || !TEST_FUNCTION_OTHER_KEY || !TEST_FUNCTION_MAINTENANCE_KEY || !TEST_FUNCTION_SCHEMA || !TEST_FUNCTION_BUNDLE_SHA || !TEST_FUNCTION_DEPLOYMENT_ID || !TEST_DATABASE_URL) throw new Error('Deployed Neon Function credentials required; ingress qualification cannot skip')
 if (!/^ds_test_[a-f0-9]{32}$/.test(TEST_FUNCTION_SCHEMA) || !new URL(TEST_FUNCTION_URL).hostname.includes('.compute.')) throw new Error('Only the provisioned isolated Neon Function can be tested')
 const pool = new pg.Pool({ connectionString: TEST_DATABASE_URL, max: 2 })
 pool.on('error', () => {})
@@ -16,7 +16,7 @@ const request = (path: string, method = 'GET', body?: string, headers?: Record<s
 test('authenticated health identifies the deployed bundle and unauthorized calls fail before application work', async () => {
   const health = await request('health')
   expect(health.status).toBe(200)
-  expect(await health.json()).toMatchObject({ ready: true, build: TEST_FUNCTION_BUNDLE_SHA })
+  expect(await health.json()).toMatchObject({ ready: true, build: TEST_FUNCTION_BUNDLE_SHA, deploymentId: TEST_FUNCTION_DEPLOYMENT_ID })
   expect((await request('health', 'GET', undefined, { Authorization: 'Bearer invalid' })).status).toBe(401)
   expect((await request(`v1/stream/unauthorized-${randomUUID()}`, 'PUT', '{bad json', { Authorization: 'Bearer invalid', 'Content-Type': 'application/json' })).status).toBe(401)
   expect((await request('_maintenance', 'POST')).status).toBe(401)

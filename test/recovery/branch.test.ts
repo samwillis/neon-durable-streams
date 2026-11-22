@@ -62,7 +62,7 @@ test('a real point-in-time branch adopts sealed objects, fences restored tokens,
   expect((await request(parent, 'data/root', 'POST', ' committed once', tuple)).status).toBe(200)
   expect((await request(parent, 'child', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/data/root' })).status).toBe(201)
   expect((await request(parent, 'wake', 'PUT', '[]', { 'Content-Type': 'application/json' })).status).toBe(201)
-  expect((await request(parent, '__ds/subscriptions/recover', 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['data/root'], wake_stream: 'wake', lease_ttl_ms: 120_000 }), { 'Content-Type': 'application/json' })).status).toBe(201)
+  expect((await request(parent, '__ds/subscriptions/recover', 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['data/root'], wake_stream: 'wake', lease_ttl_ms: 600_000 }), { 'Content-Type': 'application/json' })).status).toBe(201)
   await request(parent, 'data/root', 'POST', ' pending')
   await parent.maintain({ maxChunks: 16 })
   const claim = await (await request(parent, '__ds/subscriptions/recover/claim', 'POST', JSON.stringify({ worker: 'lost-worker' }), { 'Content-Type': 'application/json' })).json() as { wake_id: string; token: string; generation: number }
@@ -102,6 +102,7 @@ test('a real point-in-time branch adopts sealed objects, fences restored tokens,
   let reconciled
   do { reconciled = await verifyRecovery(childPool, { schema, token, keyring, objects: childObjects, maxChunks: 1 }) } while (!reconciled.complete)
   expect(reconciled.verified).toBeGreaterThanOrEqual(2)
+  expect((await childPool.query(`SELECT lease_until>clock_timestamp() AS unexpired FROM "${schema}".subscriptions WHERE name='recover'`)).rows[0].unexpired).toBe(true)
   await finishRecovery(childPool, { schema, token })
   const recovered = handler(childPool, childObjects, branchId)
   expect(await (await request(recovered, 'data/root')).text()).toBe('initial recovery bytes committed once pending')
