@@ -47,7 +47,11 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
     const controller = new AbortController()
     controllers.add(controller)
     const timer = setTimeout(() => controller.abort(new Error('Object storage operation deadline exceeded')), timeout)
-    try { return await work(controller.signal) }
+    try {
+      // A waiter may be granted immediately before close(), then resume after it.
+      if (closed) throw new Error('Object storage adapter is closed')
+      return await work(controller.signal)
+    }
     finally {
       clearTimeout(timer)
       controllers.delete(controller)

@@ -8,12 +8,15 @@ export default defineConfig({
         fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
       { test: { name: 'conformance', include: ['test/conformance/**/*.test.ts'],
         // Upstream property tests perform hundreds of sequential transactions.
-        // Keep every sample/assertion when the real Neon branch is remote.
-        fileParallelism: false, testTimeout: 180_000, hookTimeout: 60_000 } },
+        // Keep every sample/assertion across CI runner regions. Full Neon qualification
+        // is intentionally sequential; network round trips dominate these properties.
+        fileParallelism: false, testTimeout: 600_000, hookTimeout: 60_000 } },
       { test: { name: 'neon', include: ['test/neon/**/*.test.ts'],
         fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
       { test: { name: 'function', include: ['test/function/**/*.test.ts'],
         fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
+      { test: { name: 'recovery', include: ['test/recovery/**/*.test.ts'],
+        fileParallelism: false, testTimeout: 180_000, hookTimeout: 180_000 } },
     ],
   },
 })

@@ -1,3 +1,4 @@
+import { observe } from './observer.js'
 import { createRealtime, rawSql } from '@neon/realtime/server'
 import type { RawSqlQuery, RealtimeDirectServer } from '@neon/realtime/server'
 import type { MaterializedLiveQuerySubscription } from '@neon/realtime/client'
@@ -44,7 +45,7 @@ export function createNeonRealtimeNotifier(options: NeonRealtimeOptions): Stream
   let client: RealtimeDirectServer<RawSqlQuery<unknown>> | undefined
   const entries = new Map<string, Entry>()
   let closed = false
-  const report = (error: unknown) => { try { options.onError?.(error) } catch { /* observer only */ } }
+  const report = (error: unknown) => observe(options.onError, error)
   const retire = (key: string, entry: Entry) => {
     entry.disposed = true
     entry.subscription?.unsubscribe()
@@ -78,20 +79,20 @@ export function createNeonRealtimeNotifier(options: NeonRealtimeOptions): Stream
             if (current.fingerprint === fingerprint) return
             current.fingerprint = fingerprint
             current.head = head
-            for (const callback of current.listeners) { try { callback(head) } catch (error) { report(error) } }
+            for (const callback of current.listeners) observe(callback, head, report)
           }
           subscription.onChange(publish)
-          subscription.onStateChange((state) => { if (state.status === 'error') report(state.error) })
+          subscription.onStateChange((state) => { if (!current.disposed && state.status === 'error') report(state.error) })
           await subscription.awaitRows(() => true, options.readyTimeoutMs ?? 20_000)
           publish()
-        })()
+        })().catch((error: unknown) => { if (!current.disposed) throw error })
         void current.ready.catch(report)
         entry = current
       }
       const watched = entry
       watched.listeners.add(listener)
       if (watched.head !== undefined) queueMicrotask(() => {
-        if (!watched.disposed && watched.listeners.has(listener)) { try { listener(watched.head ?? null) } catch (error) { report(error) } }
+        if (!watched.disposed && watched.listeners.has(listener)) observe(listener, watched.head ?? null, report)
       })
       let disposed = false
       return { ready: watched.ready, close() {

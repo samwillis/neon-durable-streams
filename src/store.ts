@@ -4,7 +4,8 @@ import { StorageCompatibilityError, StreamError } from './errors.js'
 import { advanceOffset, parseOffset, ZERO_OFFSET } from './offset.js'
 import { formatPayloads, mediaType, preparePayload } from './payload.js'
 import { validateSchema } from './path.js'
-import { transaction } from './transaction.js'
+import { InstallationGuard } from './installation.js'
+import type { TransactionOptions } from './transaction.js'
 import { MIGRATION_IDS } from './migrations.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions, StoredFrame } from './storage.js'
@@ -73,9 +74,10 @@ export interface ReadResult {
   readonly hasData: boolean
 }
 
-/** Internal hot-log storage. Sealing/forks/subscriptions are later milestones. */
+/** Transactional stream state and bounded replay planning. */
 export class PostgresStreamStore {
   readonly schema: string
+  readonly guard: InstallationGuard
   private ready: Promise<void> | undefined
   private readonly chunks: ChunkManager | undefined
 
@@ -85,9 +87,11 @@ export class PostgresStreamStore {
     private readonly maxStoredBytes = 1024 * 1024,
     private readonly maxPageBytes = 2 * 1024 * 1024,
     storage?: StorageOptions,
+    environmentId?: string,
   ) {
     this.schema = validateSchema(schema)
-    this.chunks = storage ? new ChunkManager(pool, schema, storage) : undefined
+    this.guard = new InstallationGuard(pool, schema, environmentId)
+    this.chunks = storage ? new ChunkManager(pool, schema, storage, this.guard) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024) {
       throw new RangeError('Invalid payload/page limits')
@@ -104,7 +108,11 @@ export class PostgresStreamStore {
         await this.chunks?.assertBinding()
       })
       .catch((error: unknown) => { this.ready = undefined; throw error })
-    return this.ready
+    await this.ready
+  }
+
+  transaction<T>(options: TransactionOptions, work: (client: PoolClient) => Promise<T>): Promise<T> {
+    return this.guard.run(options, work)
   }
 
   private async lock(client: PoolClient, tenant: string, path: string): Promise<LockedStream | undefined> {
@@ -154,7 +162,7 @@ export class PostgresStreamStore {
 
   private async withStream<T>(tenant: string, path: string, work: (client: PoolClient, stream: LockedStream) => Promise<T>): Promise<T> {
     await this.assertReady()
-    const outcome = await transaction(this.pool, {}, async (client) => {
+    const outcome = await this.transaction({}, async (client) => {
       const stream = await this.lock(client, tenant, path)
       if (!stream) return { found: false, status: 404 } as const
       if (stream.deleted_at) return { found: false, status: 410 } as const
@@ -173,7 +181,7 @@ export class PostgresStreamStore {
     await this.assertReady()
     const payload = preparePayload(options.body, options.contentType, true)
     this.checkPayload(payload.bytes)
-    const outcome = await transaction(this.pool, {}, async (client) => {
+    const outcome = await this.transaction({}, async (client) => {
       await client.query(`INSERT INTO ${this.schema}.paths (tenant_id, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [tenant, path])
       await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = $2 FOR UPDATE`, [tenant, path])
       let existing = await this.lock(client, tenant, path)
@@ -261,7 +269,7 @@ export class PostgresStreamStore {
     type Prefix = { sourceId: string; anchor: string; frame: ChunkFrame }
     type Outcome = { stream: StreamMetadata; created: boolean } | { error: StreamError }
       | { prepare: { sourceId: string; anchor: string; contentType: string; frames: readonly StoredFrame[] } }
-    const execute = (prefix?: Prefix): Promise<Outcome> => transaction(this.pool, {}, async (client) => {
+    const execute = (prefix?: Prefix): Promise<Outcome> => this.transaction({}, async (client) => {
       // Lock every namespace claim before locking any stream row. Inserts obey
       // the same byte ordering, including when both paths are initially absent.
       const paths = [...new Set([path, options.sourcePath])].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
@@ -461,7 +469,7 @@ export class PostgresStreamStore {
   /** An active live read must never switch to a recreated path generation. */
   async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
-    const plan = await transaction(this.pool, { readOnly: true }, async (client) => {
+    const plan = await this.transaction({ readOnly: true }, async (client) => {
       const metadata = await client.query<LockedStream>(`SELECT s.*, COALESCE(expires_at <= clock_timestamp()
         OR accessed_at + ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
         FROM ${this.schema}.streams s WHERE tenant_id = $1 AND id = $2`, [tenant, id])
@@ -475,6 +483,7 @@ export class PostgresStreamStore {
       return { stream, frames, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0 }
     })
     const frames = await this.materialize(plan.frames)
+    if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
     return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData }
   }
 
@@ -484,7 +493,7 @@ export class PostgresStreamStore {
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')
     let retired = 0
     for (let i = 0; i < maximum; i++) {
-      const cleaned = await transaction(this.pool, {}, async (client) => {
+      const cleaned = await this.transaction({}, async (client) => {
         const candidate = await client.query<{ tenant_id: string; path: string }>(`WITH candidates AS (
           (SELECT s.id, s.tenant_id, s.path, e.due_at FROM ${this.schema}.stream_expirations e
             JOIN ${this.schema}.streams s ON s.id = e.stream_id WHERE e.due_at <= clock_timestamp() ORDER BY e.due_at, e.stream_id LIMIT 128)
@@ -509,6 +518,7 @@ export class PostgresStreamStore {
 
   /** One bounded query per watched generation, shared by all local readers. */
   async headVersion(tenant: string, id: string): Promise<string | null> {
+    await this.guard.check()
     const result = await this.pool.query<{ change_version: string }>(`SELECT change_version FROM ${this.schema}.streams WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
       AND (expires_at IS NULL OR expires_at > clock_timestamp())
       AND (ttl_seconds IS NULL OR accessed_at + ttl_seconds * interval '1 second' > clock_timestamp())`, [tenant, id])

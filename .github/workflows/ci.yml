@@ -23,7 +23,7 @@ jobs:
   neon:
     name: Neon qualification
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 90
     env:
       NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
@@ -54,6 +54,9 @@ jobs:
       - name: Postgres integration and process-loss tests on Neon
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
         run: pnpm test:integration
+      - name: Point-in-time Neon branch adoption and sealed recovery
+        if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
+        run: pnpm test:recovery
       - name: Full upstream conformance suite (subscriptions enabled)
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
         run: pnpm test:conformance --reporter=default --reporter=json --outputFile=conformance-results.json
@@ -63,6 +66,11 @@ jobs:
         with:
           name: full-conformance-${{ github.run_id }}-${{ github.run_attempt }}
           path: conformance-results.json
+      - name: Delete any interrupted recovery drill branch
+        if: ${{ always() && hashFiles('.neon-test-state-recovery.json') != '' }}
+        env:
+          NEON_TEST_STATE_FILE: .neon-test-state-recovery.json
+        run: pnpm neon:test:delete
       - name: Delete this run's Neon branch
         if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
         run: pnpm neon:test:delete

@@ -1,3 +1,4 @@
+import { observe } from './observer.js'
 import { createHash } from 'node:crypto'
 import type { Pool } from 'pg'
 import { StreamError } from './errors.js'
@@ -29,7 +30,7 @@ export interface AuthorizationContext {
   readonly subscription?: SubscriptionConfig
 }
 export interface ServerOptions {
-  readonly postgres: { readonly pool: Pool; readonly schema?: string }
+  readonly postgres: { readonly pool: Pool; readonly schema?: string; readonly environmentId?: string }
   readonly auth: {
     readonly authenticate: (request: Request) => Principal | null | Promise<Principal | null>
     readonly authorize: (context: AuthorizationContext) => boolean | Promise<boolean>
@@ -42,11 +43,17 @@ export interface ServerOptions {
   readonly subscriptions?: SubscriptionOptions
   readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly bodyTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
+  /** Contains no bodies, credentials, paths, or subscription tokens. */
+  readonly onEvent?: (event: ServerEvent) => void
 }
+export interface MaintenanceResult { readonly frozen: number; readonly sealed: number; readonly retired: number; readonly changes: number; readonly deliveries: number; readonly links: number }
+export type ServerEvent =
+  | { readonly type: 'request'; readonly method: string; readonly status: number; readonly durationMs: number }
+  | { readonly type: 'maintenance'; readonly success: boolean; readonly durationMs: number; readonly result?: MaintenanceResult }
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
   readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log' | 'tiered'; features: readonly string[] }>
-  readonly maintain: (options?: { readonly maxChunks?: number; readonly maxSubscriptionWork?: number }) => Promise<{ frozen: number; sealed: number; retired: number; changes: number; deliveries: number; links: number }>
+  readonly maintain: (options?: { readonly maxChunks?: number; readonly maxSubscriptionWork?: number }) => Promise<MaintenanceResult>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
 
@@ -138,8 +145,8 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
-  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage)
-  const report = (error: unknown) => { try { options.onError?.(error) } catch { /* observer only */ } }
+  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage, options.postgres.environmentId)
+  const report = (error: unknown) => observe(options.onError, error)
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
   const subscriptions = options.subscriptions ? new PostgresSubscriptions(options.postgres.pool, options.postgres.schema ?? 'durable_streams', store, options.subscriptions, report) : undefined
   const pending = new Set<Promise<unknown>>()
@@ -251,7 +258,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     } catch (error) {
       if (error instanceof StreamError) return respond(JSON.stringify({ error: { code: error.code, message: error.message } }), error.status,
         { 'Content-Type': 'application/json', ...error.headers })
-      try { options.onError?.(error) } catch { /* observer failures must not affect outcomes */ }
+      report(error)
       return respond(JSON.stringify({ error: { code: 'INTERNAL_ERROR', message: 'Internal server error' } }), 500, { 'Content-Type': 'application/json' })
     }
   }
@@ -259,6 +266,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   return {
     maintain(input) {
       if (closed) return Promise.reject(new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down'))
+      const started = performance.now()
       const work = (async () => {
         const maximum = input?.maxSubscriptionWork ?? 16
         if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid subscription maintenance batch')
@@ -268,22 +276,26 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       })()
       pending.add(work)
       void work.finally(() => pending.delete(work)).catch(() => {})
+      void work.then((result) => observe(options.onEvent, { type: 'maintenance', success: true, durationMs: performance.now() - started, result }, report),
+        () => observe(options.onEvent, { type: 'maintenance', success: false, durationMs: performance.now() - started }, report))
       return work
     },
     fetch(request) {
+      const started = performance.now()
       const response = handle(request)
       pending.add(response)
       void response.finally(() => pending.delete(response)).catch(() => {})
+      void response.then((result) => observe(options.onEvent, { type: 'request', method: request.method, status: result.status, durationMs: performance.now() - started }, report), report)
       return response
     },
-    async inspectHealth() { await store.assertReady(); await subscriptions?.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', 'forks', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : []), ...(subscriptions ? ['subscriptions'] : [])] } },
+    async inspectHealth() { await store.assertReady(); await store.guard.check(); await subscriptions?.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', 'forks', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : []), ...(subscriptions ? ['subscriptions'] : [])] } },
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true
       live?.close()
       subscriptions?.close()
       let timer: ReturnType<typeof setTimeout> | undefined
-      try { await Promise.race([Promise.allSettled([...pending]), new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs) })]) }
+      try { await Promise.race([(async () => { await Promise.allSettled([...pending]); await live?.drain() })(), new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs) })]) }
       finally { clearTimeout(timer) }
     },
   }

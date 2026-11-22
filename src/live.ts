@@ -1,3 +1,4 @@
+import { admitLive } from './admission.js'
 import { randomInt } from 'node:crypto'
 import { StreamError } from './errors.js'
 import type { HeadWatch, StreamNotifier } from './neon.js'
@@ -11,7 +12,7 @@ export interface LiveOptions {
   readonly fallbackIntervalMs?: number
   readonly heartbeatMs?: number
   readonly maxSseDurationMs?: number
-  /** Per instance; account-wide Function capacity must also be budgeted by the host. */
+  /** Per instance, additionally bounded by installation-wide database admission. */
   readonly maxReaders?: number
 }
 
@@ -38,6 +39,7 @@ interface Channel {
 export class LiveReads {
   private readonly channels = new Map<string, Channel>()
   private readonly active = new Set<AbortController>()
+  private readonly releases = new Set<Promise<void>>()
   private readonly timeout: number
   private readonly fallback: number
   private readonly heartbeat: number
@@ -79,7 +81,10 @@ export class LiveReads {
         void current.watch.ready.catch(this.report)
       } catch (error) { this.report(error) }
       const poll = async () => {
-        try { update(await this.store.headVersion(tenant, id)) } catch (error) { this.report(error) }
+        try { update(await this.store.headVersion(tenant, id)) } catch (error) {
+          if (error instanceof StreamError && error.code === 'INSTALLATION_FENCED') update(null)
+          else this.report(error)
+        }
         finally { if (!current.disposed) current.timer = setTimeout(() => { void poll() }, this.fallback).unref() }
       }
       current.timer = setTimeout(() => { void poll() }, this.fallback).unref()
@@ -119,20 +124,42 @@ export class LiveReads {
     request.signal.addEventListener('abort', canceled, { once: true })
     if (request.signal.aborted) canceled()
     const expiry = expiresAt === undefined ? undefined : setTimeout(() => abort.abort(new StreamError(401, 'AUTH_EXPIRED', 'Authentication expired')), Math.max(0, Math.min(2_147_483_647, expiresAt - Date.now())))
+    // The hard local deadline precedes the database lease expiry. A suspended
+    // runtime must observe abort before replaying after the deadline.
+    const lifetime = Math.max(this.timeout, this.duration) + 15_000
+    const hardDeadline = performance.now() + lifetime
+    const deadlineTimer = setTimeout(() => abort.abort(), lifetime).unref()
+    const assertActive = () => {
+      // Timer callbacks can run after promise continuations when a suspended
+      // isolate resumes. Check monotonic elapsed time before any new emission.
+      if (performance.now() >= hardDeadline) abort.abort()
+      abort.signal.throwIfAborted()
+    }
+    let releaseAdmission: (() => Promise<void>) | undefined
     let subscription: ReturnType<LiveReads['channel']> | undefined
     let released = false
     const release = () => {
       if (released) return
       released = true
       clearTimeout(expiry)
+      clearTimeout(deadlineTimer)
+      if (releaseAdmission) {
+        const work = releaseAdmission().catch((error: unknown) => {
+          if (!(error instanceof StreamError && error.code === 'INSTALLATION_FENCED')) this.report(error)
+        })
+        this.releases.add(work)
+        void work.finally(() => this.releases.delete(work))
+      }
       request.signal.removeEventListener('abort', canceled)
       subscription?.release()
       this.active.delete(abort)
     }
     try {
-      abort.signal.throwIfAborted()
+      assertActive()
+      releaseAdmission = await admitLive(this.store.guard, this.schema, lifetime + 5000)
+      assertActive()
       const initial = await this.store.read(tenant, path, offset)
-      abort.signal.throwIfAborted()
+      assertActive()
       const id = initial.stream.id
       const isSse = new URL(request.url).searchParams.get('live') === 'sse'
       let cursor = new URL(request.url).searchParams.get('cursor')
@@ -153,12 +180,12 @@ export class LiveReads {
         let result: ReadResult
         for (;;) {
           const revision = channel.revision()
-          abort.signal.throwIfAborted()
+          assertActive()
           result = await this.store.readGeneration(tenant, id, initial.next)
           if (result.hasData || result.stream.closed || Date.now() >= deadline) break
           await channel.wait(revision, deadline - Date.now(), abort.signal)
         }
-        abort.signal.throwIfAborted()
+        assertActive()
         headers.set('Stream-Next-Offset', result.next)
         headers.set('Stream-Cursor', responseCursor(cursor))
         if (result.upToDate) headers.set('Stream-Up-To-Date', 'true')
@@ -194,6 +221,7 @@ export class LiveReads {
         },
         pull: async (controller) => {
           try {
+            assertActive()
             let result = first
             first = undefined
             if (!result) {
@@ -205,10 +233,12 @@ export class LiveReads {
                 if (ending) return
                 result = await this.store.readGeneration(tenant, id, next)
                 if (ending) return
+                assertActive()
                 if (!result.hasData && !result.stream.closed) { controller.enqueue(Buffer.from(': heartbeat\n\n')); return }
               }
             }
             if (ending) return
+            assertActive()
             next = result.next
             const eof = result.stream.closed && result.upToDate
             cursor = responseCursor(cursor)
@@ -242,4 +272,6 @@ export class LiveReads {
     this.closed = true
     for (const abort of this.active) abort.abort(new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down'))
   }
+
+  async drain(): Promise<void> { await Promise.allSettled([...this.releases]) }
 }

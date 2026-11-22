@@ -26,7 +26,9 @@ import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
 import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
 import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
 import { parseSubscriptionKeyring } from '@samwillis/durable-streams-neon/subscriptions'
+import { inspectInstallation, beginRecovery, verifyRecovery, finishRecovery } from '@samwillis/durable-streams-neon/operations'
 import pg from 'pg'
+if ([inspectInstallation, beginRecovery, verifyRecovery, finishRecovery].some((fn) => typeof fn !== 'function')) throw new Error('Operations entrypoint missing')
 if (typeof createNeonRealtimeNotifier !== 'function') throw new Error('Realtime entrypoint missing')
 const storage = createS3ChunkStorage({ endpoint: 'https://storage.example.test', region: 'eu-central-1', bucket: 'consumer-tests' })
 storage.close()
@@ -38,7 +40,7 @@ const server = createDurableStreams({ postgres: { pool }, auth: {
 const result = await server.fetch(new Request('https://example.test/v1/stream/test'))
 if (result.status !== 401) throw new Error('Unexpected unauthenticated behavior')
 const plan = await migrationPlan('consumer_schema')
-if (plan.length !== 4 || !plan[0]!.sql.includes('"consumer_schema".streams') || !plan[1]!.sql.includes('"consumer_schema".chunks') || !plan[2]!.sql.includes('fork_source_fk') || !plan[3]!.sql.includes('webhook_signing_keys')) throw new Error('Packaged SQL migrations missing')
+if (plan.length !== 5 || !plan[0]!.sql.includes('"consumer_schema".streams') || !plan[1]!.sql.includes('"consumer_schema".chunks') || !plan[2]!.sql.includes('fork_source_fk') || !plan[3]!.sql.includes('webhook_signing_keys') || !plan[4]!.sql.includes('serving_epoch')) throw new Error('Packaged SQL migrations missing')
 await server.close()
 await pool.end()
 `)

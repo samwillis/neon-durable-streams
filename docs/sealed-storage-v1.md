@@ -39,7 +39,7 @@ Readers verify downloaded size, digest, identities, and frame boundaries before 
 
 Physical object deletion is unavailable in the adapter contract and disabled in the library. Objects, manifests, and generation indexes survive stream deletion. This preserves snapshot replay plans, fork references, and recoverable database history while reference pins, publication/retirement barriers, and recovery retention are unfinished. Operators must size and monitor retained data. Listing unreferenced objects is not permission to delete them after a database restore.
 
-A future reclamation migration must establish the pin and retirement barriers before enabling deletion. No current test result qualifies destructive GC, arbitrary branch adoption, or restore cutover.
+A future reclamation migration must establish the pin and retirement barriers before enabling deletion. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md), with a real point-in-time branch drill. Destructive GC and in-place restore cutover remain unqualified.
 
 ## Evidence
 

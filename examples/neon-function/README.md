@@ -10,6 +10,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 
 | Variable | Meaning |
 | --- | --- |
+| `DS_ENVIRONMENT_ID` | Serving Neon branch ID, bound explicitly during migration |
 | `DS_SCHEMA` | Dedicated, explicitly migrated library schema |
 | `DS_BUCKET` | Private sealed-chunk bucket |
 | `DS_REALTIME_URL`, `DS_REALTIME_SECRET` | Branch Realtime endpoint and backend secret |
@@ -24,7 +25,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 
 Replace the example API-key policy with the consuming application's identity and permission checks as needed. The example gives each verified key all operations within its configured tenant. Request parameters cannot choose that tenant. Keep keys in server-side secret storage; browser clients should use the application's short-lived identity credentials.
 
-Before deployment, use a **direct** connection to call `migrate(pool, { schema, storageIdentity: objects.identity })`, then explicitly call `initializeSubscriptions(pool, { schema, keyring })`. The S3 adapter must target the same branch endpoint, region, and bucket as the Function. Storage binding rejects a mismatched branch until an explicit recovery/adoption procedure is available.
+Before deployment, use a **direct** connection to call `migrate(pool, { schema, storageIdentity: objects.identity, environmentId: branchId, maxLiveReaders: 80 })`, then explicitly call `initializeSubscriptions(pool, { schema, keyring })`. The S3 adapter must target the same branch endpoint, region, and bucket as the Function. Storage/environment binding rejects a mismatched branch. Use the [quiesced recovery procedure](../../docs/operations-v1.md) for adoption.
 
 Bundle `index.ts` and its installed dependencies as Node.js 24 ESM. The repository's `scripts/neon-test-function.mjs` shows the concrete bundle/ZIP/deploy flow using the Neon SDK, passes secrets as a structured encrypted deployment environment, polls build readiness, and verifies authenticated runtime health against the bundle hash. It only accepts a recorded isolated test branch. Consumers should use their normal deployment pipeline and migration controls for production.
 
@@ -40,4 +41,4 @@ For manual or application-scheduler work, POST `/_maintenance` with `x-ds-mainte
 
 The real deployment tests verify unauthorized and cross-tenant requests, the exact bundle hash, initial SSE flushing, final-append-before-EOF delivery, sealed replay after local payload removal, producer deduplication after sealing, forged-trigger rejection, and actual scheduled sealing without an application maintenance request. The test profile sets fallback to 60 seconds so its shorter SSE deadline requires Realtime delivery.
 
-Function ingress has a default account-wide concurrency limit of 100. Per-instance library admission does not establish an account-wide quota or edge DDoS protection. Size aggregate live readers, pools, and maintenance concurrency for the consuming deployment. Sustained capacity and availability claims remain unqualified.
+Function ingress has a default account-wide concurrency limit of 100. Installation-wide database admission bounds live readers across instances. Each installation still needs a share of the account budget and ingress protection. Size aggregate live readers, pools, and maintenance concurrency for the consuming deployment. Sustained capacity and availability claims remain unqualified.

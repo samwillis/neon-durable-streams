@@ -32,6 +32,10 @@
     "./subscriptions": {
       "types": "./dist/subscriptions.d.ts",
       "import": "./dist/subscriptions.js"
+    },
+    "./operations": {
+      "types": "./dist/operations.d.ts",
+      "import": "./dist/operations.js"
     }
   },
   "files": [
@@ -56,7 +60,8 @@
     "neon:test:create": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs create",
     "neon:test:delete": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs delete",
     "neon:test:deploy": "pnpm build && node scripts/neon-test-function.mjs",
-    "test:function": "vitest run --project function"
+    "test:function": "vitest run --project function",
+    "test:recovery": "vitest run --project recovery"
   },
   "peerDependencies": {
     "pg": "^8.16.3"

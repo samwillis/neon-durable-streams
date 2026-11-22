@@ -34,7 +34,7 @@ const notifier = createNeonRealtimeNotifier({ url: required('DS_REALTIME_URL'), 
   database: new URL(required('DATABASE_URL')).pathname.slice(1), onError: () => console.error('Realtime delivery degraded') })
 const objects = createS3ChunkStorage({ endpoint: required('AWS_ENDPOINT_URL_S3'), region: required('AWS_REGION'), bucket: required('DS_BUCKET') })
 const streams = createDurableStreams({
-  postgres: { pool, schema: required('DS_SCHEMA') },
+  postgres: { pool, schema: required('DS_SCHEMA'), environmentId: required('DS_ENVIRONMENT_ID') },
   auth: { authenticate, authorize: () => true },
   allowedOrigins: origins,
   ...(process.env.DS_PUBLIC_BASE_URL ? { publicBaseUrl: process.env.DS_PUBLIC_BASE_URL } : {}),

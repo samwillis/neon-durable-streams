@@ -9,7 +9,6 @@ import { SubscriptionCipher, SubscriptionSigner } from './subscription-crypto.js
 import { globMatches, normalizeSubscription, relativeStreamPath } from './subscription-protocol.js'
 import type { ControlRoute, SubscriptionConfig } from './subscription-protocol.js'
 import type { SubscriptionOptions } from './subscriptions.js'
-import { transaction } from './transaction.js'
 import { deliverWebhook, webhookTarget } from './webhook.js'
 
 interface Sub {
@@ -66,7 +65,7 @@ export class PostgresSubscriptions {
       await this.signer.active()
       await this.signer.signature(Buffer.alloc(0))
     })().catch((error: unknown) => { this.ready = undefined; throw error })
-    return this.ready
+    await this.ready
   }
   private registry(client: PoolClient, tenant: string, exclusive: boolean) {
     return client.query(`SELECT pg_advisory_xact_lock${exclusive ? '' : '_shared'}(hashtextextended($1, 0))`, [`durable-streams:subscription-registry:${this.schema}:${tenant}`])
@@ -122,6 +121,7 @@ export class PostgresSubscriptions {
   }
   async jwks(): Promise<Response> {
     await this.assertReady()
+    await this.streams.guard.check()
     return Response.json(await this.signer.jwks(), { headers: { 'Content-Type': 'application/jwk-set+json', 'Cache-Control': 'public, max-age=300' } })
   }
   async handle(request: Request, route: ControlRoute, principal: Principal, authorize: (context: AuthorizationContext) => boolean | Promise<boolean>, readBody: () => Promise<Buffer>, publicBase: string): Promise<Response> {
@@ -136,7 +136,7 @@ export class PostgresSubscriptions {
       if (config.wake_stream && !await authorize({ principal, operation: 'append', path: config.wake_stream, request })) throw new StreamError(403, 'FORBIDDEN', 'Wake-stream writes are not authorized')
       if (config.webhook) await webhookTarget(config.webhook.url, this.options.allowLocalhostWebhooks ?? false)
       await this.assertReady()
-      const created = await transaction(this.pool, {}, async (client) => {
+      const created = await this.streams.transaction({}, async (client) => {
         await this.registry(client, principal.tenantId, true)
         const existing = await client.query<Sub>(`SELECT * FROM ${this.schema}.subscriptions WHERE tenant_id = $1 AND name = $2 AND deleted_at IS NULL FOR UPDATE`, [principal.tenantId, route.name])
         if (existing.rows[0]) {
@@ -171,7 +171,7 @@ export class PostgresSubscriptions {
     if (route.action === 'subscription' && request.method === 'DELETE') {
       await allowed('delete')
       await this.assertReady()
-      await transaction(this.pool, {}, async (client) => {
+      await this.streams.transaction({}, async (client) => {
         const sub = await this.find(client, principal.tenantId, route.name!)
         await this.invalidate(client, sub, 'fenced')
         await client.query(`DELETE FROM ${this.schema}.subscription_pending_links WHERE subscription_id = $1`, [sub.id])
@@ -200,7 +200,7 @@ export class PostgresSubscriptions {
     throw new StreamError(405, 'METHOD_NOT_ALLOWED', 'Unsupported subscription method or route')
   }
   private async serialize(tenant: string, name: string, status = 200): Promise<Response> {
-    const value = await transaction(this.pool, { readOnly: true }, async (client) => {
+    const value = await this.streams.transaction({ readOnly: true }, async (client) => {
       const result = await client.query<Sub>(`SELECT * FROM ${this.schema}.subscriptions WHERE tenant_id = $1 AND name = $2 AND deleted_at IS NULL`, [tenant, name])
       const sub = result.rows[0]
       if (!sub) throw new StreamError(404, 'SUBSCRIPTION_NOT_FOUND', 'Subscription not found')
@@ -214,7 +214,7 @@ export class PostgresSubscriptions {
       status: sub.retry_count || sub.blocked_members ? 'failed' : 'active', description: config.description }, { status })
   }
   private async membership(tenant: string, name: string, paths: readonly string[], add: boolean): Promise<void> {
-    await transaction(this.pool, {}, async (client) => {
+    await this.streams.transaction({}, async (client) => {
       await this.registry(client, tenant, true)
       const sub = await this.find(client, tenant, name)
       let changed = false
@@ -266,7 +266,7 @@ export class PostgresSubscriptions {
     return { wake: { ...result.rows[0]!, pull_published: sub.config.type === 'pull-wake' }, streams: snapshots }
   }
   private async claim(tenant: string, name: string, worker: string): Promise<Response> {
-    const outcome = await transaction(this.pool, {}, async (client) => {
+    const outcome = await this.streams.transaction({}, async (client) => {
       const sub = await this.find(client, tenant, name)
       if (sub.config.type !== 'pull-wake') throw new StreamError(400, 'INVALID_REQUEST', 'Only pull-wake subscriptions can be claimed')
       if (sub.holder && sub.lease_valid) return { busy: { code: 'ALREADY_CLAIMED', current_holder: sub.holder, generation: Number(sub.generation) } }
@@ -299,7 +299,7 @@ export class PostgresSubscriptions {
     const owner = authenticated.rows[0]
     if (!owner?.token_hash || owner.name !== route.name || !timingSafeEqual(owner.token_hash, hashToken(token))) throw new StreamError(401, 'INVALID_TOKEN', 'Subscription token is invalid')
     const body = jsonBody(await readBody())
-    const response = await transaction(this.pool, {}, async (client) => {
+    const response = await this.streams.transaction({}, async (client) => {
       const result = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE id = $1 FOR UPDATE)
         SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [owner.subscription_id])
       const sub = result.rows[0]
@@ -380,7 +380,7 @@ export class PostgresSubscriptions {
     if (active.tail_offset > member.acked_offset) await this.markPending(client, sub)
   }
   private async dispatch(): Promise<number> {
-    return transaction(this.pool, {}, async (client) => {
+    return this.streams.transaction({}, async (client) => {
       const first = await client.query<Change>(`SELECT c.*, s.tenant_id, s.path FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id = c.stream_id
         WHERE NOT c.processed AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes prior WHERE prior.stream_id = c.stream_id AND prior.version < c.version AND NOT prior.processed)
         ORDER BY c.created_at, c.stream_id, c.version LIMIT 1 FOR UPDATE OF c SKIP LOCKED`)
@@ -408,7 +408,7 @@ export class PostgresSubscriptions {
     })
   }
   private async recoverLink(): Promise<boolean> {
-    return transaction(this.pool, {}, async (client) => {
+    return this.streams.transaction({}, async (client) => {
       const next = await client.query<{ subscription_id: string; stream_id: string; tenant_id: string; path: string; before_offset: string }>(`SELECT q.*, s.path FROM ${this.schema}.subscription_pending_links q JOIN ${this.schema}.streams s ON s.id = q.stream_id
         WHERE q.due_at <= clock_timestamp() ORDER BY q.due_at, q.subscription_id, q.stream_id LIMIT 1`)
       const row = next.rows[0]
@@ -431,7 +431,7 @@ export class PostgresSubscriptions {
   }
   private async prepareDelivery(): Promise<{ job?: WebhookJob; worked: boolean }> {
     let attempted: string | undefined
-    try { return await transaction(this.pool, {}, async (client) => {
+    try { return await this.streams.transaction({}, async (client) => {
       const selected = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE deleted_at IS NULL AND next_work_at <= clock_timestamp()
         ORDER BY next_work_at, id LIMIT 1 FOR UPDATE SKIP LOCKED) SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`)
       const sub = selected.rows[0]
@@ -474,7 +474,7 @@ export class PostgresSubscriptions {
       const snapshots = await client.query<Snapshot>(`SELECT * FROM ${this.schema}.subscription_wake_streams WHERE wake_id = $1 ORDER BY path`, [wake.id])
       return { worked: true, job: { sub, wake, claim, streams: snapshots.rows } }
     }) } catch (error) {
-      if (attempted) await transaction(this.pool, {}, async (client) => {
+      if (attempted) await this.streams.transaction({}, async (client) => {
         const found = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE id = $1 AND deleted_at IS NULL FOR UPDATE)
           SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [attempted])
         const sub = found.rows[0]
@@ -492,7 +492,7 @@ export class PostgresSubscriptions {
     return Math.min(60_000, Math.round(base * randomInt(800, 1201) / 1000))
   }
   private async finishDelivery(job: WebhookJob, result: { ok: boolean; done: boolean }): Promise<void> {
-    await transaction(this.pool, {}, async (client) => {
+    await this.streams.transaction({}, async (client) => {
       const found = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE id = $1 FOR UPDATE)
         SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [job.sub.id])
       const sub = found.rows[0]!

@@ -5,7 +5,7 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
-export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions'] as const
+export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations'] as const
 
 export interface Migration {
   readonly id: string
@@ -22,7 +22,7 @@ export async function migrationPlan(schema = 'durable_streams'): Promise<readonl
 }
 
 /** Explicit, transactional DDL. Call through the deployment's direct connection. */
-export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string } = {}): Promise<readonly string[]> {
+export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string; readonly environmentId?: string; readonly maxLiveReaders?: number } = {}): Promise<readonly string[]> {
   const schema = options.schema ?? 'durable_streams'
   const identifier = validateSchema(schema)
   const plan = await migrationPlan(schema)
@@ -52,11 +52,22 @@ export async function migrate(pool: Pool, options: { readonly schema?: string; r
         throw new StorageCompatibilityError('Missing or incompatible installation identity; explicit recovery required')
       }
     }
+    await client.query(`SELECT id FROM ${identifier}.installation FOR UPDATE`)
     if (options.storageIdentity !== undefined) {
       if (!options.storageIdentity || options.storageIdentity.length > 2048) throw new TypeError('Invalid storage identity')
       const binding = await client.query(`UPDATE ${identifier}.installation SET storage_identity = $1
         WHERE storage_identity IS NULL OR storage_identity = $1 RETURNING id`, [options.storageIdentity])
       if (binding.rowCount !== 1) throw new StorageCompatibilityError('Storage identity differs; explicit branch adoption or recovery is required')
+    }
+    if (options.environmentId !== undefined) {
+      if (!options.environmentId || Buffer.byteLength(options.environmentId) > 2048) throw new TypeError('Invalid environment identity')
+      const bound = await client.query(`UPDATE ${identifier}.installation SET environment_id = $1
+        WHERE environment_id IS NULL OR environment_id = $1 RETURNING id`, [options.environmentId])
+      if (bound.rowCount !== 1) throw new StorageCompatibilityError('Environment identity differs; explicit branch adoption is required')
+    }
+    if (options.maxLiveReaders !== undefined) {
+      if (!Number.isSafeInteger(options.maxLiveReaders) || options.maxLiveReaders < 1 || options.maxLiveReaders > 100_000) throw new RangeError('Invalid installation live reader capacity')
+      await client.query(`UPDATE ${identifier}.live_capacity SET max_readers = $1`, [options.maxLiveReaders])
     }
     return completed
   })

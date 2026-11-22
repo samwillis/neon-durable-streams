@@ -4,7 +4,7 @@ import { chunkDigest, decodeChunk, encodeChunk } from './chunk-codec.js'
 import type { ChunkFrame } from './chunk-codec.js'
 import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
-import { transaction } from './transaction.js'
+import { InstallationGuard } from './installation.js'
 
 /** Immutable-key object storage. Destructive deletion is deliberately unavailable. */
 export interface ChunkStorage {
@@ -53,7 +53,7 @@ export class ChunkManager {
   private readonly maximumFrames: number
   private readonly lease: number
   private installationId?: string
-  constructor(private readonly pool: Pool, schema: string, private readonly options: StorageOptions) {
+  constructor(private readonly pool: Pool, schema: string, private readonly options: StorageOptions, private readonly guard = new InstallationGuard(pool, schema)) {
     this.schema = validateSchema(schema)
     this.target = options.targetChunkBytes ?? 4 * 1024 * 1024
     this.maximumFrames = options.maxChunkFrames ?? 128
@@ -64,6 +64,7 @@ export class ChunkManager {
       || !options.objects.identity || options.objects.identity.length > 2048) throw new RangeError('Invalid storage options')
   }
   async assertBinding(): Promise<void> {
+    await this.guard.check()
     const result = await this.pool.query<{ id: string; storage_identity: string | null }>(`SELECT id, storage_identity FROM ${this.schema}.installation`)
     if (result.rows.length !== 1 || result.rows[0]!.storage_identity !== this.options.objects.identity) throw new StorageCompatibilityError('Run explicit migrations with the matching storageIdentity before enabling sealed storage')
     this.installationId = result.rows[0]!.id
@@ -97,12 +98,12 @@ export class ChunkManager {
     await this.assertBinding()
     let frozen = 0, sealed = 0
     for (let i = 0; i < maximum; i++) {
-      const rotated = await transaction(this.pool, {}, async (client) => {
+      const rotated = await this.guard.run({}, async (client) => {
         const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
       if (rotated) frozen++
-      const claim = await transaction(this.pool, {}, async (client) => {
+      const claim = await this.guard.run({}, async (client) => {
         const candidate = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.chunks WHERE state = 'frozen'
           AND (claim_until IS NULL OR claim_until <= clock_timestamp()) ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`)
         if (!candidate.rows[0]) return undefined
@@ -124,7 +125,7 @@ export class ChunkManager {
         await this.options.objects.put(key, bytes)
         // Verify the exact uploaded object before discarding any local payload.
         decodeChunk(await this.options.objects.get(key, bytes.length), identity, digest)
-        const published = await transaction(this.pool, {}, async (client) => {
+        const published = await this.guard.run({}, async (client) => {
           const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
             encoded_bytes = $6, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
             WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp() RETURNING id`,
@@ -138,7 +139,7 @@ export class ChunkManager {
       } catch (error) {
         // A failed/ambiguous publication can be retried only by obtaining a new
         // durable claim. This conditional release cannot unlock another worker.
-        await transaction(this.pool, {}, async (client) => {
+        await this.guard.run({}, async (client) => {
           await client.query(`UPDATE ${this.schema}.chunks SET claim_until = NULL, claim_token = NULL
             WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen'`, [claim.id, claim.claim_token, claim.claim_epoch])
         }).catch(() => {})

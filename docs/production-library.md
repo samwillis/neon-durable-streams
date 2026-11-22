@@ -1,6 +1,6 @@
 # A production Durable Streams server library for Neon
 
-Research/design date: **2026-11-22**. Requirement: an embeddable library that users deploy and operate on their own Neon resources. Production quality is the release target. Initial M0/M1 hot-log implementation is now present; this document describes the complete target, including substantial functionality and qualification still ahead.
+Research/design date: **2026-11-22**. Requirement: an embeddable library that users deploy and operate on their own Neon resources. Production quality is the release target. The full protocol is implemented and the pinned 338-case suite passes against real Neon data services. This document describes the complete production target; remaining operational qualification is tracked in the implementation plan.
 
 The [protocol/platform investigation](investigation.md) provides the detailed storage design and pinned protocol target. This document defines the proposed library contract and the additional work needed for production use. All package names, APIs, and commands below are proposals.
 
@@ -199,7 +199,7 @@ Ship runbooks for database disconnect/unknown commit, notifier outage, object-st
 
 ## Production release gates
 
-All gates are currently **unverified**. Passing these is the definition of the first production release, rather than a later hardening phase.
+The full protocol gate has passed (338/338 with subscriptions enabled), alongside focused crash, isolation, real Function ingress, and point-in-time branch recovery checks. The complete release matrix below remains open; passing conformance alone does not qualify production. See [development](development.md) and [operations](operations-v1.md) for current evidence.
 
 | Gate | Required evidence |
 | --- | --- |
@@ -223,6 +223,6 @@ The unchanged upstream webhook fixtures bind to test-runner loopback, so they ca
 2. **Recovery timing:** establish the usable scheduler/retry profile after total worker eviction. Document lateness and the measured recovery distribution; a minute-level sweep is not a hard one-second wake guarantee.
 3. **Object semantics:** qualify upload visibility, immutable retry behavior, checksums/ranges, throttling, branch/reset ordering, and restore retention. SDK compatibility is not evidence for every needed consistency property.
 4. **Service guarantees:** Neon's [published SLA](https://neon.com/docs/legal/sla.md) expressly applies to Postgres Compute Endpoints, defined as PostgreSQL compute instances, and excludes other platform components. The cited public SLA does not establish availability commitments for this complete stack; consumer-specific contract terms may differ. Library correctness and end-to-end service availability need separate claims.
-5. **Release compatibility:** verify published upstream/Neon SDK artifacts and dependency ranges when implementation starts. The earlier investigation could not reach the npm registry, so repository metadata is the current evidence.
+5. **Release compatibility:** verify published upstream/Neon SDK artifacts and dependency ranges when implementation starts. Pinned npm artifacts are now installed and tested; the conformance package source matches the pinned upstream revision. Published-release provenance and a supported dependency update matrix still need qualification.
 
 Proceed with production package boundaries, versioned storage, durable jobs, and these gates from the first implementation. The library can offer a small handler API while carrying the recovery and operational machinery needed to make that API dependable.
