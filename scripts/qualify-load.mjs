@@ -28,6 +28,8 @@ const sent = new Map()
 const latestAcknowledged = new Map(), readerOffsets = new Map()
 const backlog = []
 const headLatency = [], headPending = new Map(), latestHead = new Map(), headWatches = []
+const liveChecks = Array.from({ length: readers }, () => ({ hash: createHash('sha256'), records: 0 }))
+let verifiedLiveReaders = 0
 let headNotifier
 const coverHead = (path, offset, at) => {
   latestHead.set(path, { offset, at })
@@ -108,9 +110,12 @@ try {
                 if (event.startsWith('event: data')) {
                   const payload = Buffer.from(data, 'base64'); liveBytes += payload.length
                   if (payload.length % recordBytes) throw new Error('SSE payload lost a record boundary')
+                  liveChecks[i].hash.update(payload)
+                  liveChecks[i].records += payload.length / recordBytes
                   for (let start = 0; start < payload.length; start += recordBytes) {
                     const hash = digest(payload.subarray(start, start + recordBytes)), at = sent.get(hash)
-                    if (at !== undefined && liveLatency.length < maximum) liveLatency.push(performance.now() - at)
+                    if (at === undefined) throw new Error('Live delivery contains an unknown record')
+                    if (liveLatency.length < maximum) liveLatency.push(performance.now() - at)
                   }
                 }
               }
@@ -188,13 +193,16 @@ try {
   const sequenceByWriter = new Map()
   drainSeconds = (performance.now() - drainStarted) / 1000
   const replayStarted = performance.now()
+  const replayDigests = new Map()
   async function replay(path) {
+    const ordered = createHash('sha256')
     let offset = '-1'
     for (let page = 0; page < maximum; page++) {
       const response = await request(`${stream(path)}?offset=${encodeURIComponent(offset)}`)
       if (!response.ok) throw new Error(`Replay failed: HTTP ${response.status}`)
       const bytes = Buffer.from(await response.arrayBuffer())
       if (bytes.length % recordBytes) throw new Error('Replay record boundary mismatch')
+      ordered.update(bytes)
       for (let start = 0; start < bytes.length; start += recordBytes) {
         const hash = digest(bytes.subarray(start, start + recordBytes))
         if (observed.has(hash) || !expected.has(hash)) throw new Error('Replay contains duplicate or unacknowledged record')
@@ -209,6 +217,7 @@ try {
       if (!next || next === offset) throw new Error('Replay did not advance its checkpoint')
       offset = next
     }
+    replayDigests.set(path, ordered.digest('hex'))
   }
   let nextPath = 0
   await Promise.all(Array.from({ length: Math.min(4, paths.length) }, async () => {
@@ -216,6 +225,10 @@ try {
   }))
   replaySeconds = (performance.now() - replayStarted) / 1000
   if (observed.size !== expected.size) throw new Error('Replay lost acknowledged records')
+  for (let i = 0; i < readers; i++) {
+    if (liveChecks[i].hash.digest('hex') !== replayDigests.get(paths[i % streamCount])) throw new Error('Live delivery differs from ordered durable replay')
+    verifiedLiveReaders++
+  }
   if (frozenAfter) throw new Error('Maintenance did not seal all workload payloads')
   connectionsAfter = Number((await pool.query('SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()')).rows[0].count)
 } catch (error) { errors.push({ phase: 'qualification', name: error.name, message: error.message }) }
@@ -231,7 +244,8 @@ finally {
     elapsedSeconds: started && finished ? (finished - started) / 1000 : null, acknowledgedAppends: appends, replayedRecords: replayed,
     appendsPerSecond: started && finished ? appends / ((finished - started) / 1000) : null,
     appendLatencyMs: timings(ackLatency), observedLiveLatencyMs: timings(liveLatency), observedHeadCoverageMs: timings(headLatency), liveBytes, rotations,
-    connectionsBefore, connectionsAfter, backlog, liveDrainSeconds, drainSeconds, replaySeconds, remainingLocalPayloads: frozenAfter, errors, passed: errors.length === 0 && appends > 0 && replayed === appends && (!readers || liveLatency.length > 0) }
+    liveVerification: { verifiedReaders: verifiedLiveReaders, receivedRecords: liveChecks.map((value) => value.records), orderedSha256MatchesReplay: verifiedLiveReaders === readers },
+    connectionsBefore, connectionsAfter, backlog, liveDrainSeconds, drainSeconds, replaySeconds, remainingLocalPayloads: frozenAfter, errors, passed: errors.length === 0 && appends > 0 && replayed === appends && verifiedLiveReaders === readers && (!readers || liveLatency.length > 0) }
   await mkdir('qualification-results', { recursive: true })
   await writeFile(`qualification-results/${run}.json`, JSON.stringify(report, null, 2) + '\n')
 }

@@ -1,0 +1,112 @@
+{
+  "harnessSha256": "dd32f6977dbe52c814bf97debe1d1bf73558a2d05ecf39c08ee092a922800899",
+  "harnessCommitAtStart": "7f745996905e9b2a3bc7d00bc919812914d1b442",
+  "generatedAt": "2026-11-22T20:51:50.439Z",
+  "deployedSourceCommit": "d186ade880753bba1dcadcb9b6c2e18517af7a8c",
+  "deployedSourceDirty": "no",
+  "bundleSha256": "9612d181bab620bb1460e4a744b8af629123d3f8420451546f884b27b94d727b",
+  "node": "v24.22.2",
+  "profile": {
+    "seconds": 75,
+    "writers": 4,
+    "readers": 16,
+    "streams": 8,
+    "recordBytes": 1024,
+    "replayConcurrency": 4,
+    "realtimeProbe": true,
+    "maintenanceHints": "on",
+    "hasCron": "yes",
+    "liveFallbackMs": "5000",
+    "liveValidationMs": "1000",
+    "cronChunks": "64",
+    "cronSubscriptionWork": "64",
+    "storage": "actual Neon PG18/Realtime/Object Storage/Functions"
+  },
+  "elapsedSeconds": 75.048876792,
+  "acknowledgedAppends": 4530,
+  "replayedRecords": 4530,
+  "appendsPerSecond": 60.36066352538517,
+  "appendLatencyMs": {
+    "samples": 4530,
+    "p50": 64.7,
+    "p95": 78.83,
+    "p99": 121.67,
+    "max": 230.26491700000042
+  },
+  "observedLiveLatencyMs": {
+    "samples": 9060,
+    "p50": 65.61,
+    "p95": 83.91,
+    "p99": 146.34,
+    "max": 241.50287500000195
+  },
+  "observedHeadCoverageMs": {
+    "samples": 4530,
+    "p50": 61.87,
+    "p95": 75.88,
+    "p99": 113.08,
+    "max": 227.28087500000038
+  },
+  "liveBytes": 9277440,
+  "rotations": 16,
+  "liveVerification": {
+    "verifiedReaders": 16,
+    "receivedRecords": [
+      1137,
+      1128,
+      1131,
+      1134,
+      0,
+      0,
+      0,
+      0,
+      1137,
+      1128,
+      1131,
+      1134,
+      0,
+      0,
+      0,
+      0
+    ],
+    "orderedSha256MatchesReplay": true
+  },
+  "connectionsBefore": 15,
+  "connectionsAfter": 19,
+  "backlog": [
+    {
+      "elapsedSeconds": 0.02177774999999997,
+      "frozenChunks": 0,
+      "localPayloadBytes": 0,
+      "pendingChanges": 0,
+      "databaseConnections": 15
+    },
+    {
+      "elapsedSeconds": 30.189584959,
+      "frozenChunks": 0,
+      "localPayloadBytes": 34816,
+      "pendingChanges": 0,
+      "databaseConnections": 19
+    },
+    {
+      "elapsedSeconds": 60.222934583999994,
+      "frozenChunks": 0,
+      "localPayloadBytes": 297984,
+      "pendingChanges": 1,
+      "databaseConnections": 19
+    },
+    {
+      "elapsedSeconds": 75.231263917,
+      "frozenChunks": 0,
+      "localPayloadBytes": 186368,
+      "pendingChanges": 0,
+      "databaseConnections": 19
+    }
+  ],
+  "liveDrainSeconds": 0.00036125000000174624,
+  "drainSeconds": 1.042862832999992,
+  "replaySeconds": 1.6418423749999929,
+  "remainingLocalPayloads": 0,
+  "errors": [],
+  "passed": true
+}
