@@ -5,6 +5,9 @@ import { advanceOffset, parseOffset, ZERO_OFFSET } from './offset.js'
 import { formatPayloads, mediaType, preparePayload } from './payload.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
+import { MIGRATION_IDS } from './migrations.js'
+import { ChunkManager } from './storage.js'
+import type { StorageOptions, StoredFrame } from './storage.js'
 
 export interface Producer {
   readonly id: string
@@ -60,14 +63,17 @@ export interface ReadResult {
 export class PostgresStreamStore {
   readonly schema: string
   private ready: Promise<void> | undefined
+  private readonly chunks: ChunkManager | undefined
 
   constructor(
     private readonly pool: Pool,
     schema: string,
     private readonly maxStoredBytes = 1024 * 1024,
     private readonly maxPageBytes = 2 * 1024 * 1024,
+    storage?: StorageOptions,
   ) {
     this.schema = validateSchema(schema)
+    this.chunks = storage ? new ChunkManager(pool, schema, storage) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024) {
       throw new RangeError('Invalid payload/page limits')
@@ -75,11 +81,13 @@ export class PostgresStreamStore {
   }
 
   async assertReady(): Promise<void> {
-    this.ready ??= this.pool.query<{ storage_version: number }>(`SELECT storage_version FROM ${this.schema}.installation`)
+    this.ready ??= this.pool.query<{ storage_version: number; storage_identity: string | null }>(`SELECT storage_version, storage_identity FROM ${this.schema}.installation`)
       .then(async (result) => {
         if (result.rows.length !== 1 || result.rows[0]!.storage_version !== 1) throw new StorageCompatibilityError('Unsupported storage version')
         const migrations = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.migrations ORDER BY id`)
-        if (migrations.rows.length !== 1 || migrations.rows[0]!.id !== '0001_core') throw new StorageCompatibilityError('Unsupported database migrations')
+        if (JSON.stringify(migrations.rows.map((row) => row.id)) !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations')
+        if (result.rows[0]!.storage_identity !== null && !this.chunks) throw new StorageCompatibilityError('This installation requires its configured object storage')
+        await this.chunks?.assertBinding()
       })
       .catch((error: unknown) => { this.ready = undefined; throw error })
     return this.ready
@@ -155,6 +163,7 @@ export class PostgresStreamStore {
       await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = $3 WHERE tenant_id = $1 AND path = $2`, [tenant, path, id])
       if (payload.bytes.length) await this.insertAppend(client, id, ZERO_OFFSET, tail, payload.bytes, payload.messageEnds)
       await this.change(client, stream, ZERO_OFFSET, 'created')
+      await this.chunks?.freeze(client, id)
       return { stream, created: true }
     })
   }
@@ -164,8 +173,10 @@ export class PostgresStreamStore {
   }
 
   private async insertAppend(client: PoolClient, id: string, start: string, end: string, bytes: Uint8Array, ends: readonly number[] | null): Promise<void> {
-    await client.query(`INSERT INTO ${this.schema}.appends (stream_id, start_offset, end_offset, payload, message_ends)
-      VALUES ($1, $2, $3, $4, $5)`, [id, start, end, bytes, ends])
+    await client.query(`INSERT INTO ${this.schema}.appends (stream_id, start_offset, end_offset, payload, message_ends, payload_bytes)
+      VALUES ($1, $2, $3, $4, $5, $6)`, [id, start, end, bytes, ends, bytes.byteLength])
+    await client.query(`UPDATE ${this.schema}.streams SET hot_bytes = hot_bytes + $2, hot_frames = hot_frames + 1,
+      seal_after = CASE WHEN hot_frames = 0 THEN clock_timestamp() ELSE seal_after END WHERE id = $1`, [id, bytes.byteLength])
   }
 
   async append(tenant: string, path: string, options: AppendOptions): Promise<AppendResult> {
@@ -210,6 +221,7 @@ export class PostgresStreamStore {
         WHERE id = $1 RETURNING *`, [stream.id, next, options.close, options.close && producer ? producer : null, options.sequence ?? null])
       const value = updated.rows[0]!
       await this.change(client, value, stream.tail_offset, options.close ? 'closed' : 'appended')
+      await this.chunks?.freeze(client, stream.id)
       return { stream: value, status: producer && payload.bytes.length ? 200 : 204, ...(producer ? { producer: { epoch: producer.epoch, seq: producer.seq } } : {}) }
     })
   }
@@ -230,7 +242,7 @@ export class PostgresStreamStore {
   /** An active live read must never switch to a recreated path generation. */
   async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
-    return transaction(this.pool, { readOnly: true }, async (client) => {
+    const plan = await transaction(this.pool, { readOnly: true }, async (client) => {
       const metadata = await client.query<StreamMetadata>(`SELECT * FROM ${this.schema}.streams WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
         AND (expires_at IS NULL OR expires_at > clock_timestamp())
         AND (ttl_seconds IS NULL OR accessed_at + ttl_seconds * interval '1 second' > clock_timestamp())`, [tenant, id])
@@ -242,19 +254,26 @@ export class PostgresStreamStore {
         const boundary = await client.query(`SELECT 1 FROM ${this.schema}.appends WHERE stream_id = $1 AND end_offset = $2`, [stream.id, start])
         if (!boundary.rowCount) throw new StreamError(400, 'OFFSET_NOT_BOUNDARY', 'Offset is not a returned boundary')
       }
-      const result = await client.query<{ end_offset: string; payload: Buffer }>(`SELECT end_offset, payload FROM ${this.schema}.appends
-        WHERE stream_id = $1 AND end_offset > $2 ORDER BY end_offset LIMIT 16`, [stream.id, start])
-      const payloads: Buffer[] = []
-      let length = 2
-      let next = start
-      for (const row of result.rows) {
-        if (length + row.payload.length > this.maxPageBytes) break
-        payloads.push(row.payload)
-        length += row.payload.length
-        next = row.end_offset
-      }
-      return { stream, body: formatPayloads(payloads, stream.content_type), next, upToDate: next === stream.tail_offset, hasData: payloads.length > 0 }
+      const result = await client.query<StoredFrame>(`WITH candidates AS (
+          SELECT end_offset, payload_bytes FROM ${this.schema}.appends WHERE stream_id = $1 AND end_offset > $2 ORDER BY end_offset LIMIT 16
+        ), bounded AS (SELECT end_offset, sum(payload_bytes) OVER (ORDER BY end_offset) AS bytes FROM candidates)
+        SELECT a.start_offset, a.end_offset, a.payload, a.payload_bytes, a.message_ends, a.chunk_id, c.object_key, c.sha256, c.encoded_bytes
+        FROM bounded b JOIN ${this.schema}.appends a ON a.stream_id = $1 AND a.end_offset = b.end_offset
+        LEFT JOIN ${this.schema}.chunks c ON c.id = a.chunk_id
+        WHERE b.bytes <= $3 ORDER BY a.end_offset`, [stream.id, start, this.maxPageBytes - 2])
+      const next = result.rows.at(-1)?.end_offset ?? start
+      return { stream, frames: result.rows, next, upToDate: next === stream.tail_offset, hasData: result.rows.length > 0 }
     })
+    const frames = this.chunks ? await this.chunks.materialize(id, plan.frames) : plan.frames.map((frame) => {
+      if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
+      return { payload: frame.payload }
+    })
+    return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData }
+  }
+
+  async maintain(options: { readonly maxChunks?: number } = {}): Promise<{ frozen: number; sealed: number }> {
+    await this.assertReady()
+    return this.chunks ? this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
   }
 
   /** One bounded query per watched generation, shared by all local readers. */

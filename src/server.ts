@@ -6,6 +6,7 @@ import { PostgresStreamStore } from './store.js'
 import type { Producer, StreamMetadata } from './store.js'
 import { LiveReads } from './live.js'
 import type { LiveOptions } from './live.js'
+import type { StorageOptions } from './storage.js'
 
 export type Operation = 'create' | 'append' | 'read' | 'head' | 'delete'
 export interface Principal {
@@ -30,12 +31,14 @@ export interface ServerOptions {
   readonly publicBaseUrl?: string
   readonly allowedOrigins?: readonly string[]
   readonly live?: LiveOptions
+  readonly storage?: StorageOptions
   readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly bodyTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
 }
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
   readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log'; features: readonly string[] }>
+  readonly maintain: (options?: { readonly maxChunks?: number }) => Promise<{ frozen: number; sealed: number }>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
 
@@ -127,10 +130,10 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
-  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes)
+  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage)
   const report = (error: unknown) => { try { options.onError?.(error) } catch { /* observer only */ } }
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
-  const pending = new Set<Promise<Response>>()
+  const pending = new Set<Promise<unknown>>()
   let closed = false
 
   async function handle(request: Request): Promise<Response> {
@@ -216,6 +219,13 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   }
 
   return {
+    maintain(input) {
+      if (closed) return Promise.reject(new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down'))
+      const work = store.maintain(input)
+      pending.add(work)
+      void work.finally(() => pending.delete(work)).catch(() => {})
+      return work
+    },
     fetch(request) {
       const response = handle(request)
       pending.add(response)

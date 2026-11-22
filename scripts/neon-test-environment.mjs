@@ -12,6 +12,26 @@ const operation = process.argv[2] ?? 'create'
 const escape = (value) => value.replaceAll('%', '%25').replaceAll('\r', '%0D').replaceAll('\n', '%0A')
 const mask = (value) => { if (process.env.GITHUB_ACTIONS === 'true') console.log(`::add-mask::${escape(value)}`) }
 
+async function storageEnvironment(branchId) {
+  const bucket = 'durable-streams-test'
+  const existing = (await neon.storage.buckets.list({ projectId, branchId })).find((item) => item.name === bucket)
+  if (existing && existing.access_level !== 'private') throw new Error('Test chunk bucket must be private')
+  if (!existing) await neon.storage.buckets.create({ projectId, branchId, name: bucket, access_level: 'private' })
+  const storage = await neon.storage.get({ projectId, branchId })
+  if (!storage.enabled || !storage.force_path_style) throw new Error('Neon Object Storage is not ready')
+  const credential = await neon.credentials.create({ projectId, branchId, name: 'durable-streams-qualification', principal_type: 'user',
+    scopes: ['storage:read', 'storage:write'], expires_at: new Date(Date.now() + 24 * 3600_000).toISOString() })
+  return { AWS_ENDPOINT_URL_S3: storage.s3_endpoint, AWS_REGION: storage.region,
+    AWS_ACCESS_KEY_ID: credential.token_id, AWS_SECRET_ACCESS_KEY: credential.s3_secret_access_key, NEON_TEST_BUCKET: bucket }
+}
+async function output(values, append = false) {
+  for (const value of Object.values(values)) mask(value)
+  const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
+  if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
+  else if (append) await appendFile(outputFile, environment, { mode: 0o600 })
+  else await writeFile(outputFile, environment, { mode: 0o600, flag: 'wx' })
+}
+
 if (operation === 'delete') {
   let state
   try { state = JSON.parse(await readFile(stateFile, 'utf8')) } catch (error) {
@@ -26,6 +46,13 @@ if (operation === 'delete') {
   } catch (error) { if (error.code !== 'ENOENT') throw error }
   await unlink(stateFile)
   console.log(`Deleted test branch ${state.branchId}.`)
+} else if (operation === 'storage') {
+  const state = JSON.parse(await readFile(stateFile, 'utf8'))
+  if (state.projectId !== projectId || !state.name.startsWith('ds-test-')) throw new Error('Storage provisioning requires this run\'s test branch')
+  const environment = await readFile(outputFile, 'utf8')
+  if (!environment.split('\n').includes(`NEON_TEST_BRANCH_ID=${state.branchId}`) || environment.includes('AWS_ACCESS_KEY_ID=')) throw new Error('Refusing to overwrite a storage environment')
+  await output(await storageEnvironment(state.branchId), true)
+  console.log('Private Neon Object Storage bucket ready; credentials saved without logging them.')
 } else if (operation === 'create') {
   const suffix = process.env.GITHUB_RUN_ID ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}` : `${Date.now()}`
   const name = `ds-test-${suffix}`
@@ -58,10 +85,8 @@ if (operation === 'delete') {
   const values = { TEST_DATABASE_URL: verified(pooled), TEST_DATABASE_URL_UNPOOLED: verified(direct),
     NEON_REALTIME_URL: realtime.invocation_url, NEON_REALTIME_SECRET: key.secret,
     NEON_TEST_BRANCH_ID: branch.id, NEON_TEST_PROJECT_ID: projectId,
+    ...await storageEnvironment(branch.id),
   }
-  for (const value of Object.values(values)) mask(value)
-  const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
-  if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
-  else await writeFile(outputFile, environment, { mode: 0o600, flag: 'wx' })
-  console.log(`Ready: Postgres 18 and Realtime on isolated branch ${branch.id}; credentials written without logging them.`)
-} else throw new Error('Expected create or delete')
+  await output(values)
+  console.log(`Ready: Postgres 18, Realtime, and Object Storage on isolated branch ${branch.id}; credentials saved without logging them.`)
+} else throw new Error('Expected create, storage, or delete')

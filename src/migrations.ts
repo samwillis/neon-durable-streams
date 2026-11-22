@@ -5,7 +5,7 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
-const IDS = ['0001_core'] as const
+export const MIGRATION_IDS = ['0001_core', '0002_chunks'] as const
 
 export interface Migration {
   readonly id: string
@@ -15,14 +15,14 @@ export interface Migration {
 
 export async function migrationPlan(schema = 'durable_streams'): Promise<readonly Migration[]> {
   const identifier = validateSchema(schema)
-  return Promise.all(IDS.map(async (id) => {
+  return Promise.all(MIGRATION_IDS.map(async (id) => {
     const source = await readFile(new URL(`../migrations/${id}.sql`, import.meta.url), 'utf8')
     return { id, checksum: createHash('sha256').update(source).digest('hex'), sql: source.replaceAll('__SCHEMA__', identifier) }
   }))
 }
 
 /** Explicit, transactional DDL. Call through the deployment's direct connection. */
-export async function migrate(pool: Pool, options: { readonly schema?: string } = {}): Promise<readonly string[]> {
+export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string } = {}): Promise<readonly string[]> {
   const schema = options.schema ?? 'durable_streams'
   const identifier = validateSchema(schema)
   const plan = await migrationPlan(schema)
@@ -51,6 +51,12 @@ export async function migrate(pool: Pool, options: { readonly schema?: string } 
       if (installation.rows.length !== 1 || installation.rows[0]!.storage_version !== 1) {
         throw new StorageCompatibilityError('Missing or incompatible installation identity; explicit recovery required')
       }
+    }
+    if (options.storageIdentity !== undefined) {
+      if (!options.storageIdentity || options.storageIdentity.length > 2048) throw new TypeError('Invalid storage identity')
+      const binding = await client.query(`UPDATE ${identifier}.installation SET storage_identity = $1
+        WHERE storage_identity IS NULL OR storage_identity = $1 RETURNING id`, [options.storageIdentity])
+      if (binding.rowCount !== 1) throw new StorageCompatibilityError('Storage identity differs; explicit branch adoption or recovery is required')
     }
     return completed
   })

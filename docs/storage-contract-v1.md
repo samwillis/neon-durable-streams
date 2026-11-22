@@ -1,6 +1,6 @@
 # Initial hot-log storage contract
 
-Implemented during M0/M1. This is an unreleased storage version; sealed-chunk encoding, forks, subscription dispatch, and object reclamation remain unimplemented. Migration 0001 establishes only the hot log and durable change outbox.
+Implemented during M0/M1. This is an unreleased storage version; forks, subscription dispatch, and object reclamation remain unimplemented. Migration 0001 establishes the hot log and durable change outbox; migration 0002 adds the recoverable chunk manifest and storage binding. See [sealed storage v1](sealed-storage-v1.md).
 
 ## Identity and transactions
 

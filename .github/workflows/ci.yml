@@ -1,5 +1,8 @@
 name: Library checks
 on: [push, pull_request, workflow_dispatch]
+concurrency:
+  group: library-checks-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -39,10 +42,10 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Provision isolated Neon Postgres and Realtime branch
+      - name: Provision isolated Neon Postgres, Realtime, and Object Storage
         run: pnpm neon:test:create
       - run: pnpm build
-      - name: Real Neon Realtime delivery and isolation
+      - name: Real Neon Realtime and Object Storage integration
         run: pnpm test:neon
       - name: Postgres integration and process-loss tests on Neon
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
