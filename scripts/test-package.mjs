@@ -19,7 +19,7 @@ try {
     dependencies: { '@samwillis/durable-streams-neon': `file:./${tarball}`, pg: '8.23.1' },
     devDependencies: { '@types/pg': '8.23.1', '@types/node': '24.10.1' },
   }))
-  run('pnpm', ['install', '--offline', '--ignore-scripts'], temporary)
+  run('pnpm', ['install', '--prefer-offline', '--ignore-scripts'], temporary)
   await writeFile(join(temporary, 'consumer.ts'), `
 import { createDurableStreams, type Principal } from '@samwillis/durable-streams-neon'
 import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
