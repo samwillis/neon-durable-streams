@@ -1,0 +1,443 @@
+{
+  "research_date": "2026-11-22",
+  "method": "Read official Neon documentation and upstream Durable Streams source. Hashes identify retrieved bytes; original source bodies are not vendored. No implementation, deployment, or conformance execution was performed.",
+  "upstream": {
+    "repository": "https://github.com/durable-streams/durable-streams",
+    "commit": "461b40267aabd644558f9b19dbb9507dd5f691cf",
+    "commit_date": "2026-09-10T11:15:28-06:00",
+    "inspected_conformance_package_version": "0.3.7",
+    "files": [
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/PROTOCOL.md",
+        "retrieved_on": "2026-11-22",
+        "bytes": 93423,
+        "sha256": "b8f39bcfe479079c07179b909be23c0a19714892265f3c788949b043c910552f"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-conformance-tests/package.json",
+        "retrieved_on": "2026-11-22",
+        "bytes": 1626,
+        "sha256": "eaf167d426bf054979b21bc6f05894bb4113c13c38ee42ba90c73dcb68ddc568"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-conformance-tests/src/index.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 399716,
+        "sha256": "9e42aa7274e345d3595f33afea5c7e38d1d8a6629e71d6ba4cbea59dc540779a"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-conformance-tests/src/test-runner.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 530,
+        "sha256": "5a8cecc512d374bb4793f5740816db7f4523d404dcb89c1e3403469465b489f2"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-conformance-tests/src/cli.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 7995,
+        "sha256": "bc8ce177b31db40aa6f364c1ad2f3e14face8c820bc9993be3b8896f7680c6b7"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server/test/conformance.test.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 1980,
+        "sha256": "dcf5eeff81dd34984ba0da0a9931e3487a4c562343c18180ecc7453721900ffc"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server/src/store.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 43255,
+        "sha256": "8a59ad80189f720df1d69afafabd6a00784200333b4e158c15db3ebfc0243785"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server/src/server.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 60505,
+        "sha256": "a6e3352a7455e8dd50905c134e983cfc0fe5c52d094c1b5ea2d82a1948c2e0cc"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/README.md",
+        "retrieved_on": "2026-11-22",
+        "bytes": 6317,
+        "sha256": "299642db5d54f0a1be6306602a4e1d5dd03e618b907adc0bad9af3dae7139e08"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/store.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 18472,
+        "sha256": "281ea26ec9c4ea027b9a7f5e357603282f9462c881bc702ff859f6db8508ffcc"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/producer.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 2275,
+        "sha256": "ae17dcec45339ee9ae450acc12f793ef450711851905c964a9a34419f7151c7c"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/json.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 2736,
+        "sha256": "40716dffaa5df3f3ea232f25902e7c311413e8c41142be38842867ef9d885b3e"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/cursor.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 2373,
+        "sha256": "8dda5034f7092ee3fb80e1833e9cd79736da29560d55ec61446b7cd71ddf2134"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/handler.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 6263,
+        "sha256": "f9f12ac4e0f5de5cb67c32509b8c13335edd5ee95ebae584f2fa5f04d7408ada"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/constants.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 1728,
+        "sha256": "bddc0622a7ae6c7736795d53b730e26c1827ad0b330d25b3fa1833c94eff872d"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/src/index.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 636,
+        "sha256": "a7d931141d9b05ce5bb2c31ed4c597f221d4fcdf6c045d5c7c260ff191619fac"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/package.json",
+        "retrieved_on": "2026-11-22",
+        "bytes": 1770,
+        "sha256": "c8a2de0ba0f018e871a075b5991d11b0de24efd26f2d34898a580691bcdb4903"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/test/conformance.test.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 2401,
+        "sha256": "7463efc3bb5a9129faa1dd36e9a354c5e52e49bd34e09f21ade85b6d22060ad0"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server-cloudflare/NOTICE",
+        "retrieved_on": "2026-11-22",
+        "bytes": 615,
+        "sha256": "cb45fe9c01bd9e7d2cce91a5ce1e2ae0afd2234fa912c26f98f4471e29bd6f03"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/server/src/subscription-manager.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 24967,
+        "sha256": "251193d6e109d21abf2f8d55d3e0e5e24dfd6d92a267e05a113f4c6156497a18"
+      },
+      {
+        "url": "https://github.com/durable-streams/durable-streams/blob/461b40267aabd644558f9b19dbb9507dd5f691cf/packages/client/src/stream-api.ts",
+        "retrieved_on": "2026-11-22",
+        "bytes": 8828,
+        "sha256": "e44c2a1f818b2fd7f692f1cd9343bc69848b08b59d5619f8f559b530ac4a7ae0"
+      }
+    ]
+  },
+  "web_sources": [
+    {
+      "url": "https://durablestreams.com/",
+      "retrieved_on": "2026-11-22",
+      "bytes": 22103,
+      "sha256": "84e7c15966951220f1ef5df97418bac7f164d29378a54fed010d40b1387a5b05"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/authentication.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 8910,
+      "sha256": "41653ddb254c50ede5fd6693dabe976b596d92fcae3f847dd25c9d617a05f275",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/custom-domains.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 14378,
+      "sha256": "248b45f1d880e74ccd74155847e17f4e9b546be66f8f0244c5c4a6e48bb1d6a2",
+      "page_last_updated": "2026-11-10"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/deploy.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 12308,
+      "sha256": "174ab20532eee91bd71fe8f52c8aeb59951f0c27c59a2b06823c5561d27aad1e",
+      "page_last_updated": "2026-11-09"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/environment-variables.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 11351,
+      "sha256": "edb68ea61e289454920c5a02c5a22aa0ca6a0c9c3926544c3a108f4ddcd86acf",
+      "page_last_updated": "2026-11-09"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/get-started.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 11567,
+      "sha256": "92b633f194c1a1b9550e9166b3297227451cc8f69309721710bea1bba61c7885",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/overview.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 11917,
+      "sha256": "94b182163f9f722eb65bf17849ec565ef3560479123835cf7494e39cf052aead",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/reference/runtime-limits.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 6831,
+      "sha256": "051c60813028890dff35feef46626ba3e5625fb4a2a9d6ea2a4b0736a301ba10",
+      "page_last_updated": "2026-11-11"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/triggers/overview.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 14643,
+      "sha256": "f468e3e35d94cedc90c28b4259da65b2e2eddeae2610e0a42f773685d4a90688",
+      "page_last_updated": "2026-11-05"
+    },
+    {
+      "url": "https://neon.com/docs/compute/functions/triggers/schedule.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 18404,
+      "sha256": "30306c5755761555a3be8b40f76958649bd6205ce5926efa8e20aac07f026f26",
+      "page_last_updated": "2026-11-06"
+    },
+    {
+      "url": "https://neon.com/docs/compute/llms.txt",
+      "retrieved_on": "2026-11-22",
+      "bytes": 3076,
+      "sha256": "003c76bb5ec98f3e53131d8f855a1845043d8f33e21151d7730fcdace145ae30"
+    },
+    {
+      "url": "https://neon.com/docs/connect/connection-pooling.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 17701,
+      "sha256": "c569c4c0c05ac96d064c7b6d0d432fbf08d6b4059f0a81393dc9b256b0af3ec3",
+      "page_last_updated": "2026-11-14"
+    },
+    {
+      "url": "https://neon.com/docs/get-started/backend-overview.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 22565,
+      "sha256": "137b43dc2e67e9309d2a6324462700f13488dcf805a39e9223190e58a95a618b",
+      "page_last_updated": "2026-11-05"
+    },
+    {
+      "url": "https://neon.com/docs/introduction/scale-to-zero.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 3497,
+      "sha256": "b2828899b1cc7845db0f608ef68d538621f3bc98781fd721c7242bc45eae53a6",
+      "page_last_updated": "2026-11-04"
+    },
+    {
+      "url": "https://neon.com/docs/legal/sla.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 9587,
+      "sha256": "f3387af603f2d88cd7aad78a3a7d1e2b6de44cdb4a6bf02c725076d7f9689af5",
+      "page_last_updated": "2026-10-23"
+    },
+    {
+      "url": "https://neon.com/docs/llms.txt",
+      "retrieved_on": "2026-11-22",
+      "bytes": 29784,
+      "sha256": "363498d70c71a9e35058f1776740b2a890de1ff3c4f162693ba081b528bfe037"
+    },
+    {
+      "url": "https://neon.com/docs/postgres/backup-restore/backups.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 4326,
+      "sha256": "5ecf76df7ec86e1e5ba3a393f677380910ed345e1e61748991987d93a8bae176",
+      "page_last_updated": "2026-11-04"
+    },
+    {
+      "url": "https://neon.com/docs/postgres/backup-restore/branch-restore.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 20103,
+      "sha256": "4e73bcc066975143f7e168921f1756248d10040be9168fb76c51c60246ad08bd",
+      "page_last_updated": "2026-11-06"
+    },
+    {
+      "url": "https://neon.com/docs/postgres/backup-restore/history-window.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 6827,
+      "sha256": "a2a4eb079e999f30cdb7f6d7dbfd25c00de46bf16700fbe9395c5708c0a882d7",
+      "page_last_updated": "2026-11-10"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/examples/nextjs.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 40278,
+      "sha256": "3abf510cbc5873dead0c58e5cf0e9071741f240df94653c837083dc0933846b6",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/examples/tanstack.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 37435,
+      "sha256": "07729aaddb8edb257eddc60a5d045552cbb0d62a6ff57b64e855ec9a33e61477",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/guides/queries.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 25509,
+      "sha256": "035eb66d63f014488a4742531b79a66d8435821e0314efad7b3df63aee668c1e",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/guides/subscribing.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 24221,
+      "sha256": "65937cb82be78177f45efd01e60836cb1f49ae6d7709d22670c14de10550e42c",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/how-it-works.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 11248,
+      "sha256": "228a51c66cf9f1e9b43cfd379c6778def1458b02251696616a0cd122496eeb66",
+      "page_last_updated": "2026-10-15"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/llms.txt",
+      "retrieved_on": "2026-11-22",
+      "bytes": 3554,
+      "sha256": "c704803969174a1c83a48564dab58837bd821b984ceb274131a21abe1ed7c122"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/overview.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 20053,
+      "sha256": "71d95c16a8594bb37e1c8e32854e304bb384c69dae83d80d95a584097ca19025",
+      "page_last_updated": "2026-11-20"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/quickstart.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 9262,
+      "sha256": "7d2bffbdab798757a19487935529adb6a1bc9b8e29842cec072366054fb17e9f",
+      "page_last_updated": "2026-11-20"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/reference/api.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 1457,
+      "sha256": "3456ec707d6e2fb435c2f6180af05084fa3de375a20c094850adfe4f321f3a1c",
+      "page_last_updated": "2026-10-15"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/sdks/typescript/backend.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 26326,
+      "sha256": "90a79841763875fb3d1d870f778d4460d8ec731fa672f82a63d3a5cdcde3cf48",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/realtime/sdks/typescript/client.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 36800,
+      "sha256": "b937936abae90968ebc2a4f24aed8626569eb799e76c4d2362a21834ef0c221f",
+      "page_last_updated": "2026-11-18"
+    },
+    {
+      "url": "https://neon.com/docs/reference/metrics-logs.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 17556,
+      "sha256": "fedf723a2855be17fab91000d5bd057ff5a6dc7194336ad30a2e7dfb0679a8d1",
+      "page_last_updated": "2026-11-06"
+    },
+    {
+      "url": "https://neon.com/docs/reference/typescript-sdk.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 31867,
+      "sha256": "9feb73095fc736ae0e9ac0f559e0f12897dbc974d0e2535129b3b7ca2564c2bb",
+      "page_last_updated": "2026-10-21"
+    },
+    {
+      "url": "https://neon.com/docs/storage/authentication.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 12153,
+      "sha256": "2fb72b0a5605ed7ffa06dfc108af9f8977b0c1ea3314592645593a24ac9ffb25",
+      "page_last_updated": "2026-11-10"
+    },
+    {
+      "url": "https://neon.com/docs/storage/buckets.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 7115,
+      "sha256": "80abb23c0cd388327cb8864d0d8ad0b750647929e0bbb0fe86ff22aae21034f4",
+      "page_last_updated": "2026-11-10"
+    },
+    {
+      "url": "https://neon.com/docs/storage/get-started.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 11429,
+      "sha256": "6cecd67e6682dfbae4d294c94a1b6554a9071acf6688753579a9728cd66e86f4",
+      "page_last_updated": "2026-11-04"
+    },
+    {
+      "url": "https://neon.com/docs/storage/logs.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 6216,
+      "sha256": "9968da0f64249422825cad429ebebf04d22ff6029208f6bf405932fc39d00a23",
+      "page_last_updated": "2026-11-06"
+    },
+    {
+      "url": "https://neon.com/docs/storage/objects.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 14006,
+      "sha256": "5f5bfdded00ab83a0434a677861d557eab6de8a91cd5a8e2f15612d66c00a627",
+      "page_last_updated": "2026-11-10"
+    },
+    {
+      "url": "https://neon.com/docs/storage/overview.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 6421,
+      "sha256": "f099519ccaf0088d5d37eb27939456b12a04d1a2dcb71fa1b167615b070a6ebb",
+      "page_last_updated": "2026-11-11"
+    },
+    {
+      "url": "https://neon.com/docs/storage/s3-compatibility.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 6633,
+      "sha256": "2874c3467b571a7672484ca33a8300b19ab8b0512532758de47ded9c2bf993cb",
+      "page_last_updated": "2026-09-16"
+    },
+    {
+      "url": "https://neon.com/docs/storage/troubleshooting.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 7851,
+      "sha256": "690aaaafd16bcfaf0ddda72c054dae6f7114a23f3b5ff7653b0dacb89fa67b46",
+      "page_last_updated": "2026-10-23"
+    },
+    {
+      "url": "https://neon.com/pricing.md",
+      "retrieved_on": "2026-11-22",
+      "bytes": 21867,
+      "sha256": "8632e5161232e811f5f3aa4c55f1982dbbf3e97cad0475a5406a92864f2ffd09",
+      "page_last_updated": "2026-11-04"
+    }
+  ],
+  "limitations": [
+    "Published npm versions and dist-tags could not be verified because registry.npmjs.org connections were refused.",
+    "Documentation claims and code paths were inspected; deployment limits and failure semantics were not independently measured.",
+    "Upstream README conformance results are not test results for the proposed Neon server."
+  ],
+  "scope": "Production-grade embeddable TypeScript Durable Streams server library; consumers deploy and operate their own Neon resources.",
+  "research_passes": [
+    {
+      "date": "2026-11-22",
+      "scope": "Protocol, server conformance, Neon primitives, transactional hot/sealed storage architecture."
+    },
+    {
+      "date": "2026-11-22",
+      "scope": "Production library API and ownership, migrations, recovery, release qualification, service guarantees and operational failure modes."
+    },
+    {
+      "date": "2026-11-22",
+      "scope": "Implementation-readiness review: pooled synchronous commit, object retirement, subscription registration and commit-order races, path lifecycle coordination, persistent formats, typed auth, scheduler qualification, and executable milestone sequencing. Reused the pinned sources already recorded."
+    }
+  ]
+}
