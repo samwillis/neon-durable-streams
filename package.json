@@ -20,6 +20,10 @@
     "./migrations": {
       "types": "./dist/migrations.d.ts",
       "import": "./dist/migrations.js"
+    },
+    "./neon": {
+      "types": "./dist/neon.d.ts",
+      "import": "./dist/neon.js"
     }
   },
   "files": [
@@ -39,18 +43,27 @@
     "dev:down": "docker compose down",
     "test:package": "node scripts/test-package.mjs",
     "test:conformance": "vitest run --project conformance",
-    "test:conformance:hot": "vitest run --project conformance --testNamePattern \"^(Basic Stream Operations|Append Operations|Read Operations|TTL and Expiry Validation|Case-Insensitivity|Content-Type Validation|HEAD Metadata|Caching and ETag|Chunking and Large Payloads|Read-Your-Writes Consistency|JSON Mode|Idempotent Producer Operations)\""
+    "test:conformance:hot": "vitest run --project conformance --testNamePattern \"^(Basic Stream Operations|Append Operations|Read Operations|TTL and Expiry Validation|Case-Insensitivity|Content-Type Validation|HEAD Metadata|Caching and ETag|Chunking and Large Payloads|Read-Your-Writes Consistency|JSON Mode|Idempotent Producer Operations)\"",
+    "test:neon": "vitest run --project neon",
+    "neon:test:create": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs create",
+    "neon:test:delete": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs delete"
   },
   "peerDependencies": {
     "pg": "^8.16.3"
   },
   "devDependencies": {
     "@durable-streams/server-conformance-tests": "0.3.7",
+    "@neon/sdk": "7.15.0",
     "@types/node": "24.10.1",
     "@types/pg": "8.23.1",
     "fast-check": "4.10.2",
+    "neon": "9.9.3",
     "pg": "8.23.1",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
+  },
+  "dependencies": {
+    "@neon/realtime": "0.2.1",
+    "ws": "8.23.0"
   }
 }

@@ -12,7 +12,9 @@ import { transaction } from '../../src/transaction.js'
 const database = process.env.TEST_DATABASE_URL
 if (!database) throw new Error('Set TEST_DATABASE_URL to a disposable Postgres 18 database; see .env.example')
 const pool = new pg.Pool({ connectionString: database, max: 8, connectionTimeoutMillis: 5000 })
+const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? database, max: 6, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
+migrationPool.on('error', () => {})
 const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const errors: unknown[] = []
 const config = { postgres: { pool, schema }, auth: {
@@ -48,8 +50,8 @@ async function readAll(path: string) {
 beforeAll(async () => {
   const version = await pool.query<{ version: string }>("SELECT current_setting('server_version_num') AS version")
   expect(Number(version.rows[0]!.version)).toBeGreaterThanOrEqual(180000)
-  expect(await migrate(pool, { schema })).toEqual(['0001_core'])
-  expect(await migrate(pool, { schema })).toEqual([])
+  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core'])
+  expect(await migrate(migrationPool, { schema })).toEqual([])
   server = createDurableStreams(config)
 })
 
@@ -58,6 +60,7 @@ afterAll(async () => {
   if (!schema.startsWith('ds_test_')) throw new Error('Refusing to drop a non-test schema')
   await pool.query(`DROP SCHEMA "${schema}" CASCADE`)
   await pool.end()
+  await migrationPool.end()
   expect(errors).toEqual([])
 })
 
@@ -65,13 +68,13 @@ describe('transaction and migration guarantees', () => {
   test('concurrent migrators initialize an installation once', async () => {
     const other = `${schema}_migration`
     try {
-      const outcomes = await Promise.all(Array.from({ length: 6 }, () => migrate(pool, { schema: other })))
+      const outcomes = await Promise.all(Array.from({ length: 6 }, () => migrate(migrationPool, { schema: other })))
       expect(outcomes.filter((value) => value.length)).toHaveLength(1)
       expect((await pool.query(`SELECT count(*) FROM "${other}".installation`)).rows[0].count).toBe('1')
     } finally { await pool.query(`DROP SCHEMA IF EXISTS "${other}" CASCADE`) }
   })
   test('local durability and timeout settings override inherited sessions and revert', async () => {
-    const one = new pg.Pool({ connectionString: database!, max: 1 })
+    const one = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? database!, max: 1 })
     try {
       await one.query("SET synchronous_commit = off; SET statement_timeout = 0")
       await transaction(one, {}, async (client) => {

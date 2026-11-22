@@ -2,7 +2,7 @@
 
 Updated **2026-11-22**, following the [plan review](plan-review.md). Target: a production-grade library implementing the full pinned Durable Streams protocol on consumers' Neon resources. Every milestone contributes to the same library; completion of the production release gates defines the releasable result.
 
-Implementation is underway. M0 has package/toolchain, local Postgres, explicit migrations, typed auth/mounting, process-loss tests, packed-consumer validation, and CI. The M1 hot-log API is implemented and under test. M0's S3 environment/chunk fixtures, remaining lifecycle contracts, and real Neon qualification are still pending, as are M2–M6. See [development](development.md) and the [initial hot-log contract](storage-contract-v1.md) for runnable checks and exact current behavior.
+Implementation is underway. M0 has package/toolchain, local Postgres, explicit migrations, typed auth/mounting, process-loss tests, packed-consumer validation, and CI. The M1 hot-log API is implemented and under test. Required CI now provisions real Neon branches; actual Postgres/Realtime integration tests pass. M0's Object Storage/chunk fixtures, remaining lifecycle contracts, and deployed Function qualification are still pending, as are M2–M6. See [development](development.md) and the [initial hot-log contract](storage-contract-v1.md) for runnable checks and exact current behavior.
 
 ## Decisions carried into implementation
 
@@ -17,7 +17,7 @@ Implementation is underway. M0 has package/toolchain, local Postgres, explicit m
 
 ## M0 — Executable foundation and persistent contracts
 
-Create the package skeleton, test harness, local Postgres 18/S3-compatible environment, migration runner, consumer fixture, and CI commands. Tests must run without a Neon account by using polling/scripted notifiers; separate integration tests use real Neon services. Establish a failure-injection mechanism that cannot be enabled through a production request.
+Create the package skeleton, test harness, local Postgres 18/S3-compatible environment, migration runner, consumer fixture, and CI commands. Unit/property tests run without a Neon account. Required integration and conformance CI uses real Neon Postgres 18 and Realtime on isolated ephemeral branches; local Postgres and scripted notifiers supplement qualification. Missing Neon credentials must fail the qualification job explicitly. Establish a failure-injection mechanism that cannot be enabled through a production request.
 
 Before finalizing migration 0001 and format v1, write short, executable contract tests/decision records for:
 

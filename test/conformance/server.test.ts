@@ -10,11 +10,13 @@ import { migrate } from '../../src/migrations.js'
 
 if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to disposable Postgres 18')
 const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10, connectionTimeoutMillis: 5000 })
+const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? process.env.TEST_DATABASE_URL, max: 1, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
+migrationPool.on('error', () => {})
 const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const handler = createDurableStreams({ postgres: { pool, schema },
   allowedOrigins: ['https://example.com'],
-  // Explicit anonymous access is confined to the disposable local test fixture.
+  // Explicit anonymous access is confined to the disposable test fixture.
   auth: { authenticate: () => ({ tenantId: 'conformance', subject: 'fixture' }), authorize: () => true },
 })
 const config = { baseUrl: '', subscriptions: true, longPollTimeoutMs: 1000 }
@@ -50,7 +52,7 @@ const http = createServer(async (incoming, outgoing) => {
 })
 
 beforeAll(async () => {
-  await migrate(pool, { schema })
+  await migrate(migrationPool, { schema })
   http.listen(0, '127.0.0.1')
   await once(http, 'listening')
   const address = http.address()
@@ -64,6 +66,7 @@ afterAll(async () => {
   await handler.close()
   await pool.query(`DROP SCHEMA "${schema}" CASCADE`)
   await pool.end()
+  await migrationPool.end()
 })
 
 runConformanceTests(config)
