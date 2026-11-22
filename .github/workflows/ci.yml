@@ -14,7 +14,7 @@ jobs:
           POSTGRES_DB: streams
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U streams -d streams'
+          --health-cmd "pg_isready -U streams -d streams"
           --health-interval 1s --health-timeout 3s --health-retries 30
     env:
       TEST_DATABASE_URL: postgresql://streams@127.0.0.1:5432/streams
