@@ -1,6 +1,6 @@
 {
   "research_date": "2026-11-22",
-  "method": "Read official Neon documentation and upstream Durable Streams source. Hashes identify retrieved bytes; original source bodies are not vendored. No implementation, deployment, or conformance execution was performed.",
+  "method": "Read official Neon documentation and upstream Durable Streams source. Hashes identify retrieved bytes; original source bodies are not vendored. Research snapshots are historical; implementation validation is recorded separately.",
   "upstream": {
     "repository": "https://github.com/durable-streams/durable-streams",
     "commit": "461b40267aabd644558f9b19dbb9507dd5f691cf",
@@ -421,7 +421,7 @@
     }
   ],
   "limitations": [
-    "Published npm versions and dist-tags could not be verified because registry.npmjs.org connections were refused.",
+    "The npm registry was unavailable during initial research. The conformance artifact was subsequently installed and its source verified against the pinned upstream commit; see published_conformance_verification.",
     "Documentation claims and code paths were inspected; deployment limits and failure semantics were not independently measured.",
     "Upstream README conformance results are not test results for the proposed Neon server."
   ],
@@ -438,6 +438,18 @@
     {
       "date": "2026-11-22",
       "scope": "Implementation-readiness review: pooled synchronous commit, object retirement, subscription registration and commit-order races, path lifecycle coordination, persistent formats, typed auth, scheduler qualification, and executable milestone sequencing. Reused the pinned sources already recorded."
+    },
+    {
+      "date": "2026-11-22",
+      "scope": "M0/M1 implementation began; published conformance source verified and local Postgres/property/consumer-package validation added. Real Neon deployment qualification remains pending."
     }
-  ]
+  ],
+  "published_conformance_verification": {
+    "date": "2026-11-22",
+    "package": "@durable-streams/server-conformance-tests",
+    "version": "0.3.7",
+    "source_sha256": "9e42aa7274e345d3595f33afea5c7e38d1d8a6629e71d6ba4cbea59dc540779a",
+    "matches_pinned_upstream_source": true,
+    "retrieval": "Installed through the configured npm registry; version and integrity pinned in pnpm-lock.yaml."
+  }
 }

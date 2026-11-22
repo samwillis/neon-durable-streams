@@ -1,0 +1,56 @@
+{
+  "name": "@samwillis/durable-streams-neon",
+  "version": "0.0.1",
+  "private": true,
+  "description": "An embeddable Durable Streams server for Neon",
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "packageManager": "pnpm@10.32.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/samwillis/neon-durable-streams.git"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./migrations": {
+      "types": "./dist/migrations.d.ts",
+      "import": "./dist/migrations.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations",
+    "README.md",
+    "NOTICE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --project unit",
+    "test:integration": "pnpm build && vitest run --project integration",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "dev:up": "docker compose up -d --wait",
+    "dev:down": "docker compose down",
+    "test:package": "node scripts/test-package.mjs",
+    "test:conformance": "vitest run --project conformance",
+    "test:conformance:hot": "vitest run --project conformance --testNamePattern \"^(Basic Stream Operations|Append Operations|Read Operations|TTL and Expiry Validation|Case-Insensitivity|Content-Type Validation|HEAD Metadata|Caching and ETag|Chunking and Large Payloads|Read-Your-Writes Consistency|JSON Mode|Idempotent Producer Operations)\""
+  },
+  "peerDependencies": {
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@durable-streams/server-conformance-tests": "0.3.7",
+    "@types/node": "24.10.1",
+    "@types/pg": "8.23.1",
+    "fast-check": "4.10.2",
+    "pg": "8.23.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,6 +1,6 @@
 # A production Durable Streams server library for Neon
 
-Research/design date: **2026-11-22**. Requirement: an embeddable library that users deploy and operate on their own Neon resources. Production quality is the release target. The current workspace contains design research, with implementation and qualification still ahead.
+Research/design date: **2026-11-22**. Requirement: an embeddable library that users deploy and operate on their own Neon resources. Production quality is the release target. Initial M0/M1 hot-log implementation is now present; this document describes the complete target, including substantial functionality and qualification still ahead.
 
 The [protocol/platform investigation](investigation.md) provides the detailed storage design and pinned protocol target. This document defines the proposed library contract and the additional work needed for production use. All package names, APIs, and commands below are proposals.
 
