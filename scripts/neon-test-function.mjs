@@ -1,0 +1,79 @@
+import { randomBytes, randomUUID, createHash } from 'node:crypto'
+import { appendFile, readFile, writeFile } from 'node:fs/promises'
+import { build } from 'esbuild'
+import { zipSync } from 'fflate'
+import { createNeonClient } from '@neon/sdk'
+import pg from 'pg'
+import { migrate } from '../dist/migrations.js'
+import { createS3ChunkStorage } from '../dist/s3.js'
+
+const projectId = process.env.NEON_PROJECT_ID
+const apiKey = process.env.NEON_API_KEY
+const branchId = process.env.NEON_TEST_BRANCH_ID
+const stateFile = process.env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json'
+const outputFile = process.env.NEON_TEST_FUNCTION_ENV_FILE ?? '.env.neon.function'
+if (!projectId || !apiKey || !branchId || !process.env.TEST_DATABASE_URL_UNPOOLED || !process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET || !process.env.NEON_TEST_BUCKET) throw new Error('Complete isolated Neon test environment required before Function deployment')
+const state = JSON.parse(await readFile(stateFile, 'utf8'))
+if (state.projectId !== projectId || state.branchId !== branchId || !state.name.startsWith('ds-test-')) throw new Error('Function deployment requires the recorded isolated test branch')
+const neon = createNeonClient({ apiKey, throwOnError: true })
+const branch = await neon.branches.get({ projectId, branchId })
+if (branch.name !== state.name) throw new Error('Test branch identity changed')
+const secret = () => randomBytes(32).toString('hex')
+let previous
+try { previous = Object.fromEntries((await readFile(outputFile, 'utf8')).trim().split('\n').map((line) => { const n = line.indexOf('='); return [line.slice(0, n), line.slice(n + 1)] })) }
+catch (error) { if (error.code !== 'ENOENT') throw error }
+if (previous && previous.TEST_FUNCTION_BRANCH_ID !== branchId) throw new Error('Refusing to overwrite another test branch Function environment')
+const schema = previous?.TEST_FUNCTION_SCHEMA ?? `ds_test_${randomUUID().replaceAll('-', '')}`
+if (!/^ds_test_[a-f0-9]{32}$/.test(schema)) throw new Error('Invalid Function test schema')
+const userKey = previous?.TEST_FUNCTION_API_KEY ?? secret()
+const otherKey = previous?.TEST_FUNCTION_OTHER_KEY ?? secret()
+const maintenanceKey = previous?.TEST_FUNCTION_MAINTENANCE_KEY ?? secret()
+const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
+const direct = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED, max: 1 })
+try { await migrate(direct, { schema, storageIdentity: objects.identity }) }
+finally { await direct.end(); objects.close() }
+const bundle = await build({ entryPoints: ['examples/neon-function/index.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', write: false,
+  external: ['pg-native', 'bufferutil', 'utf-8-validate'],
+  banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
+})
+if (bundle.outputFiles.length !== 1) throw new Error('Expected a single self-contained Function bundle')
+const code = bundle.outputFiles[0].contents
+const hash = createHash('sha256').update(code).digest('hex')
+const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'durablestreams', runtime: 'nodejs24',
+  zip: new File([zipSync({ 'index.mjs': code })], 'durable-streams.zip', { type: 'application/zip' }),
+  environment: JSON.stringify({ DS_SCHEMA: schema, DS_BUCKET: process.env.NEON_TEST_BUCKET,
+    DS_REALTIME_URL: process.env.NEON_REALTIME_URL, DS_REALTIME_SECRET: process.env.NEON_REALTIME_SECRET,
+    DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
+    DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash,
+    DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: '60000' }),
+})
+let url
+const deadline = Date.now() + 180_000
+while (Date.now() < deadline) {
+  const fn = await neon.functions.get({ projectId, branchId, slug: 'durablestreams' })
+  if (fn.current_deployment?.id === deployment.id && fn.current_deployment.status === 'failed') throw new Error(`Function build failed: ${fn.current_deployment.error ?? 'unknown build error'}`)
+  if (fn.active_deployment?.id === deployment.id && fn.invocation_url) { url = fn.invocation_url; break }
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+}
+if (!url) throw new Error('Neon Function deployment did not become active')
+const triggerName = 'durable-streams-maintenance'
+const existing = (await neon.triggers.list({ projectId, branchId })).find((item) => item.name === triggerName)
+if (!existing) await neon.triggers.create({ projectId, branchId, type: 'schedule', name: triggerName,
+  function_slug: 'durablestreams', function_path: '/_trigger', schedule: { cron: '* * * * *' } })
+const values = { TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
+  TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash }
+if (process.env.GITHUB_ACTIONS === 'true') for (const value of Object.values(values)) console.log(`::add-mask::${value}`)
+const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
+if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
+else await writeFile(outputFile, environment, { mode: 0o600 })
+// Deployment readiness is not runtime readiness. Verify the actual HTTP handler.
+let ready = false
+while (Date.now() < deadline) {
+  try {
+    const response = await fetch(new URL('health', url), { headers: { Authorization: `Bearer ${userKey}` }, signal: AbortSignal.timeout(15_000) })
+    if (response.ok && (await response.json()).build === hash) { ready = true; break }
+  } catch { /* cold start or rolling deployment; bounded retry */ }
+  await new Promise((resolve) => setTimeout(resolve, 1000))
+}
+if (!ready) throw new Error('Deployed Function failed its authenticated runtime health check')
+console.log(`Deployed and verified the current bundle on test branch ${branchId}.`)

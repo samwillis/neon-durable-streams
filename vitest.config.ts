@@ -12,6 +12,8 @@ export default defineConfig({
         fileParallelism: false, testTimeout: 180_000, hookTimeout: 60_000 } },
       { test: { name: 'neon', include: ['test/neon/**/*.test.ts'],
         fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
+      { test: { name: 'function', include: ['test/function/**/*.test.ts'],
+        fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
     ],
   },
 })

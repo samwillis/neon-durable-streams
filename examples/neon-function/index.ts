@@ -1,0 +1,70 @@
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { attachDatabasePool } from '@neon/functions'
+import { isScheduleTriggerInvocation, parseTriggerDelivery } from '@neon/functions/triggers'
+import pg from 'pg'
+import { createDurableStreams } from '@samwillis/durable-streams-neon'
+import type { Principal } from '@samwillis/durable-streams-neon'
+import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
+import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
+
+function required(name: string): string {
+  const value = process.env[name]
+  if (!value) throw new Error(`Missing Function configuration: ${name}`)
+  return value
+}
+const digest = (text: string) => createHash('sha256').update(text).digest()
+const keys = JSON.parse(required('DS_AUTH_JSON')) as unknown
+if (!Array.isArray(keys) || !keys.length || keys.some((item) => !item || typeof item !== 'object'
+  || typeof item.key !== 'string' || item.key.length < 32 || typeof item.tenantId !== 'string' || !item.tenantId
+  || typeof item.subject !== 'string' || !item.subject)) throw new Error('Invalid DS_AUTH_JSON')
+const identities: { digest: Buffer; principal: Principal }[] = keys.map((item) => ({ digest: digest(item.key), principal: { tenantId: item.tenantId, subject: item.subject } }))
+function authenticate(request: Request): Principal | null {
+  const authorization = request.headers.get('authorization')
+  if (!authorization?.startsWith('Bearer ') || authorization.length > 1024) return null
+  const supplied = digest(authorization.slice(7))
+  return identities.find((identity) => timingSafeEqual(identity.digest, supplied))?.principal ?? null
+}
+const maintenanceKey = digest(required('DS_MAINTENANCE_KEY'))
+const origins: unknown = JSON.parse(process.env.DS_ALLOWED_ORIGINS_JSON ?? '[]')
+if (!Array.isArray(origins) || origins.some((origin) => typeof origin !== 'string')) throw new Error('Invalid DS_ALLOWED_ORIGINS_JSON')
+const pool = new pg.Pool({ connectionString: required('DATABASE_URL'), max: 5, connectionTimeoutMillis: 10_000 })
+attachDatabasePool(pool)
+const notifier = createNeonRealtimeNotifier({ url: required('DS_REALTIME_URL'), secret: required('DS_REALTIME_SECRET'),
+  database: new URL(required('DATABASE_URL')).pathname.slice(1), onError: () => console.error('Realtime delivery degraded') })
+const objects = createS3ChunkStorage({ endpoint: required('AWS_ENDPOINT_URL_S3'), region: required('AWS_REGION'), bucket: required('DS_BUCKET') })
+const streams = createDurableStreams({
+  postgres: { pool, schema: required('DS_SCHEMA') },
+  auth: { authenticate, authorize: () => true },
+  allowedOrigins: origins,
+  ...(process.env.DS_PUBLIC_BASE_URL ? { publicBaseUrl: process.env.DS_PUBLIC_BASE_URL } : {}),
+  storage: { objects },
+  live: { notifier, longPollTimeoutMs: 25_000, fallbackIntervalMs: Number(process.env.DS_LIVE_FALLBACK_MS ?? '5000') },
+  onError: (error) => console.error('Durable Streams request failed', error instanceof Error ? error.name : 'unknown'),
+})
+
+process.once('SIGINT', () => {
+  void streams.close().finally(async () => { notifier.close(); objects.close(); await pool.end() })
+})
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const path = new URL(request.url).pathname
+    if (path === '/_trigger') {
+      // Neon strips client-supplied x-neon-* headers at deployed ingress.
+      // Keep this platform-authenticated route outside application API-key auth.
+      if (request.method !== 'POST' || !request.headers.has('x-neon-trigger-invocation-id')) return new Response(null, { status: 401 })
+      const parsed = await parseTriggerDelivery(request)
+      if (!parsed.ok || !isScheduleTriggerInvocation(parsed.invocation) || parsed.invocation.trigger.name !== required('DS_MAINTENANCE_TRIGGER_NAME')) return new Response(null, { status: 401 })
+      return Response.json(await streams.maintain({ maxChunks: 8 }))
+    }
+    if (path === '/_maintenance') {
+      const supplied = request.headers.get('x-ds-maintenance-key')
+      if (request.method !== 'POST' || !supplied || supplied.length > 1024 || !timingSafeEqual(digest(supplied), maintenanceKey)) return new Response(null, { status: 401 })
+      return Response.json(await streams.maintain({ maxChunks: 8 }))
+    }
+    if (path === '/health') {
+      if (!authenticate(request)) return new Response(null, { status: 401 })
+      return Response.json({ ...await streams.inspectHealth(), build: required('DS_BUILD_HASH') })
+    }
+    return streams.fetch(request)
+  },
+}

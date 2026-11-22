@@ -45,6 +45,10 @@ jobs:
       - name: Provision isolated Neon Postgres, Realtime, and Object Storage
         run: pnpm neon:test:create
       - run: pnpm build
+      - name: Deploy the consumer Function and its recovery trigger on this branch
+        run: pnpm neon:test:deploy
+      - name: Actual Neon Function ingress, SSE, sealed replay, and scheduled recovery
+        run: pnpm test:function
       - name: Real Neon Realtime and Object Storage integration
         run: pnpm test:neon
       - name: Postgres integration and process-loss tests on Neon

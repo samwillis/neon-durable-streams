@@ -37,7 +37,7 @@ export interface ServerOptions {
 }
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
-  readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log'; features: readonly string[] }>
+  readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log' | 'tiered'; features: readonly string[] }>
   readonly maintain: (options?: { readonly maxChunks?: number }) => Promise<{ frozen: number; sealed: number }>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
@@ -232,7 +232,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       void response.finally(() => pending.delete(response)).catch(() => {})
       return response
     },
-    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', ...(live ? ['long-poll', 'sse'] : [])] } },
+    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : [])] } },
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true

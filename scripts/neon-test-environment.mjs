@@ -44,6 +44,11 @@ if (operation === 'delete') {
     const environment = await readFile(outputFile, 'utf8')
     if (environment.split('\n').includes(`NEON_TEST_BRANCH_ID=${state.branchId}`)) await unlink(outputFile)
   } catch (error) { if (error.code !== 'ENOENT') throw error }
+  const functionFile = process.env.NEON_TEST_FUNCTION_ENV_FILE ?? '.env.neon.function'
+  try {
+    const environment = await readFile(functionFile, 'utf8')
+    if (environment.split('\n').includes(`TEST_FUNCTION_BRANCH_ID=${state.branchId}`)) await unlink(functionFile)
+  } catch (error) { if (error.code !== 'ENOENT') throw error }
   await unlink(stateFile)
   console.log(`Deleted test branch ${state.branchId}.`)
 } else if (operation === 'storage') {

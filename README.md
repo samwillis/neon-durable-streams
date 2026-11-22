@@ -49,7 +49,9 @@ export default { fetch: streams.fetch }
 
 On Neon Functions, register the consumer's pool with `attachDatabasePool` from `@neon/functions`. Run `migrate` from the package's `/migrations` entrypoint through a direct connection as an explicit deployment step before serving requests. The package is currently consumed from this checkout/tarball; it has not been published to npm.
 
-See [development and tests](docs/development.md) for runnable commands and current coverage, and the [initial storage contract](docs/storage-contract-v1.md) for the implemented transaction and encoding decisions. M0/M1 are in progress. Real Neon Postgres/Realtime integration tests pass. The unfiltered conformance baseline is 198 passed / 140 failed (338 total, no skips); full conformance and deployed Function qualification remain release blockers. CI runs the complete suite against an isolated Neon branch.
+See [development and tests](docs/development.md) for runnable commands and current coverage, and the [initial storage contract](docs/storage-contract-v1.md) for the implemented transaction and encoding decisions. M0/M1 are in progress. Real Neon Postgres/Realtime integration tests pass. The unfiltered conformance baseline is 198 passed / 140 failed (338 total, no skips); full conformance and the remaining production gates remain release blockers. Six actual deployed-Function checks also pass. CI runs the complete suite against an isolated Neon branch.
 
 
 For tiered storage, supply `storage: { objects }` using `createS3ChunkStorage` from `/s3`. Call `migrate(directPool, { storageIdentity: objects.identity })` explicitly and schedule bounded `streams.maintain()` batches from an authenticated worker or cron Function. Read the [sealed storage contract](docs/sealed-storage-v1.md) before operating the worker. Physical object deletion and automatic branch adoption are disabled while their recovery protocols remain unfinished.
+
+See the [Neon Function consumer](examples/neon-function/README.md) for deployment, ownership, authentication, and scheduled recovery wiring.

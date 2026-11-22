@@ -42,7 +42,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --project unit",
     "test:integration": "pnpm build && vitest run --project integration",
-    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "check": "pnpm typecheck && pnpm test && pnpm build && tsc --noEmit -p examples/neon-function/tsconfig.json",
     "dev:up": "docker compose up -d --wait",
     "dev:down": "docker compose down",
     "test:package": "node scripts/test-package.mjs",
@@ -50,7 +50,9 @@
     "test:conformance:hot": "vitest run --project conformance --testNamePattern \"^(Basic Stream Operations|Append Operations|Read Operations|TTL and Expiry Validation|Case-Insensitivity|Content-Type Validation|HEAD Metadata|Caching and ETag|Chunking and Large Payloads|Read-Your-Writes Consistency|JSON Mode|Idempotent Producer Operations)\"",
     "test:neon": "pnpm build && vitest run --project neon",
     "neon:test:create": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs create",
-    "neon:test:delete": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs delete"
+    "neon:test:delete": "node --env-file-if-exists=.env.neon.local scripts/neon-test-environment.mjs delete",
+    "neon:test:deploy": "pnpm build && node scripts/neon-test-function.mjs",
+    "test:function": "vitest run --project function"
   },
   "peerDependencies": {
     "pg": "^8.16.3"
