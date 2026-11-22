@@ -225,7 +225,14 @@ export class LiveReads {
             if (!ending) { if (!(error instanceof StreamError)) this.report(error); abort.abort(error) }
           }
         },
-        cancel() { abort.abort(); release() },
+        cancel() {
+          // The stream is already canceled before this callback runs. Prevent
+          // the abort listener from trying to close its controller a second time.
+          ending = true
+          clearTimeout(rotation)
+          abort.abort()
+          release()
+        },
       }, { highWaterMark: 1 })
       return new Response(body, { status: 200, headers })
     } catch (error) { release(); throw error }

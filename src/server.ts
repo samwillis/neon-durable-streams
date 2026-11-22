@@ -7,8 +7,12 @@ import type { Producer, StreamMetadata } from './store.js'
 import { LiveReads } from './live.js'
 import type { LiveOptions } from './live.js'
 import type { StorageOptions } from './storage.js'
+import { PostgresSubscriptions } from './subscription-store.js'
+import { subscriptionRoute } from './subscription-protocol.js'
+import type { SubscriptionConfig } from './subscription-protocol.js'
+import type { SubscriptionOptions } from './subscriptions.js'
 
-export type Operation = 'create' | 'append' | 'read' | 'head' | 'delete'
+export type Operation = 'create' | 'append' | 'read' | 'head' | 'delete' | 'subscribe' | 'claim'
 export interface Principal {
   readonly tenantId: string
   readonly subject: string
@@ -20,6 +24,9 @@ export interface AuthorizationContext {
   readonly operation: Operation
   readonly path: string
   readonly request: Request
+  readonly selector?: { readonly pattern?: string; readonly streams: readonly string[] }
+  /** Normalized configuration, including delivery destinations, for subscribe. */
+  readonly subscription?: SubscriptionConfig
 }
 export interface ServerOptions {
   readonly postgres: { readonly pool: Pool; readonly schema?: string }
@@ -32,13 +39,14 @@ export interface ServerOptions {
   readonly allowedOrigins?: readonly string[]
   readonly live?: LiveOptions
   readonly storage?: StorageOptions
+  readonly subscriptions?: SubscriptionOptions
   readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly bodyTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
 }
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
   readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log' | 'tiered'; features: readonly string[] }>
-  readonly maintain: (options?: { readonly maxChunks?: number }) => Promise<{ frozen: number; sealed: number; retired: number }>
+  readonly maintain: (options?: { readonly maxChunks?: number; readonly maxSubscriptionWork?: number }) => Promise<{ frozen: number; sealed: number; retired: number; changes: number; deliveries: number; links: number }>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
 
@@ -133,6 +141,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage)
   const report = (error: unknown) => { try { options.onError?.(error) } catch { /* observer only */ } }
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
+  const subscriptions = options.subscriptions ? new PostgresSubscriptions(options.postgres.pool, options.postgres.schema ?? 'durable_streams', store, options.subscriptions, report) : undefined
   const pending = new Set<Promise<unknown>>()
   let closed = false
 
@@ -153,19 +162,32 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       if (closed) throw new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down')
       if (origin && !options.allowedOrigins?.includes(origin)) throw new StreamError(403, 'ORIGIN_REJECTED', 'Origin is not allowed')
       const url = new URL(request.url)
-      const path = streamPath(url, basePath)
+      const control = subscriptionRoute(url, basePath)
+      const path = control?.path ?? streamPath(url, basePath)
       if (path === null) throw new StreamError(404, 'ROUTE_NOT_FOUND', 'Route not found')
       if (request.method === 'OPTIONS') return respond(null, 204, { 'Access-Control-Allow-Methods': 'PUT, POST, GET, HEAD, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type, If-None-Match, Stream-Seq, Stream-TTL, Stream-Expires-At, Stream-Closed, Stream-Forked-From, Stream-Fork-Offset, Stream-Fork-Sub-Offset, Producer-Id, Producer-Epoch, Producer-Seq' })
       const operation = METHODS.get(request.method)
       if (!operation) return respond(null, 405, { Allow: 'PUT, POST, GET, HEAD, DELETE, OPTIONS' })
+      if (control) {
+        if (!subscriptions) throw new StreamError(501, 'SUBSCRIPTIONS_NOT_CONFIGURED', 'Configure subscription support for the control API')
+        let response: Response | undefined
+        if (control.action === 'jwks' && request.method === 'GET') response = await subscriptions.jwks()
+        else if (['callback', 'ack', 'release'].includes(control.action)) response = await subscriptions.scoped(request, control, () => readBody(request, maxAppendBytes, bodyTimeoutMs))
+        if (response) return respond(response.body, response.status, response.headers)
+      }
       const principal = await options.auth.authenticate(request)
       if (!principal || (principal.expiresAt !== undefined && principal.expiresAt <= Date.now())) throw new StreamError(401, 'UNAUTHENTICATED', 'Authentication required')
-      if (!principal.subject || !principal.tenantId || Buffer.byteLength(principal.tenantId) > 512
+      if (!principal.subject || !principal.tenantId || !principal.tenantId.isWellFormed() || !principal.subject.isWellFormed() || Buffer.byteLength(principal.tenantId) > 512
         || (principal.expiresAt !== undefined && !Number.isFinite(principal.expiresAt))) throw new Error('Authentication policy returned an invalid principal')
+      if (control && subscriptions) {
+        const response = await subscriptions.handle(request, control, principal, options.auth.authorize,
+          () => readBody(request, maxAppendBytes, bodyTimeoutMs), canonical?.href ?? `${url.origin}${basePath}`)
+        return respond(response.body, response.status, response.headers)
+      }
       if (!await options.auth.authorize({ principal, path, operation, request })) throw new StreamError(403, 'FORBIDDEN', 'Operation is not authorized')
       if (path.split('/')[0] === '__ds') {
-        throw new StreamError(501, 'FEATURE_NOT_IMPLEMENTED', 'Subscriptions are not implemented yet')
+        throw new StreamError(404, 'CONTROL_ROUTE_NOT_FOUND', 'Reserved control route not found')
       }
       const sourceHeader = request.headers.get('stream-forked-from')
       const forkOffset = request.headers.get('stream-fork-offset')
@@ -237,7 +259,13 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   return {
     maintain(input) {
       if (closed) return Promise.reject(new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down'))
-      const work = store.maintain(input)
+      const work = (async () => {
+        const maximum = input?.maxSubscriptionWork ?? 16
+        if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid subscription maintenance batch')
+        if (input?.maxChunks !== undefined && (!Number.isSafeInteger(input.maxChunks) || input.maxChunks < 1 || input.maxChunks > 128)) throw new RangeError('Invalid chunk maintenance batch')
+        const stats = subscriptions ? await subscriptions.maintain(maximum) : { changes: 0, deliveries: 0, links: 0 }
+        return { ...await store.maintain(input), ...stats }
+      })()
       pending.add(work)
       void work.finally(() => pending.delete(work)).catch(() => {})
       return work
@@ -248,11 +276,12 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       void response.finally(() => pending.delete(response)).catch(() => {})
       return response
     },
-    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', 'forks', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : [])] } },
+    async inspectHealth() { await store.assertReady(); await subscriptions?.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', 'forks', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : []), ...(subscriptions ? ['subscriptions'] : [])] } },
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true
       live?.close()
+      subscriptions?.close()
       let timer: ReturnType<typeof setTimeout> | undefined
       try { await Promise.race([Promise.allSettled([...pending]), new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs) })]) }
       finally { clearTimeout(timer) }

@@ -6,6 +6,7 @@ import { createDurableStreams } from '@samwillis/durable-streams-neon'
 import type { Principal } from '@samwillis/durable-streams-neon'
 import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
 import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
+import { parseSubscriptionKeyring } from '@samwillis/durable-streams-neon/subscriptions'
 
 function required(name: string): string {
   const value = process.env[name]
@@ -38,6 +39,7 @@ const streams = createDurableStreams({
   allowedOrigins: origins,
   ...(process.env.DS_PUBLIC_BASE_URL ? { publicBaseUrl: process.env.DS_PUBLIC_BASE_URL } : {}),
   storage: { objects },
+  subscriptions: { keyring: parseSubscriptionKeyring(required('DS_KEYRING_JSON')) },
   live: { notifier, longPollTimeoutMs: 25_000, fallbackIntervalMs: Number(process.env.DS_LIVE_FALLBACK_MS ?? '5000') },
   onError: (error) => console.error('Durable Streams request failed', error instanceof Error ? error.name : 'unknown'),
 })

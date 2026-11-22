@@ -28,6 +28,10 @@
     "./s3": {
       "types": "./dist/s3.d.ts",
       "import": "./dist/s3.js"
+    },
+    "./subscriptions": {
+      "types": "./dist/subscriptions.d.ts",
+      "import": "./dist/subscriptions.js"
     }
   },
   "files": [
@@ -74,6 +78,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1169.0",
     "@neon/realtime": "0.2.1",
+    "ipaddr.js": "2.5.0",
     "ws": "8.23.0"
   }
 }

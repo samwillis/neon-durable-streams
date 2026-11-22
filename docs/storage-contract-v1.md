@@ -1,6 +1,6 @@
 # Initial hot-log storage contract
 
-Implemented during M0/M1. This is an unreleased storage version; subscription dispatch and object reclamation remain unimplemented. Recursive and partial forks are covered in the [fork/lifecycle contract](forks-v1.md). Migration 0003 adds fork edges, logical cascade cleanup, and indexed expiration deadlines. Migration 0001 establishes the hot log and durable change outbox; migration 0002 adds the recoverable chunk manifest and storage binding. See [sealed storage v1](sealed-storage-v1.md).
+Implemented during M0/M1. This is an unreleased storage version; object reclamation remains unimplemented. Durable subscriptions and fan-out are covered by the [subscription contract](subscriptions-v1.md). Recursive and partial forks are covered in the [fork/lifecycle contract](forks-v1.md). Migration 0003 adds fork edges, logical cascade cleanup, and indexed expiration deadlines. Migration 0001 establishes the hot log and durable change outbox; migration 0002 adds the recoverable chunk manifest and storage binding. See [sealed storage v1](sealed-storage-v1.md).
 
 ## Identity and transactions
 
@@ -34,13 +34,13 @@ Expiry uses the database clock under the path/stream locks. Successful GET on a 
 
 ## Change outbox
 
-Every successful creation, new append, closure, deletion, and expiry writes a bounded record keyed by stream UUID and stream-local change version. Records contain before/after offsets and lifecycle kind. Duplicate writes do not create extra records. Subscription matching/fan-out and its registration handoff are pending; the outbox currently retains unprocessed intent and never marks it delivered.
+Every successful creation, new append, closure, deletion, and expiry writes a bounded record keyed by stream UUID and stream-local change version. Records contain before/after offsets and lifecycle kind. Duplicate writes do not create extra records. Migration 0004 adds durable subscription matching and bounded fan-out, serialized against registration by tenant registry locks. A processed record means its affected subscription state has been persisted; it does not mean that an external receiver has acknowledged delivery. The subscription contract defines registration barriers, per-stream ordering, fan-out checkpoints, and retained wake/retry state.
 
 ## Evidence and remaining qualification
 
 Tests cover exact arithmetic above JavaScript's safe integer limit, generated JSON/binary cases, concurrent creates/retries, rolled-back work, tenant isolation, expiry, ETags/closure, path recreation, fresh-process reads, and SIGKILL before versus after commit. A separate consumer test installs the packed npm artifact and verifies declarations, runtime exports, and SQL assets.
 
-Required CI runs against real Neon Postgres 18 and Realtime. Actual Realtime tests verify append-and-close ordering, EOF, tenant filtering, cancellation, and generation isolation with fallback polling set beyond the test deadline. Deployed Function ingress, object storage, full protocol coverage, format upgrades, and recovery/GC still require the qualification work in the implementation plan.
+Required CI runs against real Neon Postgres 18 and Realtime. Actual Realtime tests verify append-and-close ordering, EOF, tenant filtering, cancellation, and generation isolation with fallback polling set beyond the test deadline. Deployed Function ingress, Object Storage, and the full pinned protocol suite now pass against Neon. Format upgrades and recovery/GC still require the qualification work in the implementation plan.
 
 
 ## Live delivery

@@ -3,3 +3,4 @@ export type { ServerOptions, DurableStreamsServer, Principal, Operation, Authori
 export { StreamError, StorageCompatibilityError } from './errors.js'
 export type { LiveOptions } from './live.js'
 export type { ChunkStorage, StorageOptions } from './storage.js'
+export type { SubscriptionOptions } from './subscriptions.js'

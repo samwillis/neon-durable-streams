@@ -6,13 +6,14 @@ import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
 import { migrate } from '../dist/migrations.js'
 import { createS3ChunkStorage } from '../dist/s3.js'
+import { initializeSubscriptions, parseSubscriptionKeyring } from '../dist/subscriptions.js'
 
 const projectId = process.env.NEON_PROJECT_ID
 const apiKey = process.env.NEON_API_KEY
 const branchId = process.env.NEON_TEST_BRANCH_ID
 const stateFile = process.env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json'
 const outputFile = process.env.NEON_TEST_FUNCTION_ENV_FILE ?? '.env.neon.function'
-if (!projectId || !apiKey || !branchId || !process.env.TEST_DATABASE_URL_UNPOOLED || !process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET || !process.env.NEON_TEST_BUCKET) throw new Error('Complete isolated Neon test environment required before Function deployment')
+if (!projectId || !apiKey || !branchId || !process.env.TEST_DATABASE_URL_UNPOOLED || !process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET || !process.env.NEON_TEST_BUCKET || !process.env.DURABLE_STREAMS_KEYRING) throw new Error('Complete isolated Neon test environment required before Function deployment')
 const state = JSON.parse(await readFile(stateFile, 'utf8'))
 if (state.projectId !== projectId || state.branchId !== branchId || !state.name.startsWith('ds-test-')) throw new Error('Function deployment requires the recorded isolated test branch')
 const neon = createNeonClient({ apiKey, throwOnError: true })
@@ -28,9 +29,10 @@ if (!/^ds_test_[a-f0-9]{32}$/.test(schema)) throw new Error('Invalid Function te
 const userKey = previous?.TEST_FUNCTION_API_KEY ?? secret()
 const otherKey = previous?.TEST_FUNCTION_OTHER_KEY ?? secret()
 const maintenanceKey = previous?.TEST_FUNCTION_MAINTENANCE_KEY ?? secret()
+if (process.env.GITHUB_ACTIONS === 'true') for (const value of [userKey, otherKey, maintenanceKey]) console.log(`::add-mask::${value}`)
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
 const direct = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED, max: 1 })
-try { await migrate(direct, { schema, storageIdentity: objects.identity }) }
+try { await migrate(direct, { schema, storageIdentity: objects.identity }); await initializeSubscriptions(direct, { schema, keyring: parseSubscriptionKeyring(process.env.DURABLE_STREAMS_KEYRING) }) }
 finally { await direct.end(); objects.close() }
 const bundle = await build({ entryPoints: ['examples/neon-function/index.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', write: false,
   external: ['pg-native', 'bufferutil', 'utf-8-validate'],
@@ -43,6 +45,7 @@ const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'dur
   zip: new File([zipSync({ 'index.mjs': code })], 'durable-streams.zip', { type: 'application/zip' }),
   environment: JSON.stringify({ DS_SCHEMA: schema, DS_BUCKET: process.env.NEON_TEST_BUCKET,
     DS_REALTIME_URL: process.env.NEON_REALTIME_URL, DS_REALTIME_SECRET: process.env.NEON_REALTIME_SECRET,
+    DS_KEYRING_JSON: process.env.DURABLE_STREAMS_KEYRING,
     DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
     DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash,
     DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: '60000' }),

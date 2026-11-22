@@ -14,6 +14,9 @@ importers:
       '@neon/realtime':
         specifier: 0.2.1
         version: 0.2.1(ws@8.23.0)
+      ipaddr.js:
+        specifier: 2.5.0
+        version: 2.5.0
       ws:
         specifier: 8.23.0
         version: 8.23.0
@@ -1086,6 +1089,10 @@ packages:
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
+
+  ipaddr.js@2.5.0:
+    resolution: {integrity: sha512-aq+t5NAc+cS6rZQQVWC2x98CPqGtKKTMDd4Gaodv0wShnItdKg/51djkGJ1hqH+Oy0ivDftCbSLCQob8zso01w==}
+    engines: {node: '>= 10'}
 
   is-docker@3.0.0:
     resolution: {integrity: sha512-eljcgEDlEns/7AXFosB5K/2nCM4P7FQPkGc/DWLy5rmFEWvZayGrik1d9/QIY5nJ4f9YsVvBkA6kJpHn9rISdQ==}
@@ -2627,6 +2634,8 @@ snapshots:
   human-signals@8.0.1: {}
 
   ieee754@1.2.1: {}
+
+  ipaddr.js@2.5.0: {}
 
   is-docker@3.0.0: {}
 

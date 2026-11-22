@@ -9,10 +9,13 @@ import { createDurableStreams } from '../../src/index.js'
 import { migrate } from '../../src/migrations.js'
 import { createNeonRealtimeNotifier } from '../../src/neon.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
+import { initializeSubscriptions, parseSubscriptionKeyring } from '../../src/subscriptions.js'
 
 if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to disposable Postgres 18')
 if (!process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET) throw new Error('Full conformance requires real Neon Realtime credentials')
 if (!process.env.AWS_ENDPOINT_URL_S3 || !process.env.AWS_REGION || !process.env.NEON_TEST_BUCKET) throw new Error('Full conformance requires real Neon Object Storage credentials')
+if (!process.env.DURABLE_STREAMS_KEYRING) throw new Error('Full conformance requires a persistent subscription keyring')
+const keyring = parseSubscriptionKeyring(process.env.DURABLE_STREAMS_KEYRING)
 const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10, connectionTimeoutMillis: 5000 })
 const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? process.env.TEST_DATABASE_URL, max: 1, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
@@ -24,6 +27,7 @@ const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3
 const handler = createDurableStreams({ postgres: { pool, schema },
   live: { notifier, longPollTimeoutMs: 5000 },
   storage: { objects, targetChunkBytes: 4096, maxChunkFrames: 16 },
+  subscriptions: { keyring, allowLocalhostWebhooks: true },
   allowedOrigins: ['https://example.com'],
   // Explicit anonymous access is confined to the disposable test fixture.
   auth: { authenticate: () => ({ tenantId: 'conformance', subject: 'fixture' }), authorize: () => true },
@@ -74,6 +78,7 @@ const http = createServer(async (incoming, outgoing) => {
 
 beforeAll(async () => {
   await migrate(migrationPool, { schema, storageIdentity: objects.identity })
+  await initializeSubscriptions(migrationPool, { schema, keyring })
   http.listen(0, '127.0.0.1')
   await once(http, 'listening')
   const address = http.address()

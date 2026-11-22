@@ -1,0 +1,97 @@
+CREATE TABLE __SCHEMA__.webhook_signing_keys (
+  kid text PRIMARY KEY,
+  public_jwk jsonb NOT NULL CHECK (NOT (public_jwk ? 'd')),
+  private_key bytea NOT NULL,
+  active boolean NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE UNIQUE INDEX webhook_one_active_key ON __SCHEMA__.webhook_signing_keys (active) WHERE active;
+
+CREATE TABLE __SCHEMA__.subscriptions (
+  id uuid PRIMARY KEY,
+  tenant_id text COLLATE "C" NOT NULL,
+  name text COLLATE "C" NOT NULL,
+  config jsonb NOT NULL,
+  config_hash text NOT NULL,
+  pattern_regex text,
+  public_base_url text NOT NULL,
+  generation bigint NOT NULL DEFAULT 0 CHECK (generation BETWEEN 0 AND 9007199254740991),
+  current_wake uuid,
+  holder text,
+  lease_until timestamptz,
+  retry_count integer NOT NULL DEFAULT 0 CHECK (retry_count >= 0),
+  retry_at timestamptz,
+  next_work_at timestamptz,
+  member_count integer NOT NULL DEFAULT 0 CHECK (member_count >= 0),
+  blocked_members integer NOT NULL DEFAULT 0 CHECK (blocked_members >= 0),
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  deleted_at timestamptz,
+  UNIQUE (tenant_id, id)
+);
+CREATE UNIQUE INDEX subscription_active_name ON __SCHEMA__.subscriptions (tenant_id, name) WHERE deleted_at IS NULL;
+CREATE INDEX subscription_work_due ON __SCHEMA__.subscriptions (next_work_at, id) WHERE deleted_at IS NULL AND next_work_at IS NOT NULL;
+CREATE INDEX subscriptions_tenant ON __SCHEMA__.subscriptions (tenant_id, id) WHERE deleted_at IS NULL;
+
+CREATE TABLE __SCHEMA__.subscription_members (
+  subscription_id uuid NOT NULL,
+  tenant_id text COLLATE "C" NOT NULL,
+  path text COLLATE "C" NOT NULL,
+  stream_id uuid,
+  explicit_link boolean NOT NULL DEFAULT false,
+  glob_link boolean NOT NULL DEFAULT false,
+  acked_offset text COLLATE "C" NOT NULL,
+  PRIMARY KEY (subscription_id, path),
+  FOREIGN KEY (tenant_id, subscription_id) REFERENCES __SCHEMA__.subscriptions (tenant_id, id),
+  FOREIGN KEY (tenant_id, stream_id) REFERENCES __SCHEMA__.streams (tenant_id, id),
+  CHECK (explicit_link OR glob_link),
+  CHECK (acked_offset ~ '^[0-9]{16}_[0-9]{16}$')
+);
+CREATE INDEX subscription_members_stream ON __SCHEMA__.subscription_members (stream_id, subscription_id);
+
+CREATE TABLE __SCHEMA__.subscription_wakes (
+  id uuid PRIMARY KEY,
+  subscription_id uuid NOT NULL,
+  tenant_id text COLLATE "C" NOT NULL,
+  generation bigint NOT NULL CHECK (generation BETWEEN 1 AND 9007199254740991),
+  kind text NOT NULL CHECK (kind IN ('webhook', 'pull-wake')),
+  token_hash bytea,
+  token_cipher bytea,
+  state text NOT NULL CHECK (state IN ('ready', 'delivered', 'completed', 'expired', 'fenced')),
+  delivery_claim uuid,
+  delivery_until timestamptz,
+  pull_published boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  UNIQUE (subscription_id, generation),
+  UNIQUE (subscription_id, id),
+  FOREIGN KEY (tenant_id, subscription_id) REFERENCES __SCHEMA__.subscriptions (tenant_id, id),
+  CHECK ((token_hash IS NULL) = (token_cipher IS NULL))
+);
+ALTER TABLE __SCHEMA__.subscriptions ADD CONSTRAINT current_wake_fk
+  FOREIGN KEY (id, current_wake) REFERENCES __SCHEMA__.subscription_wakes (subscription_id, id);
+
+CREATE TABLE __SCHEMA__.subscription_wake_streams (
+  wake_id uuid NOT NULL REFERENCES __SCHEMA__.subscription_wakes (id),
+  tenant_id text COLLATE "C" NOT NULL,
+  path text COLLATE "C" NOT NULL,
+  stream_id uuid,
+  link_type text NOT NULL CHECK (link_type IN ('explicit', 'glob')),
+  acked_offset text COLLATE "C" NOT NULL,
+  tail_offset text COLLATE "C" NOT NULL,
+  PRIMARY KEY (wake_id, path),
+  FOREIGN KEY (tenant_id, stream_id) REFERENCES __SCHEMA__.streams (tenant_id, id),
+  CHECK (acked_offset <= tail_offset)
+);
+
+CREATE TABLE __SCHEMA__.subscription_pending_links (
+  subscription_id uuid NOT NULL,
+  tenant_id text COLLATE "C" NOT NULL,
+  stream_id uuid NOT NULL,
+  before_offset text COLLATE "C" NOT NULL,
+  due_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  PRIMARY KEY (subscription_id, stream_id),
+  FOREIGN KEY (tenant_id, subscription_id) REFERENCES __SCHEMA__.subscriptions (tenant_id, id),
+  FOREIGN KEY (tenant_id, stream_id) REFERENCES __SCHEMA__.streams (tenant_id, id)
+);
+CREATE INDEX subscription_pending_links_due ON __SCHEMA__.subscription_pending_links (due_at, subscription_id, stream_id);
+ALTER TABLE __SCHEMA__.stream_changes ADD COLUMN fanout_after uuid;
+CREATE INDEX stream_changes_stream_pending ON __SCHEMA__.stream_changes (stream_id, version) WHERE NOT processed;

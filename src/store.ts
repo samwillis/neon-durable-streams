@@ -116,7 +116,7 @@ export class PostgresStreamStore {
       COALESCE(s.expires_at <= clock_timestamp() OR
         s.accessed_at + s.ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
       FROM ${this.schema}.streams s
-      WHERE s.id = $1 FOR UPDATE`, [id])
+      WHERE s.id = $1 FOR NO KEY UPDATE`, [id])
     return result.rows[0]
   }
 
@@ -399,6 +399,51 @@ export class PostgresStreamStore {
 
   async head(tenant: string, path: string): Promise<StreamMetadata> {
     return this.withStream(tenant, path, async (_client, stream) => stream)
+  }
+
+  /** Only the subscription coordinator calls this inside its own transaction.
+   * Wake publication and the subscription's generation commit atomically. */
+  async appendWake(client: PoolClient, tenant: string, path: string, events: readonly Record<string, unknown>[]): Promise<void> {
+    const stream = await this.lock(client, tenant, path)
+    if (!stream || stream.deleted_at || stream.expired || stream.closed || mediaType(stream.content_type) !== 'application/json') throw new StreamError(409, 'WAKE_STREAM_UNAVAILABLE', 'Create an open JSON wake stream before issuing wakes')
+    let next = stream.tail_offset
+    let parts: Buffer[] = [], ends: number[] = [], bytes = 0
+    const flush = async () => {
+      if (!bytes) return
+      const end = advanceOffset(next, bytes)
+      await this.insertAppend(client, stream.id, next, end, Buffer.concat(parts, bytes), ends)
+      next = end
+      parts = []; ends = []; bytes = 0
+    }
+    for (const event of events) {
+      const fragment = Buffer.from(`${JSON.stringify(event)},`)
+      this.checkPayload(fragment)
+      if (bytes + fragment.length > this.maxStoredBytes) await flush()
+      parts.push(fragment); bytes += fragment.length; ends.push(bytes)
+    }
+    await flush()
+    if (next === stream.tail_offset) return
+    const result = await client.query<StreamMetadata>(`UPDATE ${this.schema}.streams SET tail_offset = $2, change_version = change_version + 1,
+      accessed_at = clock_timestamp() WHERE id = $1 RETURNING *`, [stream.id, next])
+    await this.change(client, result.rows[0]!, stream.tail_offset, 'appended')
+    if (stream.ttl_seconds !== null) await this.scheduleExpiry(client, stream)
+    await this.chunks?.freeze(client, stream.id)
+  }
+
+  async validateAckBoundaries(client: PoolClient, values: readonly { stream_id: string; offset: string }[]): Promise<void> {
+    if (!values.length) return
+    const invalid = await client.query(`${this.lineageForAcks()} SELECT r.stream_id FROM roots r WHERE r.offset <> $2 AND NOT EXISTS (
+      SELECT 1 FROM lineage l JOIN ${this.schema}.appends a ON a.stream_id = l.id WHERE l.root = r.stream_id AND a.end_offset = r.offset AND a.end_offset <= l.cap
+    ) LIMIT 1`, [JSON.stringify(values), ZERO_OFFSET])
+    if (invalid.rowCount) throw new StreamError(409, 'INVALID_OFFSET', 'Ack offset is not a returned boundary')
+  }
+
+  private lineageForAcks(): string {
+    return `WITH RECURSIVE roots AS (SELECT * FROM jsonb_to_recordset($1::jsonb) AS x(stream_id uuid, "offset" text)), lineage AS (
+      SELECT r.stream_id AS root, s.id, s.source_id, s.fork_offset, s.tail_offset AS cap, 0 AS depth FROM roots r JOIN ${this.schema}.streams s ON s.id = r.stream_id
+      UNION ALL SELECT l.root, p.id, p.source_id, p.fork_offset, LEAST(l.cap, l.fork_offset), l.depth + 1
+      FROM lineage l JOIN ${this.schema}.streams p ON p.id = l.source_id WHERE l.depth < 128
+    )`
   }
 
   async read(tenant: string, path: string, offset: string): Promise<ReadResult> {

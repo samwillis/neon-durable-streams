@@ -2,7 +2,7 @@
 
 This consumer embeds the library in a Node.js 24 Neon Function. It owns the pool, Realtime adapter, S3 adapter, authentication policy, shutdown handling, and maintenance routes. The library never provisions resources or runs migrations while handling a request.
 
-The example demonstrates deployment wiring. The package remains unreleased while subscriptions, recovery/adoption, reclamation, and production qualification are incomplete.
+The example demonstrates deployment wiring. The package remains unreleased while recovery/adoption, reclamation, and production qualification are incomplete.
 
 ## Environment
 
@@ -13,6 +13,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 | `DS_SCHEMA` | Dedicated, explicitly migrated library schema |
 | `DS_BUCKET` | Private sealed-chunk bucket |
 | `DS_REALTIME_URL`, `DS_REALTIME_SECRET` | Branch Realtime endpoint and backend secret |
+| `DS_KEYRING_JSON` | Persistent wrapping keyring (`currentKeyId`, base64 `keys`) for signing keys and wake tokens |
 | `DS_AUTH_JSON` | JSON array of `{ key, tenantId, subject }`; keys have at least 32 characters |
 | `DS_MAINTENANCE_KEY` | Separate random server-side credential for manual maintenance |
 | `DS_MAINTENANCE_TRIGGER_NAME` | Exact name of the configured scheduled recovery trigger |
@@ -23,7 +24,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 
 Replace the example API-key policy with the consuming application's identity and permission checks as needed. The example gives each verified key all operations within its configured tenant. Request parameters cannot choose that tenant. Keep keys in server-side secret storage; browser clients should use the application's short-lived identity credentials.
 
-Before deployment, use a **direct** connection to call `migrate(pool, { schema, storageIdentity: objects.identity })`. The S3 adapter must target the same branch endpoint, region, and bucket as the Function. Storage binding rejects a mismatched branch until an explicit recovery/adoption procedure is available.
+Before deployment, use a **direct** connection to call `migrate(pool, { schema, storageIdentity: objects.identity })`, then explicitly call `initializeSubscriptions(pool, { schema, keyring })`. The S3 adapter must target the same branch endpoint, region, and bucket as the Function. Storage binding rejects a mismatched branch until an explicit recovery/adoption procedure is available.
 
 Bundle `index.ts` and its installed dependencies as Node.js 24 ESM. The repository's `scripts/neon-test-function.mjs` shows the concrete bundle/ZIP/deploy flow using the Neon SDK, passes secrets as a structured encrypted deployment environment, polls build readiness, and verifies authenticated runtime health against the bundle hash. It only accepts a recorded isolated test branch. Consumers should use their normal deployment pipeline and migration controls for production.
 

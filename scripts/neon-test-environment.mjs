@@ -1,4 +1,5 @@
 import { createNeonClient } from '@neon/sdk'
+import { randomBytes } from 'node:crypto'
 import { appendFile, open, readFile, unlink, writeFile } from 'node:fs/promises'
 
 // No application imports: this is a trusted CI/development control-plane tool.
@@ -26,6 +27,7 @@ async function storageEnvironment(branchId) {
 }
 async function output(values, append = false) {
   for (const value of Object.values(values)) mask(value)
+  if (values.DURABLE_STREAMS_KEYRING) for (const value of Object.values(JSON.parse(values.DURABLE_STREAMS_KEYRING).keys)) mask(value)
   const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
   if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
   else if (append) await appendFile(outputFile, environment, { mode: 0o600 })
@@ -90,6 +92,7 @@ if (operation === 'delete') {
   const values = { TEST_DATABASE_URL: verified(pooled), TEST_DATABASE_URL_UNPOOLED: verified(direct),
     NEON_REALTIME_URL: realtime.invocation_url, NEON_REALTIME_SECRET: key.secret,
     NEON_TEST_BRANCH_ID: branch.id, NEON_TEST_PROJECT_ID: projectId,
+    DURABLE_STREAMS_KEYRING: JSON.stringify({ currentKeyId: 'v1', keys: { v1: randomBytes(32).toString('base64') } }),
     ...await storageEnvironment(branch.id),
   }
   await output(values)
