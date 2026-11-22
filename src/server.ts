@@ -38,7 +38,7 @@ export interface ServerOptions {
 export interface DurableStreamsServer {
   readonly fetch: (request: Request) => Promise<Response>
   readonly inspectHealth: () => Promise<{ ready: boolean; mode: 'hot-log' | 'tiered'; features: readonly string[] }>
-  readonly maintain: (options?: { readonly maxChunks?: number }) => Promise<{ frozen: number; sealed: number }>
+  readonly maintain: (options?: { readonly maxChunks?: number }) => Promise<{ frozen: number; sealed: number; retired: number }>
   readonly close: (options?: { readonly deadlineMs?: number }) => Promise<void>
 }
 
@@ -164,13 +164,29 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       if (!principal.subject || !principal.tenantId || Buffer.byteLength(principal.tenantId) > 512
         || (principal.expiresAt !== undefined && !Number.isFinite(principal.expiresAt))) throw new Error('Authentication policy returned an invalid principal')
       if (!await options.auth.authorize({ principal, path, operation, request })) throw new StreamError(403, 'FORBIDDEN', 'Operation is not authorized')
-      if (path.split('/')[0] === '__ds'
-        || ['stream-forked-from', 'stream-fork-offset', 'stream-fork-sub-offset'].some((h) => request.headers.has(h))) {
-        throw new StreamError(501, 'FEATURE_NOT_IMPLEMENTED', 'Forks and subscriptions are not implemented yet')
+      if (path.split('/')[0] === '__ds') {
+        throw new StreamError(501, 'FEATURE_NOT_IMPLEMENTED', 'Subscriptions are not implemented yet')
       }
+      const sourceHeader = request.headers.get('stream-forked-from')
+      const forkOffset = request.headers.get('stream-fork-offset')
+      const subOffsetHeader = request.headers.get('stream-fork-sub-offset')
+      if ((sourceHeader !== null || forkOffset !== null || subOffsetHeader !== null) && request.method !== 'PUT') throw new StreamError(400, 'INVALID_FORK_HEADERS', 'Fork headers require PUT')
+      if (sourceHeader === null && (forkOffset !== null || subOffsetHeader !== null)) throw new StreamError(400, 'MISSING_FORK_SOURCE', 'Fork position requires Stream-Forked-From')
       if (request.method === 'PUT') {
+        let sourcePath: string | undefined
+        if (sourceHeader !== null) {
+          if (!sourceHeader.startsWith('/') || sourceHeader.startsWith('//') || sourceHeader.includes('?') || sourceHeader.includes('#')) throw new StreamError(400, 'INVALID_FORK_SOURCE', 'Fork source must be a path on this server')
+          sourcePath = streamPath(new URL(sourceHeader, url.origin), basePath) ?? undefined
+          if (!sourcePath || sourcePath.split('/')[0] === '__ds') throw new StreamError(400, 'INVALID_FORK_SOURCE', 'Fork source must be an application stream')
+          if (!await options.auth.authorize({ principal, path: sourcePath, operation: 'read', request })) throw new StreamError(403, 'FORBIDDEN', 'Source read is not authorized')
+        }
+        if (subOffsetHeader !== null && (!/^\d+$/.test(subOffsetHeader) || !Number.isSafeInteger(Number(subOffsetHeader)))) throw new StreamError(400, 'INVALID_SUB_OFFSET', 'Sub-offset must be a nonnegative safe integer')
         const body = await readBody(request, maxAppendBytes, bodyTimeoutMs)
-        const result = await store.create(principal.tenantId, path, { body, contentType: contentType(request), closed: request.headers.get('stream-closed')?.toLowerCase() === 'true', ...createExpiry(request.headers) })
+        const config = { body, closed: request.headers.get('stream-closed')?.toLowerCase() === 'true', ...createExpiry(request.headers) }
+        const result = sourcePath
+          ? await store.createFork(principal.tenantId, path, { ...config, sourcePath, subOffset: Number(subOffsetHeader ?? '0'),
+            ...(forkOffset !== null ? { offset: forkOffset } : {}), ...(request.headers.has('content-type') ? { contentType: contentType(request) } : {}) })
+          : await store.create(principal.tenantId, path, { ...config, contentType: contentType(request) })
         const headers = metadataHeaders(result.stream)
         if (result.created) headers.set('Location', canonical ? `${canonical.href}/${url.pathname.slice(basePath.length + 1)}` : new URL(url.pathname, url.origin).href)
         return respond(null, result.created ? 201 : 200, headers)
@@ -232,7 +248,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       void response.finally(() => pending.delete(response)).catch(() => {})
       return response
     },
-    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : [])] } },
+    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: options.storage ? 'tiered' : 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', 'forks', ...(live ? ['long-poll', 'sse'] : []), ...(options.storage ? ['sealed-storage'] : [])] } },
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true

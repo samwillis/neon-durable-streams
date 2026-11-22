@@ -8,6 +8,7 @@ import { transaction } from './transaction.js'
 import { MIGRATION_IDS } from './migrations.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions, StoredFrame } from './storage.js'
+import type { ChunkFrame } from './chunk-codec.js'
 
 export interface Producer {
   readonly id: string
@@ -27,6 +28,13 @@ export interface StreamMetadata extends QueryResultRow {
   last_seq: string | null
   ttl_seconds: number | null
   expires_at: Date | null
+  deleted_at: Date | null
+  source_id: string | null
+  fork_offset: string | null
+  fork_sub_offset: string
+  fork_depth: number
+  edge_active: boolean
+  ref_count: number
 }
 
 interface LockedStream extends StreamMetadata { expired: boolean }
@@ -44,6 +52,12 @@ export interface AppendOptions {
   readonly close: boolean
   readonly producer?: Producer
   readonly sequence?: string
+}
+export interface ForkOptions extends Omit<CreateOptions, 'contentType'> {
+  readonly contentType?: string
+  readonly sourcePath: string
+  readonly offset?: string
+  readonly subOffset: number
 }
 
 export interface AppendResult {
@@ -102,7 +116,7 @@ export class PostgresStreamStore {
       COALESCE(s.expires_at <= clock_timestamp() OR
         s.accessed_at + s.ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
       FROM ${this.schema}.streams s
-      WHERE s.id = $1 AND s.deleted_at IS NULL FOR UPDATE`, [id])
+      WHERE s.id = $1 FOR UPDATE`, [id])
     return result.rows[0]
   }
 
@@ -114,25 +128,44 @@ export class PostgresStreamStore {
 
   private async retire(client: PoolClient, stream: StreamMetadata, kind: 'deleted' | 'expired'): Promise<void> {
     const result = await client.query<StreamMetadata>(`UPDATE ${this.schema}.streams
-      SET deleted_at = clock_timestamp(), change_version = change_version + 1 WHERE id = $1 RETURNING *`, [stream.id])
-    await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = NULL WHERE tenant_id = $1 AND path = $2 AND active_stream_id = $3`,
-      [stream.tenant_id, stream.path, stream.id])
+      SET deleted_at = clock_timestamp(), change_version = change_version + 1, cleanup_pending = ref_count > 0 WHERE id = $1 RETURNING *`, [stream.id])
+    if (stream.ttl_seconds !== null || stream.expires_at !== null) await client.query(`DELETE FROM ${this.schema}.stream_expirations WHERE stream_id = $1`, [stream.id])
+    if (!stream.ref_count) await this.detach(client, result.rows[0]!)
     await this.change(client, result.rows[0]!, stream.tail_offset, kind)
+  }
+
+  /** Own path/stream are locked. Ancestor updates only follow the acyclic edge;
+   * ancestor path cleanup is a separate transaction, never a reverse path lock. */
+  private async detach(client: PoolClient, stream: StreamMetadata): Promise<void> {
+    await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = NULL WHERE tenant_id = $1 AND path = $2 AND active_stream_id = $3`, [stream.tenant_id, stream.path, stream.id])
+    await client.query(`UPDATE ${this.schema}.streams SET cleanup_pending = false, edge_active = false WHERE id = $1`, [stream.id])
+    if (stream.source_id && stream.edge_active) {
+      const parent = await client.query(`UPDATE ${this.schema}.streams SET ref_count = ref_count - 1 WHERE id = $1 AND ref_count > 0 RETURNING id`, [stream.source_id])
+      if (!parent.rowCount) throw new Error('Fork reference invariant failed')
+    }
+  }
+
+  private async scheduleExpiry(client: PoolClient, stream: StreamMetadata): Promise<void> {
+    if (stream.ttl_seconds === null && stream.expires_at === null) return
+    await client.query(`INSERT INTO ${this.schema}.stream_expirations (stream_id, due_at)
+      SELECT id, COALESCE(expires_at, accessed_at + ttl_seconds * interval '1 second') FROM ${this.schema}.streams WHERE id = $1
+      ON CONFLICT (stream_id) DO UPDATE SET due_at = EXCLUDED.due_at`, [stream.id])
   }
 
   private async withStream<T>(tenant: string, path: string, work: (client: PoolClient, stream: LockedStream) => Promise<T>): Promise<T> {
     await this.assertReady()
     const outcome = await transaction(this.pool, {}, async (client) => {
       const stream = await this.lock(client, tenant, path)
-      if (!stream) return { found: false } as const
+      if (!stream) return { found: false, status: 404 } as const
+      if (stream.deleted_at) return { found: false, status: 410 } as const
       if (stream.expired) {
         await this.retire(client, stream, 'expired')
-        return { found: false } as const
+        return { found: false, status: stream.ref_count ? 410 : 404 } as const
       }
       return { found: true, value: await work(client, stream) } as const
     })
     // Missing/expired is reported after committing an expiry transition.
-    if (!outcome.found) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream not found')
+    if (!outcome.found) throw new StreamError(outcome.status, outcome.status === 410 ? 'STREAM_GONE' : 'STREAM_NOT_FOUND', 'Stream is unavailable')
     return outcome.value
   }
 
@@ -140,13 +173,18 @@ export class PostgresStreamStore {
     await this.assertReady()
     const payload = preparePayload(options.body, options.contentType, true)
     this.checkPayload(payload.bytes)
-    return transaction(this.pool, {}, async (client) => {
+    const outcome = await transaction(this.pool, {}, async (client) => {
       await client.query(`INSERT INTO ${this.schema}.paths (tenant_id, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [tenant, path])
       await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = $2 FOR UPDATE`, [tenant, path])
       let existing = await this.lock(client, tenant, path)
-      if (existing?.expired) { await this.retire(client, existing, 'expired'); existing = undefined }
+      if (existing?.deleted_at) throw new StreamError(409, 'STREAM_RETAINED', 'Stream has active forks')
+      if (existing?.expired) {
+        await this.retire(client, existing, 'expired')
+        if (existing.ref_count) return { error: new StreamError(409, 'STREAM_RETAINED', 'Stream has active forks') } as const
+        existing = undefined
+      }
       if (existing) {
-        if (mediaType(existing.content_type) !== mediaType(options.contentType) || existing.closed !== options.closed
+        if (existing.source_id !== null || mediaType(existing.content_type) !== mediaType(options.contentType) || existing.closed !== options.closed
           || existing.ttl_seconds !== (options.ttlSeconds ?? null)
           || (existing.expires_at?.toISOString() ?? null) !== (options.expiresAt?.toISOString() ?? null)) {
           throw new StreamError(409, 'CONFIGURATION_MISMATCH', 'Stream configuration differs')
@@ -163,13 +201,145 @@ export class PostgresStreamStore {
       await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = $3 WHERE tenant_id = $1 AND path = $2`, [tenant, path, id])
       if (payload.bytes.length) await this.insertAppend(client, id, ZERO_OFFSET, tail, payload.bytes, payload.messageEnds)
       await this.change(client, stream, ZERO_OFFSET, 'created')
+      await this.scheduleExpiry(client, stream)
       await this.chunks?.freeze(client, id)
       return { stream, created: true }
     })
+    if ('error' in outcome) throw outcome.error
+    return outcome
   }
 
   private checkPayload(bytes: Uint8Array): void {
     if (bytes.byteLength > this.maxStoredBytes) throw new StreamError(413, 'PAYLOAD_TOO_LARGE', 'Stored append exceeds configured limit')
+  }
+
+  /** Each ancestor contributes only its fixed inherited range. No path lookup
+   * or current source lifecycle state can change an existing fork's view. */
+  private lineage(): string {
+    return `WITH RECURSIVE lineage AS (
+      SELECT id, tail_offset AS cap, source_id, fork_offset, 0 AS depth FROM ${this.schema}.streams WHERE id = $1
+      UNION ALL
+      SELECT p.id, LEAST(l.cap, l.fork_offset), p.source_id, p.fork_offset, l.depth + 1
+      FROM lineage l JOIN ${this.schema}.streams p ON p.id = l.source_id WHERE l.depth < 128
+    )`
+  }
+
+  private async boundary(client: PoolClient, stream: StreamMetadata, offset: string): Promise<void> {
+    if (offset > stream.tail_offset) throw new StreamError(400, 'OFFSET_BEYOND_TAIL', 'Offset exceeds stream tail')
+    if (offset === ZERO_OFFSET || offset === stream.tail_offset) return
+    const result = await client.query(`${this.lineage()}
+      SELECT 1 FROM lineage l JOIN ${this.schema}.appends a ON a.stream_id = l.id
+      WHERE a.end_offset = $2 AND a.end_offset <= l.cap LIMIT 1`, [stream.id, offset])
+    if (!result.rowCount) throw new StreamError(400, 'OFFSET_NOT_BOUNDARY', 'Offset is not a returned boundary')
+  }
+
+  private async framePlan(client: PoolClient, id: string, start: string, limit = 16, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
+    const result = await client.query<StoredFrame>(`${this.lineage()}, candidates AS (
+        SELECT f.* FROM lineage l CROSS JOIN LATERAL (
+          SELECT stream_id, end_offset, payload_bytes FROM ${this.schema}.appends
+          WHERE stream_id = l.id AND end_offset > $2 AND end_offset <= l.cap ORDER BY end_offset LIMIT $4
+        ) f ORDER BY end_offset LIMIT $4
+      ), bounded AS (SELECT stream_id, end_offset, sum(payload_bytes) OVER (ORDER BY end_offset) AS bytes FROM candidates)
+      SELECT a.stream_id, a.start_offset, a.end_offset, a.payload, a.payload_bytes, a.message_ends, a.chunk_id, c.object_key, c.sha256, c.encoded_bytes
+      FROM bounded b JOIN ${this.schema}.appends a ON a.stream_id = b.stream_id AND a.end_offset = b.end_offset
+      LEFT JOIN ${this.schema}.chunks c ON c.id = a.chunk_id WHERE b.bytes <= $3 ORDER BY a.end_offset`, [id, start, bytes, limit])
+    return result.rows
+  }
+
+  private async materialize(frames: readonly StoredFrame[]): Promise<readonly ChunkFrame[]> {
+    if (this.chunks) return this.chunks.materialize(frames)
+    return frames.map((frame) => {
+      if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
+      return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
+    })
+  }
+
+  async createFork(tenant: string, path: string, options: ForkOptions): Promise<{ stream: StreamMetadata; created: boolean }> {
+    await this.assertReady()
+    if (options.offset !== undefined) parseOffset(options.offset)
+    if (!Number.isSafeInteger(options.subOffset) || options.subOffset < 0) throw new StreamError(400, 'INVALID_SUB_OFFSET', 'Invalid sub-offset')
+    type Prefix = { sourceId: string; anchor: string; frame: ChunkFrame }
+    type Outcome = { stream: StreamMetadata; created: boolean } | { error: StreamError }
+      | { prepare: { sourceId: string; anchor: string; contentType: string; frames: readonly StoredFrame[] } }
+    const execute = (prefix?: Prefix): Promise<Outcome> => transaction(this.pool, {}, async (client) => {
+      // Lock every namespace claim before locking any stream row. Inserts obey
+      // the same byte ordering, including when both paths are initially absent.
+      const paths = [...new Set([path, options.sourcePath])].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
+      for (const claim of paths) await client.query(`INSERT INTO ${this.schema}.paths (tenant_id, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [tenant, claim])
+      await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = ANY($2::text[]) ORDER BY path FOR UPDATE`, [tenant, paths])
+      let existing = await this.lock(client, tenant, path)
+      if (existing?.deleted_at) throw new StreamError(409, 'STREAM_RETAINED', 'Target stream has active forks')
+      if (existing?.expired) {
+        await this.retire(client, existing, 'expired')
+        if (existing.ref_count) return { error: new StreamError(409, 'STREAM_RETAINED', 'Target stream has active forks') }
+        existing = undefined
+      }
+      const source = await this.lock(client, tenant, options.sourcePath)
+      if (existing) {
+        const ttl = options.ttlSeconds ?? (options.expiresAt ? null : existing.ttl_seconds)
+        const expiry = options.expiresAt ?? (options.ttlSeconds !== undefined ? null : existing.expires_at)
+        if (!source || existing.source_id !== source.id || existing.closed !== options.closed
+          || mediaType(existing.content_type) !== mediaType(options.contentType ?? existing.content_type)
+          || existing.ttl_seconds !== ttl || (existing.expires_at?.toISOString() ?? null) !== (expiry?.toISOString() ?? null)
+          || (options.offset !== undefined && existing.fork_offset !== options.offset) || BigInt(existing.fork_sub_offset) !== BigInt(options.subOffset)) {
+          throw new StreamError(409, 'CONFIGURATION_MISMATCH', 'Stream configuration differs')
+        }
+        return { stream: existing, created: false }
+      }
+      if (!source) throw new StreamError(404, 'SOURCE_NOT_FOUND', 'Source stream not found')
+      if (source.deleted_at) throw new StreamError(409, 'SOURCE_RETAINED', 'Source stream is deleted')
+      if (source.expired) {
+        await this.retire(client, source, 'expired')
+        return { error: new StreamError(source.ref_count ? 409 : 404, 'SOURCE_EXPIRED', 'Source stream expired') }
+      }
+      if (path === options.sourcePath) throw new StreamError(409, 'SELF_FORK', 'A stream cannot fork itself')
+      if (source.fork_depth >= 128) throw new StreamError(413, 'FORK_DEPTH', 'Maximum fork depth reached')
+      if (options.contentType && mediaType(options.contentType) !== mediaType(source.content_type)) throw new StreamError(409, 'CONTENT_TYPE_MISMATCH', 'Fork content type must match its source')
+      const anchor = options.offset ?? source.tail_offset
+      await this.boundary(client, source, anchor)
+      const payload = preparePayload(options.body, source.content_type, true)
+      this.checkPayload(payload.bytes)
+      if (prefix && (prefix.sourceId !== source.id || prefix.anchor !== anchor)) throw new StreamError(409, 'SOURCE_CHANGED', 'Source generation changed; retry fork creation')
+      if (options.subOffset && !prefix) {
+        const frames = await this.framePlan(client, source.id, anchor, 1, this.maxStoredBytes)
+        if (!frames[0] || frames[0].start_offset !== anchor) throw new StreamError(400, 'SUB_OFFSET_BEYOND_TAIL', 'Sub-offset has no following source frame')
+        return { prepare: { sourceId: source.id, anchor, contentType: source.content_type, frames } }
+      }
+      const ttl = options.ttlSeconds ?? (options.expiresAt ? null : source.ttl_seconds)
+      const expiry = options.expiresAt ?? (options.ttlSeconds !== undefined ? null : source.expires_at)
+      const id = randomUUID()
+      await client.query(`INSERT INTO ${this.schema}.streams (id, tenant_id, path, content_type, tail_offset, change_version, closed, ttl_seconds, expires_at, source_id, fork_offset, fork_sub_offset, fork_depth, edge_active)
+        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $5, $10, $11, true)`,
+      [id, tenant, path, source.content_type, anchor, options.closed, ttl, expiry, source.id, options.subOffset, source.fork_depth + 1])
+      let next = anchor
+      for (const frame of [...(prefix ? [prefix.frame] : []), ...(payload.bytes.length ? [{ payload: payload.bytes, messageEnds: payload.messageEnds }] : [])]) {
+        const end = advanceOffset(next, frame.payload.length)
+        await this.insertAppend(client, id, next, end, frame.payload, frame.messageEnds)
+        next = end
+      }
+      const updated = await client.query<StreamMetadata>(`UPDATE ${this.schema}.streams SET tail_offset = $2 WHERE id = $1 RETURNING *`, [id, next])
+      await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = $3 WHERE tenant_id = $1 AND path = $2`, [tenant, path, id])
+      await client.query(`UPDATE ${this.schema}.streams SET ref_count = ref_count + 1 WHERE id = $1`, [source.id])
+      const stream = updated.rows[0]!
+      await this.change(client, stream, ZERO_OFFSET, 'created')
+      await this.scheduleExpiry(client, stream)
+      await this.chunks?.freeze(client, id)
+      return { stream, created: true }
+    })
+    let outcome = await execute()
+    if ('prepare' in outcome) {
+      const plan = outcome.prepare
+      const frame = (await this.materialize(plan.frames))[0]!
+      const json = mediaType(plan.contentType) === 'application/json'
+      const units = json ? frame.messageEnds?.length ?? 0 : frame.payload.length
+      if (options.subOffset > units) throw new StreamError(400, 'SUB_OFFSET_OVERSHOOT', 'Sub-offset exceeds the next source frame')
+      const length = json ? frame.messageEnds![options.subOffset - 1]! : options.subOffset
+      const prefix = { ...frame, payload: Buffer.from(frame.payload.subarray(0, length)), messageEnds: json ? frame.messageEnds!.slice(0, options.subOffset) : null }
+      outcome = await execute({ sourceId: plan.sourceId, anchor: plan.anchor, frame: prefix })
+    }
+    if ('error' in outcome) throw outcome.error
+    if ('prepare' in outcome) throw new Error('Fork prefix was not resolved')
+    return outcome
   }
 
   private async insertAppend(client: PoolClient, id: string, start: string, end: string, bytes: Uint8Array, ends: readonly number[] | null): Promise<void> {
@@ -221,6 +391,7 @@ export class PostgresStreamStore {
         WHERE id = $1 RETURNING *`, [stream.id, next, options.close, options.close && producer ? producer : null, options.sequence ?? null])
       const value = updated.rows[0]!
       await this.change(client, value, stream.tail_offset, options.close ? 'closed' : 'appended')
+      if (value.ttl_seconds !== null) await this.scheduleExpiry(client, value)
       await this.chunks?.freeze(client, stream.id)
       return { stream: value, status: producer && payload.bytes.length ? 200 : 204, ...(producer ? { producer: { epoch: producer.epoch, seq: producer.seq } } : {}) }
     })
@@ -233,7 +404,10 @@ export class PostgresStreamStore {
   async read(tenant: string, path: string, offset: string): Promise<ReadResult> {
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     const accessed = await this.withStream(tenant, path, async (client, stream) => {
-      if (stream.ttl_seconds !== null) await client.query(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1`, [stream.id])
+      if (stream.ttl_seconds !== null) {
+        await client.query(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1`, [stream.id])
+        await this.scheduleExpiry(client, stream)
+      }
       return stream
     })
     return this.readGeneration(tenant, accessed.id, offset)
@@ -243,37 +417,49 @@ export class PostgresStreamStore {
   async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     const plan = await transaction(this.pool, { readOnly: true }, async (client) => {
-      const metadata = await client.query<StreamMetadata>(`SELECT * FROM ${this.schema}.streams WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
-        AND (expires_at IS NULL OR expires_at > clock_timestamp())
-        AND (ttl_seconds IS NULL OR accessed_at + ttl_seconds * interval '1 second' > clock_timestamp())`, [tenant, id])
+      const metadata = await client.query<LockedStream>(`SELECT s.*, COALESCE(expires_at <= clock_timestamp()
+        OR accessed_at + ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired
+        FROM ${this.schema}.streams s WHERE tenant_id = $1 AND id = $2`, [tenant, id])
       const stream = metadata.rows[0]
       if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream no longer exists')
+      if (stream.deleted_at || stream.expired) throw new StreamError(stream.ref_count ? 410 : 404, 'STREAM_UNAVAILABLE', 'Stream is unavailable')
       const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
-      if (start > stream.tail_offset) throw new StreamError(400, 'OFFSET_BEYOND_TAIL', 'Offset exceeds stream tail')
-      if (start !== ZERO_OFFSET && start !== stream.tail_offset) {
-        const boundary = await client.query(`SELECT 1 FROM ${this.schema}.appends WHERE stream_id = $1 AND end_offset = $2`, [stream.id, start])
-        if (!boundary.rowCount) throw new StreamError(400, 'OFFSET_NOT_BOUNDARY', 'Offset is not a returned boundary')
-      }
-      const result = await client.query<StoredFrame>(`WITH candidates AS (
-          SELECT end_offset, payload_bytes FROM ${this.schema}.appends WHERE stream_id = $1 AND end_offset > $2 ORDER BY end_offset LIMIT 16
-        ), bounded AS (SELECT end_offset, sum(payload_bytes) OVER (ORDER BY end_offset) AS bytes FROM candidates)
-        SELECT a.start_offset, a.end_offset, a.payload, a.payload_bytes, a.message_ends, a.chunk_id, c.object_key, c.sha256, c.encoded_bytes
-        FROM bounded b JOIN ${this.schema}.appends a ON a.stream_id = $1 AND a.end_offset = b.end_offset
-        LEFT JOIN ${this.schema}.chunks c ON c.id = a.chunk_id
-        WHERE b.bytes <= $3 ORDER BY a.end_offset`, [stream.id, start, this.maxPageBytes - 2])
-      const next = result.rows.at(-1)?.end_offset ?? start
-      return { stream, frames: result.rows, next, upToDate: next === stream.tail_offset, hasData: result.rows.length > 0 }
+      await this.boundary(client, stream, start)
+      const frames = await this.framePlan(client, stream.id, start)
+      const next = frames.at(-1)?.end_offset ?? start
+      return { stream, frames, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0 }
     })
-    const frames = this.chunks ? await this.chunks.materialize(id, plan.frames) : plan.frames.map((frame) => {
-      if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
-      return { payload: frame.payload }
-    })
+    const frames = await this.materialize(plan.frames)
     return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData }
   }
 
-  async maintain(options: { readonly maxChunks?: number } = {}): Promise<{ frozen: number; sealed: number }> {
+  async maintain(options: { readonly maxChunks?: number } = {}): Promise<{ frozen: number; sealed: number; retired: number }> {
     await this.assertReady()
-    return this.chunks ? this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
+    const maximum = options.maxChunks ?? 8
+    if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')
+    let retired = 0
+    for (let i = 0; i < maximum; i++) {
+      const cleaned = await transaction(this.pool, {}, async (client) => {
+        const candidate = await client.query<{ tenant_id: string; path: string }>(`WITH candidates AS (
+          (SELECT s.id, s.tenant_id, s.path, e.due_at FROM ${this.schema}.stream_expirations e
+            JOIN ${this.schema}.streams s ON s.id = e.stream_id WHERE e.due_at <= clock_timestamp() ORDER BY e.due_at, e.stream_id LIMIT 128)
+          UNION ALL
+          (SELECT id, tenant_id, path, deleted_at AS due_at FROM ${this.schema}.streams WHERE cleanup_pending AND ref_count = 0 ORDER BY deleted_at, id LIMIT 128)
+        ) SELECT p.tenant_id, p.path FROM candidates c JOIN ${this.schema}.paths p
+          ON p.tenant_id = c.tenant_id AND p.path = c.path AND p.active_stream_id = c.id
+          ORDER BY c.due_at, c.id LIMIT 1 FOR UPDATE OF p SKIP LOCKED`)
+        if (!candidate.rows[0]) return false
+        const row = candidate.rows[0]
+        const stream = await this.lock(client, row.tenant_id, row.path)
+        if (stream?.deleted_at && !stream.ref_count) { await this.detach(client, stream); return true }
+        if (stream?.expired && !stream.deleted_at) { await this.retire(client, stream, 'expired'); return true }
+        return false
+      })
+      if (!cleaned) break
+      retired++
+    }
+    const chunks = this.chunks ? await this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
+    return { ...chunks, retired }
   }
 
   /** One bounded query per watched generation, shared by all local readers. */

@@ -22,13 +22,15 @@ const notifier = createNeonRealtimeNotifier({ url: process.env.NEON_REALTIME_URL
   database: new URL(process.env.TEST_DATABASE_URL).pathname.slice(1) })
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
 const handler = createDurableStreams({ postgres: { pool, schema },
-  live: { notifier, longPollTimeoutMs: 1000 },
+  live: { notifier, longPollTimeoutMs: 5000 },
   storage: { objects, targetChunkBytes: 4096, maxChunkFrames: 16 },
   allowedOrigins: ['https://example.com'],
   // Explicit anonymous access is confined to the disposable test fixture.
   auth: { authenticate: () => ({ tenantId: 'conformance', subject: 'fixture' }), authorize: () => true },
 })
-const config = { baseUrl: '', subscriptions: true, longPollTimeoutMs: 1000 }
+// Upstream adds only one second to this budget, including all test setup HTTP
+// requests. Allow remote Neon round trips while preserving every assertion.
+const config = { baseUrl: '', subscriptions: true, longPollTimeoutMs: 20_000 }
 let maintenanceTimer: ReturnType<typeof setTimeout> | undefined
 let maintenance: Promise<unknown> | undefined
 let stopped = false

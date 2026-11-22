@@ -50,7 +50,7 @@ async function readAll(path: string) {
 beforeAll(async () => {
   const version = await pool.query<{ version: string }>("SELECT current_setting('server_version_num') AS version")
   expect(Number(version.rows[0]!.version)).toBeGreaterThanOrEqual(180000)
-  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core', '0002_chunks'])
+  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core', '0002_chunks', '0003_forks'])
   expect(await migrate(migrationPool, { schema })).toEqual([])
   server = createDurableStreams(config)
 })
@@ -223,7 +223,7 @@ describe('durable HTTP hot log', () => {
   })
   test('unsupported reserved features fail explicitly and never create streams', async () => {
     expect((await request('__ds/subscriptions/sub', 'PUT', '{}')).status).toBe(501)
-    expect((await request('fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/private' })).status).toBe(501)
+    expect((await request('fork', 'PUT', undefined, { 'Stream-Fork-Sub-Offset': '0' })).status).toBe(400)
     expect((await request('private?offset=-1&live=sse')).status).toBe(503)
     expect((await request('fork', 'HEAD')).status).toBe(404)
   })

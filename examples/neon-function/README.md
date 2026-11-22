@@ -2,7 +2,7 @@
 
 This consumer embeds the library in a Node.js 24 Neon Function. It owns the pool, Realtime adapter, S3 adapter, authentication policy, shutdown handling, and maintenance routes. The library never provisions resources or runs migrations while handling a request.
 
-The example demonstrates deployment wiring. The package remains unreleased while forks, subscriptions, recovery/adoption, reclamation, and production qualification are incomplete.
+The example demonstrates deployment wiring. The package remains unreleased while subscriptions, recovery/adoption, reclamation, and production qualification are incomplete.
 
 ## Environment
 

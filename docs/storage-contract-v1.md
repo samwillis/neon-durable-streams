@@ -1,6 +1,6 @@
 # Initial hot-log storage contract
 
-Implemented during M0/M1. This is an unreleased storage version; forks, subscription dispatch, and object reclamation remain unimplemented. Migration 0001 establishes the hot log and durable change outbox; migration 0002 adds the recoverable chunk manifest and storage binding. See [sealed storage v1](sealed-storage-v1.md).
+Implemented during M0/M1. This is an unreleased storage version; subscription dispatch and object reclamation remain unimplemented. Recursive and partial forks are covered in the [fork/lifecycle contract](forks-v1.md). Migration 0003 adds fork edges, logical cascade cleanup, and indexed expiration deadlines. Migration 0001 establishes the hot log and durable change outbox; migration 0002 adds the recoverable chunk manifest and storage binding. See [sealed storage v1](sealed-storage-v1.md).
 
 ## Identity and transactions
 

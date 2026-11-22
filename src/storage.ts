@@ -34,6 +34,7 @@ interface Manifest {
   encoded_bytes: number | null
 }
 export interface StoredFrame {
+  readonly stream_id: string
   readonly start_offset: string
   readonly end_offset: string
   readonly payload: Buffer | null
@@ -148,7 +149,7 @@ export class ChunkManager {
   }
 
   /** The SQL snapshot is already closed; immutable objects cannot be reclaimed. */
-  async materialize(streamId: string, frames: readonly StoredFrame[]): Promise<readonly ChunkFrame[]> {
+  async materialize(frames: readonly StoredFrame[]): Promise<readonly ChunkFrame[]> {
     let currentChunkId: string | undefined
     let decoded: readonly ChunkFrame[] | undefined
     const result: ChunkFrame[] = []
@@ -159,7 +160,7 @@ export class ChunkManager {
         // A copied response page must not retain whole chunk buffers while
         // another object is fetched or a slow reader holds the page.
         decoded = undefined
-        const identity = { installationId: this.installationId!, streamId, chunkId: frame.chunk_id }
+        const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: frame.chunk_id }
         const bytes = await this.options.objects.get(frame.object_key, frame.encoded_bytes)
         if (bytes.length !== frame.encoded_bytes) throw new Error('Sealed object length differs from manifest')
         decoded = decodeChunk(bytes, identity, frame.sha256).frames
