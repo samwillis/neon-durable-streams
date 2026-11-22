@@ -30,7 +30,8 @@ export interface AuthorizationContext {
   readonly subscription?: SubscriptionConfig
 }
 export interface ServerOptions {
-  readonly postgres: { readonly pool: Pool; readonly schema?: string; readonly environmentId?: string }
+  readonly postgres: { readonly pool: Pool; readonly schema?: string; readonly environmentId?: string
+    readonly transactionTimeoutMs?: number; readonly lockTimeoutMs?: number }
   readonly auth: {
     readonly authenticate: (request: Request) => Principal | null | Promise<Principal | null>
     readonly authorize: (context: AuthorizationContext) => boolean | Promise<boolean>
@@ -145,7 +146,10 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
-  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage, options.postgres.environmentId)
+  const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes, options.storage, options.postgres.environmentId, {
+    ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
+    ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}),
+  })
   const report = (error: unknown) => observe(options.onError, error)
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
   const subscriptions = options.subscriptions ? new PostgresSubscriptions(options.postgres.pool, options.postgres.schema ?? 'durable_streams', store, options.subscriptions, report) : undefined

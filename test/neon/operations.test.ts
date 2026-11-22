@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
@@ -26,7 +27,7 @@ let environmentId = 'original-environment'
 let expectedStorage = objects
 const errors: unknown[] = []
 const server = (storage: ChunkStorage = expectedStorage, environment = environmentId) => {
-  const handler = createDurableStreams({ postgres: { pool, schema, environmentId: environment }, storage: { objects: storage, targetChunkBytes: 16 },
+  const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: environment }, storage: { objects: storage, targetChunkBytes: 16 },
     auth: { authenticate: () => ({ tenantId: 'ops', subject: 'fixture' }), authorize: () => true },
     live: { notifier, fallbackIntervalMs: 100 }, subscriptions: { keyring }, onError: (error) => errors.push(error) })
   servers.push(handler)
@@ -54,6 +55,19 @@ afterAll(async () => {
   await direct.query(`DROP SCHEMA "${schema}" CASCADE`)
   await pool.end(); await direct.end()
   expect(errors).toEqual([])
+})
+
+test('explicit transaction budgets apply locally and restore a direct pooled session', async () => {
+  const isolated = new pg.Pool({ connectionString: env.TEST_DATABASE_URL_UNPOOLED, max: 1 })
+  const query = `SELECT pg_backend_pid() AS pid, current_setting('statement_timeout') AS statement,
+    current_setting('lock_timeout') AS lock, current_setting('transaction_timeout') AS transaction`
+  try {
+    const before = (await isolated.query(query)).rows[0]
+    const guard = new InstallationGuard(isolated, schema, environmentId, { timeoutMs: 65_000, lockTimeoutMs: 31_000 })
+    const inside = await guard.run({}, async (client) => (await client.query(query)).rows[0])
+    expect(inside).toEqual({ pid: before.pid, statement: '65s', lock: '31s', transaction: '65s' })
+    expect((await isolated.query(query)).rows[0]).toEqual(before)
+  } finally { await isolated.end() }
 })
 
 test('installation-wide reader slots cover separate server instances and release on cancellation', async () => {

@@ -50,10 +50,26 @@ jobs:
       - name: Actual Function ingress, HTTPS webhooks, SSE, sealed replay, and cron recovery
         run: pnpm test:function
       - name: Real Neon Realtime and Object Storage integration
-        run: pnpm test:neon
+        run: pnpm test:neon --reporter=default --reporter=json --outputFile=neon-results.json
+      - name: Summarize real-service test results immediately
+        if: ${{ always() && hashFiles('neon-results.json') != '' }}
+        run: node scripts/summarize-test-results.mjs neon-results.json neon-test-summary.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('neon-test-summary.json') != '' }}
+        with:
+          name: neon-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: neon-test-summary.json
       - name: Postgres integration and process-loss tests on Neon
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
-        run: pnpm test:integration
+        run: pnpm test:integration --reporter=default --reporter=json --outputFile=integration-results.json
+      - name: Summarize transaction test results immediately
+        if: ${{ always() && hashFiles('integration-results.json') != '' }}
+        run: node scripts/summarize-test-results.mjs integration-results.json integration-test-summary.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('integration-test-summary.json') != '' }}
+        with:
+          name: transaction-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: integration-test-summary.json
       - name: Point-in-time Neon branch adoption and sealed recovery
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
         run: pnpm test:recovery

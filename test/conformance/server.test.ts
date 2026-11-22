@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import { once } from 'node:events'
 import { createServer } from 'node:http'
@@ -16,7 +17,7 @@ if (!process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET) throw n
 if (!process.env.AWS_ENDPOINT_URL_S3 || !process.env.AWS_REGION || !process.env.NEON_TEST_BUCKET) throw new Error('Full conformance requires real Neon Object Storage credentials')
 if (!process.env.DURABLE_STREAMS_KEYRING) throw new Error('Full conformance requires a persistent subscription keyring')
 const keyring = parseSubscriptionKeyring(process.env.DURABLE_STREAMS_KEYRING)
-const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10, connectionTimeoutMillis: 5000 })
+const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10, connectionTimeoutMillis: 120_000 })
 const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? process.env.TEST_DATABASE_URL, max: 1, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
 migrationPool.on('error', () => {})
@@ -24,7 +25,7 @@ const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const notifier = createNeonRealtimeNotifier({ url: process.env.NEON_REALTIME_URL, secret: process.env.NEON_REALTIME_SECRET,
   database: new URL(process.env.TEST_DATABASE_URL).pathname.slice(1) })
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
-const handler = createDurableStreams({ postgres: { pool, schema },
+const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema },
   live: { notifier, longPollTimeoutMs: 5000 },
   storage: { objects, targetChunkBytes: 4096, maxChunkFrames: 16 },
   subscriptions: { keyring, allowLocalhostWebhooks: true },

@@ -2,7 +2,7 @@
 
 The first complete protocol run passed **338/338**, with no failures or skips, against real Neon Postgres, Realtime, and Object Storage. Subscriptions were enabled. The suite is pinned to upstream commit `461b40267aabd644558f9b19dbb9507dd5f691cf` and npm conformance package 0.3.7. A second full run after introducing installation fencing also passed all 338 cases (748 seconds). CI must independently verify each exact committed revision; local hosted-service results do not substitute for that job.
 
-Current focused evidence includes 31 unit/property tests, 57 integration/Neon cases, nine actually deployed Function cases (including three public HTTPS webhook tests), and a real WAL-LSN child-branch recovery drill. See [development](../development.md) and [operations](../operations-v1.md) for their scope.
+Current focused evidence includes 31 unit/property tests, 60 integration/Neon cases, nine actually deployed Function cases (including three public HTTPS webhook tests), and a real WAL-LSN child-branch recovery drill. See [development](../development.md) and [operations](../operations-v1.md) for their scope.
 
 `2026-11-22-load-smoke.json` records a **20-second probe**, using a Node.js client in London against a deployed Function in `aws-eu-central-1`, Postgres compute configured for 0.25–1 CU, pool maximum five, four writers, sixteen live readers, eight binary streams, and 1 KiB records. It acknowledged and then replayed 1,009 unique records after sealing, with no observed errors. Append p50/p95 were 69.87/81.10 ms; observed live p50/p95 were 86.30/99.25 ms. The report includes the exact deployed bundle hash. Other qualification Functions shared the account.
 

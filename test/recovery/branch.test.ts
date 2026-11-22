@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import { readFile, writeFile, unlink } from 'node:fs/promises'
 import { createNeonClient } from '@neon/sdk'
@@ -28,7 +29,7 @@ let ownsCleanup = false
 let parentExpiry: string | undefined
 let branchId: string | undefined, childPool: pg.Pool | undefined, childObjects: ReturnType<typeof createS3ChunkStorage> | undefined
 const handler = (pool = parentPool, objects = parentObjects, environmentId = parentId) => {
-  const server = createDurableStreams({ postgres: { pool, schema, environmentId }, storage: { objects, targetChunkBytes: 16 }, subscriptions: { keyring },
+  const server = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId }, storage: { objects, targetChunkBytes: 16 }, subscriptions: { keyring },
     auth: { authenticate: () => ({ tenantId: 'recovery', subject: 'fixture' }), authorize: () => true } })
   servers.push(server)
   return server

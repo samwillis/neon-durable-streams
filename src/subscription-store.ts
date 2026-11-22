@@ -399,11 +399,26 @@ export class PostgresSubscriptions {
       const subscribers = await client.query<Sub>(`SELECT s.* FROM ${this.schema}.subscriptions s WHERE s.tenant_id = $1 AND s.deleted_at IS NULL
         AND ($2::uuid IS NULL OR s.id > $2) AND ((s.pattern_regex IS NOT NULL AND $3 ~ s.pattern_regex)
           OR EXISTS (SELECT 1 FROM ${this.schema}.subscription_members m WHERE m.subscription_id = s.id AND m.path = $3))
-        ORDER BY s.id LIMIT 64 FOR UPDATE`, [change.tenant_id, change.fanout_after, change.path])
+        ORDER BY s.id LIMIT 16 FOR UPDATE`, [change.tenant_id, change.fanout_after, change.path])
+      // A complete fan-out in this transaction can cover a bounded committed
+      // prefix of the same stream. The registry lock excludes registration,
+      // and pinning the cutoff before member updates preserves later append intent.
+      // Multi-transaction fan-out retains its original one-record checkpoint.
+      let through = change.version
+      if (change.fanout_after === null && subscribers.rows.length < 16) {
+        const prefix = await client.query<{ version: string }>(`SELECT version FROM ${this.schema}.stream_changes
+          WHERE stream_id = $1 AND version >= $2 AND NOT processed ORDER BY version LIMIT 128`, [change.stream_id, change.version])
+        through = prefix.rows.at(-1)?.version ?? through
+      }
       const active = await this.activePath(client, change.tenant_id, change.path)
       for (const sub of subscribers.rows) await this.applyChange(client, sub, change, active)
+      if (subscribers.rows.length < 16) {
+        const processed = await client.query(`UPDATE ${this.schema}.stream_changes SET processed = true
+          WHERE stream_id = $1 AND version >= $2 AND version <= $3 AND NOT processed`, [change.stream_id, change.version, through])
+        return processed.rowCount ?? 0
+      }
       await client.query(`UPDATE ${this.schema}.stream_changes SET processed = $3, fanout_after = $4 WHERE stream_id = $1 AND version = $2`,
-        [change.stream_id, change.version, subscribers.rows.length < 64, subscribers.rows.length === 64 ? subscribers.rows.at(-1)!.id : null])
+        [change.stream_id, change.version, subscribers.rows.length < 16, subscribers.rows.length === 16 ? subscribers.rows.at(-1)!.id : null])
       return 1
     })
   }

@@ -88,9 +88,10 @@ export class PostgresStreamStore {
     private readonly maxPageBytes = 2 * 1024 * 1024,
     storage?: StorageOptions,
     environmentId?: string,
+    timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'>,
   ) {
     this.schema = validateSchema(schema)
-    this.guard = new InstallationGuard(pool, schema, environmentId)
+    this.guard = new InstallationGuard(pool, schema, environmentId, timeouts)
     this.chunks = storage ? new ChunkManager(pool, schema, storage, this.guard) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024) {

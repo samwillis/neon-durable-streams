@@ -16,9 +16,13 @@ export interface InstallationIdentity {
 export class InstallationGuard {
   private readonly schema: string
   private identity: Promise<InstallationIdentity> | undefined
-  constructor(private readonly pool: Pool, schema: string, private readonly environmentId?: string) {
+  constructor(private readonly pool: Pool, schema: string, private readonly environmentId?: string,
+    private readonly timeouts: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'> = {}) {
     this.schema = validateSchema(schema)
     if (environmentId !== undefined && (!environmentId || Buffer.byteLength(environmentId) > 2048)) throw new TypeError('Invalid environment identity')
+    for (const timeout of [timeouts.timeoutMs, timeouts.lockTimeoutMs]) {
+      if (timeout !== undefined && (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > 300_000)) throw new RangeError('Invalid Postgres transaction limits')
+    }
   }
   private async pin(): Promise<InstallationIdentity> {
     this.identity ??= this.pool.query<InstallationIdentity>(`SELECT id, serving_epoch, serving_state, environment_id, storage_identity FROM ${this.schema}.installation`)
@@ -44,7 +48,7 @@ export class InstallationGuard {
   async run<T>(options: TransactionOptions, work: (client: PoolClient) => Promise<T>): Promise<T> {
     // Pin outside the transaction: a pool with one connection must also work.
     await this.pin()
-    return transaction(this.pool, options, async (client) => {
+    return transaction(this.pool, { ...this.timeouts, ...options }, async (client) => {
       await this.check(client, options.readOnly ?? false)
       return work(client)
     })

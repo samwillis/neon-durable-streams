@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
@@ -15,7 +16,7 @@ pool.on('error', () => {})
 migrationPool.on('error', () => {})
 const errors: unknown[] = []
 const notifier = createNeonRealtimeNotifier({ url: NEON_REALTIME_URL, secret: NEON_REALTIME_SECRET, database: new URL(TEST_DATABASE_URL).pathname.slice(1), onError: (error) => errors.push(error) })
-const server = createDurableStreams({ postgres: { pool, schema }, auth: {
+const server = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema }, auth: {
   authenticate: () => ({ tenantId: 'realtime-test', subject: 'fixture' }), authorize: () => true,
 } })
 const request = (method: string, body?: string, headers?: Record<string, string>) => server.fetch(new Request('https://example.test/v1/stream/live', {

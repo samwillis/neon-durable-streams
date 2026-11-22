@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
@@ -18,7 +19,7 @@ const objects = createS3ChunkStorage({ endpoint: AWS_ENDPOINT_URL_S3, region: AW
 const errors: unknown[] = []
 const servers: DurableStreamsServer[] = []
 const server = (storage: ChunkStorage = objects, denySourceRead = false) => {
-  const handler = createDurableStreams({ postgres: { pool, schema }, storage: { objects: storage, targetChunkBytes: 8, maxChunkFrames: 4 },
+  const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema }, storage: { objects: storage, targetChunkBytes: 8, maxChunkFrames: 4 },
     auth: { authenticate: (request) => ({ tenantId: request.headers.get('authorization') === 'Bearer b' ? 'b' : 'a', subject: 'fixture' }),
       authorize: ({ path, operation }) => !(denySourceRead && path === 'restricted' && operation === 'read') }, onError: (error) => errors.push(error) })
   servers.push(handler)

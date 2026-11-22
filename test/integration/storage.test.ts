@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
@@ -11,13 +12,13 @@ import { transaction } from '../../src/transaction.js'
 
 const database = process.env.TEST_DATABASE_URL
 if (!database) throw new Error('Set TEST_DATABASE_URL to a disposable Postgres 18 database; see .env.example')
-const pool = new pg.Pool({ connectionString: database, max: 8, connectionTimeoutMillis: 5000 })
+const pool = new pg.Pool({ connectionString: database, max: 8, connectionTimeoutMillis: 120_000 })
 const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? database, max: 6, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
 migrationPool.on('error', () => {})
 const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const errors: unknown[] = []
-const config = { postgres: { pool, schema }, auth: {
+const config = { postgres: { ...postgresTestLimits, pool, schema }, auth: {
   authenticate(request: Request) {
     const identities = new Map([['Bearer a', 'tenant-a'], ['Bearer b', 'tenant-b']])
     const tenantId = identities.get(request.headers.get('authorization') ?? '')
@@ -143,7 +144,7 @@ describe('durable HTTP hot log', () => {
   test('replay survives a new pool and server instance', async () => {
     await request('restart', 'PUT', 'persisted')
     const freshPool = new pg.Pool({ connectionString: database! })
-    const fresh = createDurableStreams({ ...config, postgres: { pool: freshPool, schema } })
+    const fresh = createDurableStreams({ ...config, postgres: { ...postgresTestLimits, pool: freshPool, schema } })
     try {
       const response = await fresh.fetch(new Request('https://example.test/v1/stream/restart', { headers: { Authorization: 'Bearer a' } }))
       expect(response.status).toBe(200)

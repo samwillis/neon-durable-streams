@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, expect, test } from 'vitest'
@@ -46,7 +47,7 @@ test('quiesced upgrade from migration 0004 preserves v1 sealed bytes, offsets, f
   })
   expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual(['0005_operations'])
   expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual([])
-  server = createDurableStreams({ postgres: { pool, schema, environmentId: 'upgraded' }, storage: { objects },
+  server = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: 'upgraded' }, storage: { objects },
     auth: { authenticate: () => ({ tenantId: 'upgrade', subject: 'fixture' }), authorize: () => true } })
   const request = (path: string, method = 'GET', body?: string, headers?: Record<string, string>) => server!.fetch(new Request(`https://fixture.test/v1/stream/${path}`, { method,
     headers: { 'Content-Type': 'text/plain', ...headers }, ...(body ? { body } : {}) }))

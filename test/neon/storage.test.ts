@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomUUID } from 'node:crypto'
 import { fork } from 'node:child_process'
 import { once } from 'node:events'
@@ -19,7 +20,7 @@ direct.on('error', () => {})
 const objects = createS3ChunkStorage({ endpoint: AWS_ENDPOINT_URL_S3, region: AWS_REGION, bucket: NEON_TEST_BUCKET })
 const servers: DurableStreamsServer[] = []
 const server = (storage: ChunkStorage = objects, onError?: (error: unknown) => void) => {
-  const handler = createDurableStreams({ postgres: { pool, schema }, storage: { objects: storage, targetChunkBytes: 8, maxChunkFrames: 4 },
+  const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema }, storage: { objects: storage, targetChunkBytes: 8, maxChunkFrames: 4 },
     auth: { authenticate: () => ({ tenantId: 'storage', subject: 'fixture' }), authorize: () => true }, ...(onError ? { onError } : {}) })
   servers.push(handler)
   return handler

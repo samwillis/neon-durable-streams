@@ -1,3 +1,4 @@
+import { postgresTestLimits } from '../fixtures/postgres-limits.js'
 import { randomInt, randomUUID, createPublicKey, verify } from 'node:crypto'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
@@ -26,7 +27,7 @@ const notifier = createNeonRealtimeNotifier({ url: env.NEON_REALTIME_URL, secret
 const servers: DurableStreamsServer[] = []
 const subscriptions = new Set<string>()
 const server = (maxStreams = 1000, authorize: (context: AuthorizationContext) => boolean = () => true) => {
-  const handler = createDurableStreams({ postgres: { pool, schema }, storage: { objects, targetChunkBytes: 32, maxChunkFrames: 8 },
+  const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema }, storage: { objects, targetChunkBytes: 32, maxChunkFrames: 8 },
     live: { notifier, fallbackIntervalMs: 60_000 }, subscriptions: { keyring, allowLocalhostWebhooks: true, maxStreams },
     auth: { authenticate: (request) => { const key = request.headers.get('authorization'); return key === 'Bearer a' || key === 'Bearer b' ? { tenantId: key.slice(-1), subject: 'fixture' } : null }, authorize },
     onError: (error) => reported.push(error) })
@@ -97,6 +98,80 @@ afterAll(async () => {
   await pool.end(); await direct.end()
   expect(reported).toEqual([])
 })
+
+test('one bounded dispatch coalesces committed appends without consuming intent beyond its cutoff', async () => {
+  const name = 'coalesced-prefix', path = 'coalesced/source'
+  await request(path, 'PUT')
+  await createPull(name, 'coalesced/*')
+  await maintain()
+  let tail = ''
+  for (let i = 0; i < 12; i++) tail = (await request(path, 'POST', String(i))).headers.get('Stream-Next-Offset')!
+  const key = randomInt(1, 2_000_000_000), gate = await direct.connect()
+  await gate.query('SELECT pg_advisory_lock($1::bigint)', [key])
+  await direct.query(`CREATE FUNCTION "${schema}".pause_coalesced() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.name = 'coalesced-prefix' THEN PERFORM pg_advisory_xact_lock(${key}::bigint); END IF; RETURN NEW; END $$`)
+  await direct.query(`CREATE TRIGGER pause_coalesced AFTER UPDATE ON "${schema}".subscriptions FOR EACH ROW EXECUTE FUNCTION "${schema}".pause_coalesced()`)
+  const work = handler.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+  void work.catch(() => {})
+  try {
+    await poll(async () => Boolean((await pool.query(`SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND objid = $1::oid AND NOT granted`, [key])).rowCount))
+    tail = (await request(path, 'POST', 'after cutoff')).headers.get('Stream-Next-Offset')!
+  } finally { await gate.query('SELECT pg_advisory_unlock($1::bigint)', [key]); gate.release() }
+  // Remove the barrier before the same bounded maintenance pass prepares a
+  // wake. The unlocked trigger is harmless while the first pass finishes.
+  const stats = await work
+  await direct.query(`DROP TRIGGER pause_coalesced ON "${schema}".subscriptions`)
+  await direct.query(`DROP FUNCTION "${schema}".pause_coalesced()`)
+  expect(stats.changes).toBe(12)
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 AND NOT c.processed`, [path])).rows[0].count).toBe('1')
+  await maintain()
+  const value = await claim(name)
+  expect(value.streams.find((stream) => stream.path === path)?.tail_offset).toBe(tail)
+  expect((await ack(name, value, [{ stream: path, offset: tail }])).status).toBe(200)
+  await remove(name)
+})
+
+test('resumed multi-batch fan-out preserves appends needed by a newly registered lower UUID', async () => {
+  const name = 'fanout-cursor', path = 'fanout/source'
+  await request(path, 'PUT')
+  await createPull(name, 'fanout/*')
+  await maintain()
+  // Equivalent empty-tail registrations, seeded in one fixture transaction so
+  // this test exercises cursor recovery rather than 17 repetitions of setup.
+  await pool.query(`INSERT INTO "${schema}".subscriptions (id, tenant_id, name, config, config_hash, pattern_regex, public_base_url)
+    SELECT gen_random_uuid(), s.tenant_id, s.name || '-' || n, s.config, s.config_hash, s.pattern_regex, s.public_base_url
+    FROM "${schema}".subscriptions s CROSS JOIN generate_series(1,16) n WHERE s.name = $1`, [name])
+  try {
+    await request(path, 'POST', 'one')
+    const baseline = (await request(path, 'POST', 'two')).headers.get('Stream-Next-Offset')!
+    await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+    const pending = () => pool.query<{ count: string }>(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 AND NOT c.processed`, [path])
+    expect((await pending()).rows[0]!.count).toBe('2')
+    const lateId = '00000000-0000-4000-8000-000000000001'
+    const registryKey = `durable-streams:subscription-registry:"${schema}":a`
+    await transaction(pool, {}, async (client) => {
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [registryKey])
+      await client.query(`INSERT INTO "${schema}".subscriptions (id, tenant_id, name, config, config_hash, pattern_regex, public_base_url, member_count)
+        SELECT $2, tenant_id, name || '-late', config, config_hash, pattern_regex, public_base_url, 1 FROM "${schema}".subscriptions WHERE name = $1`, [name, lateId])
+      await client.query(`INSERT INTO "${schema}".subscription_members (subscription_id,tenant_id,path,stream_id,glob_link,acked_offset)
+        SELECT $1, tenant_id,path,id,true,$2 FROM "${schema}".streams WHERE path = $3`, [lateId, baseline, path])
+    })
+    const tail = (await request(path, 'POST', 'three')).headers.get('Stream-Next-Offset')!
+    const fresh = server()
+    await fresh.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+    // Completing the older partial fan-out must not consume either later
+    // record: the late UUID was deliberately below the persisted cursor.
+    expect((await pending()).rows[0]!.count).toBe('2')
+    for (let i = 0; i < 5; i++) await fresh.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+    expect((await pending()).rows[0]!.count).toBe('0')
+    const late = await pool.query(`SELECT m.acked_offset, s.next_work_at IS NOT NULL OR s.current_wake IS NOT NULL AS scheduled
+      FROM "${schema}".subscriptions s JOIN "${schema}".subscription_members m ON m.subscription_id = s.id WHERE s.id = $1`, [lateId])
+    expect(late.rows).toEqual([{ acked_offset: baseline, scheduled: true }])
+    expect(tail).not.toBe(baseline)
+  } finally {
+    await pool.query(`UPDATE "${schema}".subscriptions SET deleted_at = clock_timestamp() WHERE name = $1 OR name LIKE $2`, [name, `${name}-%`])
+    subscriptions.delete(name)
+  }
+}, 180_000)
 
 test('registration backfill cannot be overtaken by dispatch when an append commits before registration does', async () => {
   const source = 'barrier/x', name = 'registration-barrier'
@@ -274,7 +349,7 @@ test('pull-wake appends are observable through actual Neon Realtime', async () =
     expect(received).toContain(`"subscription_id":"${name}"`)
   } finally { await reader.cancel(); reader.releaseLock() }
   await remove(name)
-}, 15_000)
+}, 45_000)
 
 test('signing-key rotation preserves old JWKS verification while new deliveries use the new key', async () => {
   const name = 'signing-rotation'
