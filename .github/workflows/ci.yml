@@ -99,9 +99,15 @@ jobs:
         with:
           name: runtime-readiness-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification-results/function-readiness-*.json
-      - name: Full upstream conformance suite (subscriptions enabled)
+      - name: Full upstream conformance colocated on Neon (subscriptions enabled)
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
-        run: pnpm test:conformance --reporter=default --reporter=json --outputFile=conformance-results.json
+        run: pnpm test:conformance:neon
+      - name: Preserve colocated suite provenance and runtime
+        if: ${{ always() && hashFiles('qualification-results/colocated-conformance.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/colocated-conformance.json
       - name: Preserve complete conformance results
         if: ${{ always() && hashFiles('conformance-results.json') != '' }}
         uses: actions/upload-artifact@v4

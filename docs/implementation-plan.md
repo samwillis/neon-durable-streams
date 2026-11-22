@@ -85,7 +85,7 @@ Map every safety invariant to a test or drill. Record suite commit, package/depe
 
 ## Capacity qualification findings
 
-The ten-minute 1 KiB-record baseline safely replayed 38,360 appends but accumulated 274 frozen chunks and 18,912 pending changes under the old recovery-only cron budget. Live p95 reached 4.43 seconds. This blocks steady-state qualification. The next profile interleaves work classes, coalesces bounded changes, raises catch-up pages within the byte cap, uses full-chunk append hints, and reserves cron recovery. Separate required Neon branches qualify hints with no cron and cron recovery with hints disabled. See the recorded [qualification evidence](qualification/README.md); the revised profile still needs its own sustained run.
+The ten-minute 1 KiB-record baseline safely replayed 38,360 appends but accumulated 274 frozen chunks and 18,912 pending changes under the old recovery-only cron budget. Live p95 reached 4.43 seconds. The revised ten-minute profile interleaves work classes, coalesces bounded changes, raises catch-up pages within the byte cap, uses full-chunk append hints, and reserves cron recovery. It replayed 34,458 records with live p95/p99 of 90.33/154.15 ms and sampled at most two frozen chunks and three pending changes. Separate required Neon branches qualify hints with no cron and cron recovery with hints disabled. A 75-second follow-up checks every reader's exact live-byte digest across rotations; a longer strict-byte run remains a release gate. See the recorded [qualification evidence](qualification/README.md). These closed-loop probes do not establish an overload or availability guarantee.
 
 ## Realtime payload direction
 

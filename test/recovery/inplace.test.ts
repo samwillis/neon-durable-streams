@@ -55,9 +55,11 @@ function connect() {
     credentials: { accessKeyId: data.AWS_ACCESS_KEY_ID!, secretAccessKey: data.AWS_SECRET_ACCESS_KEY! } })
 }
 async function request(path: string, method = 'GET', body?: string | Uint8Array, headers: Record<string, string> = {}, signal?: AbortSignal) {
-  return fetch(new URL(path, deployed.TEST_FUNCTION_URL), { method,
-    headers: { Authorization: `Bearer ${deployed.TEST_FUNCTION_API_KEY}`, 'Content-Type': 'application/octet-stream', ...headers },
-    ...(body === undefined ? {} : { body: typeof body === 'string' ? body : new Uint8Array(body) }), signal: signal ?? AbortSignal.timeout(20_000) })
+  try {
+    return await fetch(new URL(path, deployed.TEST_FUNCTION_URL), { method,
+      headers: { Authorization: `Bearer ${deployed.TEST_FUNCTION_API_KEY}`, 'Content-Type': 'application/octet-stream', ...headers },
+      ...(body === undefined ? {} : { body: typeof body === 'string' ? body : new Uint8Array(body) }), signal: signal ?? AbortSignal.timeout(20_000) })
+  } catch (error) { throw new Error(`In-place public ${method} ${path} failed during ${stages.at(-1)}`, { cause: error }) }
 }
 const stream = (path: string) => `v1/stream/${path}`
 async function maintain() {
@@ -224,7 +226,11 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
   expect((await request(stream('future-only'))).status).toBe(404)
   expect((await request(`${stream('data/binary')}?offset=${discardedOffset}`)).status).toBe(400)
   expect((await request(stream('data/binary'), 'POST', 'must deduplicate', tuple)).status).toBe(204)
-  const resumed = await request(`${stream('data/binary')}?offset=now&live=sse`, 'GET', undefined, {}, AbortSignal.any([liveAbort.signal, AbortSignal.timeout(10_000)]))
+  stage('verify restored Realtime before resuming workers')
+  // Realtime has its own post-restore startup. Stay below the fixture's
+  // 60-second SQL fallback/validation intervals so only actual Realtime can
+  // satisfy delivery; retain a bounded deadline with useful failure context.
+  const resumed = await request(`${stream('data/binary')}?offset=now&live=sse`, 'GET', undefined, {}, AbortSignal.any([liveAbort.signal, AbortSignal.timeout(45_000)]))
   expect(resumed.status).toBe(200); liveReader = resumed.body!.getReader(); liveText = ''
   while (!liveText.includes('event: control')) liveText += decoder.decode((await liveReader.read()).value)
   expect((await request(stream('data/binary'), 'POST', ' new timeline', { ...tuple, 'Producer-Seq': '1' })).status).toBe(200)
@@ -233,6 +239,7 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
     liveText += decoder.decode(part.value)
   }
   await liveReader.cancel(); liveReader.releaseLock(); liveReader = undefined
+  stage('verify restored token fencing and resumed subscription work')
   const oldAck = await request(stream('__ds/subscriptions/restore/ack'), 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true }),
     { Authorization: `Bearer ${claim.token}`, 'Content-Type': 'application/json' })
   expect(oldAck.status).toBe(409)
