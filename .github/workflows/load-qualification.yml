@@ -28,6 +28,8 @@ jobs:
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
       NEON_PARENT_BRANCH_ID: ${{ vars.NEON_PARENT_BRANCH_ID }}
       NEON_TEST_MAINTENANCE_HINTS: 'on'
+      NEON_TEST_LIVE_FALLBACK_MS: '5000'
+      NEON_TEST_LIVE_VALIDATION_MS: '1000'
       DS_LOAD_SECONDS: ${{ inputs.seconds }}
       DS_LOAD_WRITERS: ${{ inputs.writers }}
       DS_LOAD_LIVE_READERS: ${{ inputs.readers }}

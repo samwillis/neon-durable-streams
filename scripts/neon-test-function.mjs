@@ -32,6 +32,13 @@ const userKey = previous?.TEST_FUNCTION_API_KEY ?? secret()
 const otherKey = previous?.TEST_FUNCTION_OTHER_KEY ?? secret()
 const maintenanceKey = previous?.TEST_FUNCTION_MAINTENANCE_KEY ?? secret()
 const hintMode = process.env.NEON_TEST_MAINTENANCE_HINTS ?? 'off'
+const liveInterval = (name) => {
+  const value = Number(process.env[name] ?? 60_000)
+  if (!Number.isSafeInteger(value) || value < 100 || value > 60_000) throw new Error(`Invalid ${name}`)
+  return String(value)
+}
+const liveFallbackMs = liveInterval('NEON_TEST_LIVE_FALLBACK_MS')
+const liveValidationMs = liveInterval('NEON_TEST_LIVE_VALIDATION_MS')
 if (!['on', 'off'].includes(hintMode)) throw new Error('Invalid test maintenance hint mode')
 if (process.env.GITHUB_ACTIONS === 'true') for (const value of [userKey, otherKey, maintenanceKey]) console.log(`::add-mask::${value}`)
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
@@ -54,7 +61,7 @@ const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'dur
     DS_KEYRING_JSON: process.env.DURABLE_STREAMS_KEYRING,
     DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
     DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash,
-    DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: '60000', DS_LIVE_VALIDATION_MS: '60000',
+    DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: liveFallbackMs, DS_LIVE_VALIDATION_MS: liveValidationMs,
     DS_MAINTENANCE_HINTS: hintMode, DS_CRON_MAX_CHUNKS: '64', DS_CRON_SUBSCRIPTION_WORK: '64' }),
 })
 let url
@@ -76,7 +83,8 @@ const receiver = await deployTestWebhook({ neon, projectId, branchId, schema, so
 const values = { ...receiver, TEST_FUNCTION_URL: url, TEST_FUNCTION_API_KEY: userKey, TEST_FUNCTION_OTHER_KEY: otherKey,
   TEST_FUNCTION_MAINTENANCE_KEY: maintenanceKey, TEST_FUNCTION_SCHEMA: schema, TEST_FUNCTION_BRANCH_ID: branchId, TEST_FUNCTION_BUNDLE_SHA: hash,
   TEST_FUNCTION_SOURCE_COMMIT: sourceCommit, TEST_FUNCTION_SOURCE_DIRTY: sourceDirty,
-  TEST_FUNCTION_MAINTENANCE_HINTS: hintMode, TEST_FUNCTION_HAS_CRON: noCron ? 'no' : 'yes', TEST_FUNCTION_CRON_CHUNKS: '64', TEST_FUNCTION_CRON_SUBSCRIPTION_WORK: '64' }
+  TEST_FUNCTION_MAINTENANCE_HINTS: hintMode, TEST_FUNCTION_HAS_CRON: noCron ? 'no' : 'yes', TEST_FUNCTION_CRON_CHUNKS: '64', TEST_FUNCTION_CRON_SUBSCRIPTION_WORK: '64',
+  TEST_FUNCTION_LIVE_FALLBACK_MS: liveFallbackMs, TEST_FUNCTION_LIVE_VALIDATION_MS: liveValidationMs }
 if (process.env.GITHUB_ACTIONS === 'true') for (const [key, value] of Object.entries(values)) if (/_KEY$|_URL$/.test(key)) console.log(`::add-mask::${value}`)
 const environment = Object.entries(values).map(([k, v]) => `${k}=${v}`).join('\n') + '\n'
 if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, environment)
