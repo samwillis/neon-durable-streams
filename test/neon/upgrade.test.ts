@@ -45,7 +45,7 @@ test('quiesced upgrade from migration 0004 preserves v1 sealed bytes, offsets, f
     await client.query(`INSERT INTO "${schema}".appends (stream_id, start_offset, end_offset, payload_bytes, chunk_id) VALUES ($1, $2, $3, $4, $5)`, [streamId, ZERO_OFFSET, next, payload.length, chunkId])
     await client.query(`INSERT INTO "${schema}".producers (stream_id, producer_id, epoch, last_seq) VALUES ($1, 'writer', 7, 12)`, [streamId])
   })
-  expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual(['0005_operations'])
+  expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual(['0005_operations', '0006_reclamation'])
   expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual([])
   server = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: 'upgraded' }, storage: { objects },
     auth: { authenticate: () => ({ tenantId: 'upgrade', subject: 'fixture' }), authorize: () => true } })
@@ -61,4 +61,39 @@ test('quiesced upgrade from migration 0004 preserves v1 sealed bytes, offsets, f
   expect((await request('source', 'POST', ' new', { ...tuple, 'Producer-Seq': '13' })).status).toBe(200)
   expect(await (await request('source')).text()).toBe('previous binary format new')
   expect(await (await request('fork')).text()).toBe('previous binary format')
+})
+
+test('stopped schema-0005 upgrade fences warmed runtimes and preserves producer and fork continuity', async () => {
+  const isolated = `ds_test_${randomUUID().replaceAll('-', '')}`, runtimes: DurableStreamsServer[] = []
+  const make = () => {
+    const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema: isolated, environmentId: 'stopped-upgrade' }, storage: { objects, targetChunkBytes: 4 },
+      auth: { authenticate: () => ({ tenantId: 'upgrade', subject: 'fixture' }), authorize: () => true } })
+    runtimes.push(value); return value
+  }
+  const request = (value: DurableStreamsServer, path: string, method = 'GET', body?: string, headers?: Record<string,string>) => value.fetch(new Request(`https://fixture.test/v1/stream/${path}`, { method,
+    headers: { 'Content-Type': 'text/plain', ...headers }, ...(body === undefined ? {} : { body }) }))
+  try {
+    await migrate(pool, { schema: isolated, target: '0005_operations', storageIdentity: objects.identity, environmentId: 'stopped-upgrade' })
+    const old = make()
+    expect((await request(old, 'source', 'PUT')).status).toBe(201)
+    const tuple = { 'Producer-Id': 'writer', 'Producer-Epoch': '7', 'Producer-Seq': '0' }
+    expect((await request(old, 'source', 'POST', 'retained before upgrade', tuple)).status).toBe(200)
+    await old.maintain()
+    expect((await request(old, 'fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/source' })).status).toBe(201)
+    // No traffic/workers are admitted while DDL runs. Retain this stopped
+    // object solely to prove epoch fencing if an old process attempts to resume.
+    expect(await migrate(pool, { schema: isolated, storageIdentity: objects.identity, environmentId: 'stopped-upgrade' })).toEqual(['0006_reclamation'])
+    expect((await request(old, 'source')).status).toBe(503)
+    expect((await request(old, 'source', 'POST', 'must not append', tuple)).status).toBe(503)
+    const current = make()
+    for (const path of ['source','fork']) expect(await (await request(current, path)).text()).toBe('retained before upgrade')
+    expect((await request(current, 'source', 'POST', 'duplicate', tuple)).status).toBe(204)
+    expect((await request(current, 'source', 'POST', ' after', { ...tuple, 'Producer-Seq': '1' })).status).toBe(200)
+    expect(await (await request(current, 'source')).text()).toBe('retained before upgrade after')
+    expect(await (await request(current, 'fork')).text()).toBe('retained before upgrade')
+    expect((await pool.query(`SELECT enabled FROM "${isolated}".reclamation_policy`)).rows[0].enabled).toBe(false)
+  } finally {
+    await Promise.all(runtimes.map((value) => value.close()))
+    await pool.query(`DROP SCHEMA IF EXISTS "${isolated}" CASCADE`)
+  }
 })

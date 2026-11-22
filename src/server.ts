@@ -42,12 +42,13 @@ export interface ServerOptions {
   readonly live?: LiveOptions
   readonly storage?: StorageOptions
   readonly subscriptions?: SubscriptionOptions
-  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly maxPageFrames?: number; readonly bodyTimeoutMs?: number }
+  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly maxPageFrames?: number; readonly bodyTimeoutMs?: number; readonly replayTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
   /** Contains no bodies, credentials, paths, or subscription tokens. */
   readonly onEvent?: (event: ServerEvent) => void
 }
-export interface MaintenanceResult { readonly frozen: number; readonly sealed: number; readonly retired: number; readonly changes: number; readonly deliveries: number; readonly links: number }
+export interface MaintenanceResult { readonly frozen: number; readonly sealed: number; readonly retired: number; readonly changes: number; readonly deliveries: number; readonly links: number
+  readonly reclaimedChunks: number; readonly deletedObjects: number; readonly prunedRows: number; readonly inventoriedObjects: number }
 export interface MaintenanceOptions {
   readonly maxChunks?: number
   readonly maxSubscriptionWork?: number
@@ -156,6 +157,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
   const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', {
     maxStoredBytes: options.limits?.maxStoredBytes, maxPageBytes: options.limits?.maxPageBytes, maxPageFrames: options.limits?.maxPageFrames,
+    replayTimeoutMs: options.limits?.replayTimeoutMs,
     storage: options.storage, environmentId: options.postgres.environmentId,
     timeouts: { ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
       ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}) },
@@ -289,13 +291,15 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
         if (input?.timeBudgetMs !== undefined && (!Number.isSafeInteger(input.timeBudgetMs) || input.timeBudgetMs < 1 || input.timeBudgetMs > 300_000)) throw new RangeError('Invalid maintenance time budget')
         if (input?.freezeHot !== undefined && typeof input.freezeHot !== 'boolean') throw new TypeError('Invalid hot chunk rotation policy')
         const until = input?.timeBudgetMs === undefined ? Infinity : started + input.timeBudgetMs
-        const total: Record<keyof MaintenanceResult, number> = { frozen: 0, sealed: 0, retired: 0, changes: 0, deliveries: 0, links: 0 }
+        const total: Record<keyof MaintenanceResult, number> = { frozen: 0, sealed: 0, retired: 0, changes: 0, deliveries: 0, links: 0,
+          reclaimedChunks: 0, deletedObjects: 0, prunedRows: 0, inventoriedObjects: 0 }
         // Every round gives each work class a chance. A continuously busy
         // outbox must not consume the entire deadline before delivery/sealing.
         for (let i = 0; i < Math.max(chunks, maximum) && !closed; i++) {
           const current = {
             ...(subscriptions && i < maximum ? await subscriptions.maintain(1) : { changes: 0, deliveries: 0, links: 0, worked: false }),
-            ...(i < chunks ? await store.maintain({ maxChunks: 1, freezeHot: input?.freezeHot ?? true }) : { frozen: 0, sealed: 0, retired: 0 }),
+            ...(i < chunks ? await store.maintain({ maxChunks: 1, freezeHot: input?.freezeHot ?? true }) : { frozen: 0, sealed: 0, retired: 0,
+              reclaimedChunks: 0, deletedObjects: 0, prunedRows: 0, inventoriedObjects: 0, reclamationWorked: false }),
           }
           for (const key of Object.keys(total) as (keyof MaintenanceResult)[]) total[key] += current[key]
           if (!Object.values(current).some(Boolean) || performance.now() >= until) break

@@ -49,7 +49,7 @@ Point-in-time rollback can discard appends and acknowledgments already observed 
 
 This package is unreleased. Upgrade from the pre-0005 checkout using the same stopped-ingress procedure: old prerelease binaries do not contain the serving-epoch guard. Run explicit checksummed migrations, deploy fresh instances, and verify replay/producer continuity before reopening. Older binaries must not run against a newer unsupported schema. The pinned same-schema mixed-binary pair passes eight real-Function checks; see the [upgrade matrix](upgrade-compatibility-v1.md). Other version/schema pairs and restore scale/fault profiles remain separate qualification gates. The bounded stopped-Function in-place procedure is covered by the [restore drill](inplace-restore-v1.md).
 
-Physical object deletion remains unavailable. All objects and indexes are retained, including objects unreferenced after a rollback. This protects recovery history and in-flight replay while read/reference pins, retirement barriers, and bounded historical retention are unfinished. Monitor retained storage and provision capacity. These tests do not qualify destructive reclamation.
+The schema-0005 compatibility profile retains every object and frame index. Schema 0006 implements explicitly configured, disabled-by-default collection behind replay pins, retirement barriers, scoped inventory, and a declared recovery horizon; see the [reclamation contract](reclamation-v1.md). This isolated branch still requires its final collection/restore/soak qualification before release. Never delete objects merely because the current database does not reference them.
 
 ## Observability
 
@@ -57,7 +57,7 @@ Physical object deletion remains unavailable. All objects and indexes are retain
 
 Alert on sustained 429 admission failures, failed maintenance, oldest pending change/chunk age, subscription retry delay, storage growth, corrupted/missing chunks, and configuration fences. Detailed backlog metrics, dashboards, load/soak evidence, and supported upgrade matrices remain release work.
 
-The example's authenticated health route returns per-instance memory and pool snapshots only when the caller also supplies the maintenance credential. Load reports distinguish these from database-wide connection counts and record total retained outbox rows as well as pending work. Sampling can reach an idle instance, so these observations do not establish fleet-wide memory or pool limits. Completed outbox jobs are consumed atomically with their durable subscription handoff; old prerelease `processed` rows and other retained metadata still need their own retirement policy. The [reclamation draft](reclamation-v1.md) defines the pending reader, fork, upload, compatibility, and recovery barriers for physical deletion.
+The example's authenticated health route returns per-instance memory and pool snapshots only when the caller also supplies the maintenance credential. Load reports distinguish these from database-wide connection counts and record total retained outbox rows as well as pending work. Sampling can reach an idle instance, so these observations do not establish fleet-wide memory or pool limits. Completed outbox jobs are consumed atomically with their durable subscription handoff; schema-0006 collection additionally prunes old prerelease `processed` rows and unreachable metadata through bounded work phases. The [reclamation contract](reclamation-v1.md) defines its reader, fork, upload, compatibility, recovery, and qualification requirements.
 
 ## Evidence
 

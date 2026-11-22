@@ -45,6 +45,37 @@ export async function inspectInstallation(pool: Pool, options: OperationTarget =
   return result.rows[0]!
 }
 
+export interface ReclamationPolicyOptions extends OperationTarget {
+  /** An active, explicitly quiesced recovery operation from beginRecovery. */
+  readonly token: string
+  readonly enabled: boolean
+  /** Include the entire supported PITR AND external-backup recovery window. */
+  readonly recoveryWindowMs: number
+  /** At least fifteen minutes in addition to the recovery window. */
+  readonly safetyMarginMs?: number
+}
+/** Once per recovery operation; retry with identical settings after lost replies. */
+export async function configureReclamation(pool: Pool, options: ReclamationPolicyOptions): Promise<void> {
+  const schema = target(options), margin = options.safetyMarginMs ?? 900_000
+  if (typeof options.enabled !== 'boolean' || !Number.isSafeInteger(options.recoveryWindowMs) || options.recoveryWindowMs < 0 || options.recoveryWindowMs > 315_576_000_000
+    || !Number.isSafeInteger(margin) || margin < 900_000 || margin > 2_147_483_647) throw new RangeError('Invalid reclamation recovery policy')
+  await transaction(pool, {}, async (client) => {
+    const row = (await client.query<RecoveryRow>(`SELECT * FROM ${schema}.installation FOR UPDATE`)).rows[0]
+    validRecovery(row, options.token)
+    const policy = (await client.query<{ configured_recovery_token: string | null; enabled: boolean; recovery_window_ms: string; safety_margin_ms: number }>(`SELECT * FROM ${schema}.reclamation_policy FOR UPDATE`)).rows[0]!
+    if (policy.configured_recovery_token === options.token) {
+      if (policy.enabled !== options.enabled || BigInt(policy.recovery_window_ms) !== BigInt(options.recoveryWindowMs) || policy.safety_margin_ms !== margin) {
+        throw new StorageCompatibilityError('This recovery operation already configured a different reclamation policy')
+      }
+      return
+    }
+    await client.query(`UPDATE ${schema}.reclamation_policy SET enabled=$1,recovery_window_ms=$2,safety_margin_ms=$3,configured_recovery_token=$4,
+      inventory_cursor=NULL,hold_until=GREATEST(hold_until,clock_timestamp()+($2::bigint+$3::integer)*interval '1 millisecond')`, [options.enabled, options.recoveryWindowMs, margin, options.token])
+    // Existing promises may be extended, never shortened by a policy change.
+    // The global hold above covers a restore that discarded older promises.
+  })
+}
+
 /** Waits for existing writer transactions, changes epoch, and stops admission. */
 export async function beginRecovery(pool: Pool, options: RecoveryOptions): Promise<{ token: string; servingEpoch: string }> {
   const schema = target(options)
@@ -97,8 +128,10 @@ export async function verifyRecovery(pool: Pool, options: VerifyRecoveryOptions)
     await new SubscriptionSigner(pool, options.schema ?? 'durable_streams', options.keyring).signature(Buffer.alloc(0))
   }
   if (before.recovery_complete) return { complete: true, verified: Number(before.recovery_verified) }
+  const reclamation = await pool.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)
   const manifests = await pool.query<{ id: string; stream_id: string; object_key: string; sha256: string; encoded_bytes: number; frame_count: number; payload_bytes: string; start_offset: string; end_offset: string }>(
-    `SELECT * FROM ${schema}.chunks WHERE state = 'sealed' AND ($1::uuid IS NULL OR id > $1) ORDER BY id LIMIT $2`, [before.recovery_cursor, maximum])
+    `SELECT * FROM ${schema}.chunks WHERE state = 'sealed' ${reclamation.rowCount ? 'AND retired_at IS NULL' : ''}
+      AND ($1::uuid IS NULL OR id > $1) ORDER BY id LIMIT $2`, [before.recovery_cursor, maximum])
   for (const chunk of manifests.rows) {
     if (!options.objects) throw new StorageCompatibilityError('Sealed manifests require target object storage')
     const bytes = await options.objects.get(chunk.object_key, chunk.encoded_bytes)
@@ -131,6 +164,15 @@ export async function finishRecovery(pool: Pool, options: OperationTarget & { re
     if (!row.recovery_complete) throw new StorageCompatibilityError('Verify every sealed manifest before activating this installation')
     const readers = await client.query(`SELECT 1 FROM ${schema}.live_leases WHERE expires_at > clock_timestamp() AND serving_epoch <> $1 LIMIT 1`, [row.serving_epoch])
     if (readers.rowCount) throw new StorageCompatibilityError('Drain active live readers or wait for their bounded leases before activating recovery')
+    const reclamation = await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)
+    if (reclamation.rowCount) {
+      const replays = await client.query(`SELECT 1 FROM ${schema}.replay_pins WHERE expires_at>clock_timestamp() AND serving_epoch<>$1 LIMIT 1`, [row.serving_epoch])
+      if (replays.rowCount) throw new StorageCompatibilityError('Drain active replay readers or wait for their bounded pins before activating recovery')
+      await client.query(`DELETE FROM ${schema}.replay_pins`)
+      await client.query(`UPDATE ${schema}.chunk_objects SET claim_token=NULL, claim_until=NULL, claim_epoch=claim_epoch+1 WHERE retired_at IS NOT NULL`)
+      await client.query(`UPDATE ${schema}.reclamation_policy SET inventory_cursor=NULL,
+        hold_until=GREATEST(hold_until,clock_timestamp()+(recovery_window_ms+safety_margin_ms)*interval '1 millisecond')`)
+    }
     // Process eviction can leave durable claims and leases behind. UUID tokens
     // invalidate callbacks issued on either side of a point-in-time rollback.
     await client.query(`UPDATE ${schema}.chunks SET claim_token = NULL, claim_until = NULL, claim_epoch = claim_epoch + 1 WHERE state = 'frozen'`)

@@ -10,6 +10,8 @@ import { globMatches, normalizeSubscription, relativeStreamPath } from './subscr
 import type { ControlRoute, SubscriptionConfig } from './subscription-protocol.js'
 import type { SubscriptionOptions } from './subscriptions.js'
 import { deliverWebhook, webhookTarget } from './webhook.js'
+import { WakeTokens } from './wake-token.js'
+import type { WakeTokenClaims } from './wake-token.js'
 
 interface Sub {
   id: string; tenant_id: string; name: string; config: SubscriptionConfig; config_hash: string; pattern_regex: string | null
@@ -38,6 +40,8 @@ export class PostgresSubscriptions {
   private readonly schema: string
   private readonly cipher: SubscriptionCipher
   private readonly signer: SubscriptionSigner
+  private readonly tokens: WakeTokens
+  private signedTokens = false
   private readonly maxStreams: number
   private readonly maxSubscriptions: number
   private readonly webhookTimeout: number
@@ -49,6 +53,7 @@ export class PostgresSubscriptions {
     this.schema = validateSchema(schema)
     this.cipher = new SubscriptionCipher(options.keyring)
     this.signer = new SubscriptionSigner(pool, schema, options.keyring)
+    this.tokens = new WakeTokens(options.keyring)
     this.maxStreams = options.maxStreams ?? 1000
     this.maxSubscriptions = options.maxSubscriptionsPerTenant ?? 10_000
     this.webhookTimeout = options.webhookTimeoutMs ?? 5000
@@ -59,6 +64,7 @@ export class PostgresSubscriptions {
   async assertReady(): Promise<void> {
     this.ready ??= (async () => {
       await this.streams.assertReady()
+      this.signedTokens = this.streams.schemaVersion === 6
       const result = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.installation`)
       if (result.rows.length !== 1) throw new StorageCompatibilityError('Missing installation identity')
       this.installationId = result.rows[0]!.id
@@ -239,14 +245,22 @@ export class PostgresSubscriptions {
       if (changed) { await this.invalidate(client, sub, 'fenced'); await this.queue(client, sub) }
     })
   }
+  private async wakeToken(sub: Sub, wakeId: string, generation: number): Promise<string> {
+    if (!this.signedTokens) return `dsw.${wakeId}.${randomBytes(32).toString('base64url')}`
+    const installation = await this.streams.guard.snapshot()
+    return this.tokens.sign({ installationId: installation.id, servingEpoch: installation.serving_epoch,
+      tenantId: sub.tenant_id, subscriptionId: sub.id, name: sub.name, wakeId, generation, kind: sub.config.type })
+  }
   private async issue(client: PoolClient, sub: Sub, deliveryClaim?: string): Promise<{ wake: Wake; streams: readonly Snapshot[] }> {
     const members = await this.infos(client, sub)
-    const generation = BigInt(sub.generation) + 1n
+    const generation = this.signedTokens
+      ? BigInt((await client.query<{ value: string }>(`SELECT nextval('${this.schema}.wake_generations') AS value`)).rows[0]!.value)
+      : BigInt(sub.generation) + 1n
     if (generation > BigInt(Number.MAX_SAFE_INTEGER)) throw new StreamError(503, 'GENERATION_CAPACITY', 'Subscription generation capacity reached')
     const id = randomUUID()
-    const token = sub.config.type === 'webhook' ? `dsw.${id}.${randomBytes(32).toString('base64url')}` : null
-    const result = await client.query<Wake>(`INSERT INTO ${this.schema}.subscription_wakes (id, subscription_id, tenant_id, generation, kind, token_hash, token_cipher, state, delivery_claim, delivery_until)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'ready',$8,CASE WHEN $8::uuid IS NOT NULL THEN clock_timestamp() + $9 * interval '1 millisecond' ELSE NULL END) RETURNING *`, [id, sub.id, sub.tenant_id, String(generation), sub.config.type,
+    const token = sub.config.type === 'webhook' ? await this.wakeToken(sub, id, Number(generation)) : null
+    const result = await client.query<Wake>(`INSERT INTO ${this.schema}.subscription_wakes (id, subscription_id, tenant_id, generation, kind, token_hash, token_cipher, state, delivery_claim, delivery_until${this.signedTokens ? ',token_version' : ''})
+      VALUES ($1,$2,$3,$4,$5,$6,$7,'ready',$8,CASE WHEN $8::uuid IS NOT NULL THEN clock_timestamp() + $9 * interval '1 millisecond' ELSE NULL END${this.signedTokens ? ',2' : ''}) RETURNING *`, [id, sub.id, sub.tenant_id, String(generation), sub.config.type,
       token ? hashToken(token) : null, token ? this.cipher.encrypt(Buffer.from(token), `${this.installationId}:wake:${id}`) : null,
       sub.config.type === 'webhook' ? deliveryClaim ?? null : null, this.webhookTimeout + 10_000])
     const snapshots = this.snapshot(members)
@@ -274,12 +288,12 @@ export class PostgresSubscriptions {
       if (!await this.pending(client, sub)) throw new StreamError(409, 'NO_PENDING_WORK', 'Subscription has no pending work')
       if (!sub.current_wake) await this.issue(client, sub)
       const id = sub.current_wake!
-      const token = `dsw.${id}.${randomBytes(32).toString('base64url')}`
+      const token = await this.wakeToken(sub, id, Number(sub.generation))
       const snapshots = this.snapshot(await this.infos(client, sub))
       await client.query(`DELETE FROM ${this.schema}.subscription_wake_streams WHERE wake_id = $1`, [id])
       if (snapshots.length) await client.query(`INSERT INTO ${this.schema}.subscription_wake_streams (wake_id, tenant_id, path, stream_id, link_type, acked_offset, tail_offset)
         SELECT $1,$2,x.path,x.stream_id,x.link_type,x.acked_offset,x.tail_offset FROM jsonb_to_recordset($3::jsonb) x(path text,stream_id uuid,link_type text,acked_offset text,tail_offset text)`, [id, sub.tenant_id, JSON.stringify(snapshots)])
-      await client.query(`UPDATE ${this.schema}.subscription_wakes SET token_hash = $2, token_cipher = $3 WHERE id = $1`, [id, hashToken(token), this.cipher.encrypt(Buffer.from(token), `${this.installationId}:wake:${id}`)])
+      await client.query(`UPDATE ${this.schema}.subscription_wakes SET token_hash = $2, token_cipher = $3${this.signedTokens ? ',token_version=2' : ''} WHERE id = $1`, [id, hashToken(token), this.cipher.encrypt(Buffer.from(token), `${this.installationId}:wake:${id}`)])
       await client.query(`UPDATE ${this.schema}.subscriptions SET holder = $2, lease_until = clock_timestamp() + $3 * interval '1 millisecond',
         next_work_at = clock_timestamp() + $3 * interval '1 millisecond' WHERE id = $1`, [sub.id, worker, sub.config.lease_ttl_ms])
       return { claimed: { wake_id: `w_${id}`, generation: Number(sub.generation), token,
@@ -290,21 +304,37 @@ export class PostgresSubscriptions {
   async scoped(request: Request, route: ControlRoute, readBody: () => Promise<Buffer>): Promise<Response> {
     if (request.method !== 'POST') throw new StreamError(405, 'METHOD_NOT_ALLOWED', 'Subscription tokens require POST')
     const authorization = request.headers.get('authorization') ?? ''
-    const match = /^Bearer (dsw\.([0-9a-f-]{36})\.[A-Za-z0-9_-]{43})$/i.exec(authorization)
-    if (!match || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(match[2]!)) throw new StreamError(401, 'INVALID_TOKEN', 'A subscription-scoped token is required')
+    const bearer = authorization.length <= 8199 ? /^Bearer (.+)$/i.exec(authorization) : null
+    if (!bearer) throw new StreamError(401, 'INVALID_TOKEN', 'A subscription-scoped token is required')
     await this.assertReady()
-    const token = match[1]!, wakeId = match[2]!
-    const authenticated = await this.pool.query<{ token_hash: Buffer | null; subscription_id: string; name: string }>(`SELECT w.token_hash, w.subscription_id, s.name
-      FROM ${this.schema}.subscription_wakes w JOIN ${this.schema}.subscriptions s ON s.id = w.subscription_id WHERE w.id = $1`, [wakeId])
-    const owner = authenticated.rows[0]
-    if (!owner?.token_hash || owner.name !== route.name || !timingSafeEqual(owner.token_hash, hashToken(token))) throw new StreamError(401, 'INVALID_TOKEN', 'Subscription token is invalid')
+    const token = bearer[1]!
+    let wakeId: string, owner: { subscription_id: string; name: string }, claims: WakeTokenClaims | undefined
+    if (this.signedTokens && token.startsWith('dsw.2.')) {
+      claims = this.tokens.verify(token)
+      if (!claims || claims.name !== route.name) throw new StreamError(401, 'INVALID_TOKEN', 'Subscription token is invalid')
+      const installation = await this.streams.guard.snapshot()
+      if (claims.installationId !== installation.id || claims.servingEpoch !== installation.serving_epoch) throw fenced()
+      wakeId = claims.wakeId; owner = { subscription_id: claims.subscriptionId, name: claims.name }
+    } else {
+      const legacy = /^dsw\.([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.[A-Za-z0-9_-]{43}$/.exec(token)
+      if (!legacy) throw new StreamError(401, 'INVALID_TOKEN', 'Subscription token is invalid')
+      wakeId = legacy[1]!
+      const authenticated = await this.pool.query<{ token_hash: Buffer | null; subscription_id: string; name: string }>(`SELECT w.token_hash, w.subscription_id, s.name
+        FROM ${this.schema}.subscription_wakes w JOIN ${this.schema}.subscriptions s ON s.id = w.subscription_id WHERE w.id = $1
+        ${this.signedTokens ? `UNION ALL SELECT token_hash, subscription_id, subscription_name AS name FROM ${this.schema}.legacy_wake_tokens WHERE wake_id=$1` : ''}`, [wakeId])
+      const row = authenticated.rows[0]
+      if (!row?.token_hash || row.name !== route.name || !timingSafeEqual(row.token_hash, hashToken(token))) throw new StreamError(401, 'INVALID_TOKEN', 'Subscription token is invalid')
+      if (this.signedTokens) throw fenced()
+      owner = row
+    }
     const body = jsonBody(await readBody())
     const response = await this.streams.transaction({}, async (client) => {
       const result = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE id = $1 FOR UPDATE)
         SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [owner.subscription_id])
       const sub = result.rows[0]
       const wake = (await client.query<Wake>(`SELECT * FROM ${this.schema}.subscription_wakes WHERE id = $1`, [wakeId])).rows[0]!
-      if (!sub || sub.deleted_at || sub.current_wake !== wakeId || !sub.lease_valid || !wake.token_hash || !timingSafeEqual(wake.token_hash, hashToken(token))
+      if (!sub || !wake || sub.deleted_at || sub.current_wake !== wakeId || !sub.lease_valid || !wake.token_hash || !timingSafeEqual(wake.token_hash, hashToken(token))
+        || (claims && (sub.tenant_id !== claims.tenantId || sub.name !== claims.name || Number(sub.generation) !== claims.generation || sub.config.type !== claims.kind))
         || body.wake_id !== `w_${wakeId}` || body.generation !== Number(sub.generation)
         || (route.action === 'callback' ? sub.config.type !== 'webhook' : sub.config.type !== 'pull-wake')) throw fenced()
       if (route.action !== 'release') await this.applyAcks(client, sub, body.acks)

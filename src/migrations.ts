@@ -5,7 +5,7 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
-export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations'] as const
+export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation'] as const
 
 export interface Migration {
   readonly id: string
@@ -22,10 +22,14 @@ export async function migrationPlan(schema = 'durable_streams'): Promise<readonl
 }
 
 /** Explicit, transactional DDL. Call through the deployment's direct connection. */
-export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string; readonly environmentId?: string; readonly maxLiveReaders?: number } = {}): Promise<readonly string[]> {
+export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string; readonly environmentId?: string; readonly maxLiveReaders?: number
+  /** Explicit legacy compatibility installation; physical collection is unavailable. */
+  readonly target?: '0005_operations' } = {}): Promise<readonly string[]> {
   const schema = options.schema ?? 'durable_streams'
   const identifier = validateSchema(schema)
   const plan = await migrationPlan(schema)
+  if (options.target !== undefined && options.target !== '0005_operations') throw new TypeError('Unsupported migration target')
+  const selected = options.target ? plan.slice(0, 5) : plan
   return transaction(pool, { timeoutMs: 60_000 }, async (client) => {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`durable-streams:migrate:${schema}`])
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${identifier}`)
@@ -36,9 +40,10 @@ export async function migrate(pool: Pool, options: { readonly schema?: string; r
       if (!plan.some((m) => m.id === row.id && m.checksum === row.checksum)) {
         throw new StorageCompatibilityError(`Unknown or modified migration: ${row.id}`)
       }
+      if (!selected.some((migration) => migration.id === row.id)) throw new StorageCompatibilityError('Migrations cannot downgrade an existing installation')
     }
     const completed: string[] = []
-    for (const migration of plan) {
+    for (const migration of selected) {
       if (applied.rows.some((m) => m.id === migration.id)) continue
       await client.query(migration.sql)
       await client.query(`INSERT INTO ${identifier}.migrations (id, checksum) VALUES ($1, $2)`, [migration.id, migration.checksum])

@@ -5,13 +5,22 @@ import type { ChunkFrame } from './chunk-codec.js'
 import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
+import { assertReplayDeadline } from './replay.js'
 
-/** Immutable-key object storage. Destructive deletion is deliberately unavailable. */
+export interface ChunkInventoryPage {
+  readonly objects: readonly { readonly key: string; readonly size: number }[]
+  readonly cursor: string | null
+}
+export class ChunkNotFoundError extends Error { override readonly name = 'ChunkNotFoundError' }
+
+/** Immutable-key storage. Collection capabilities are used only by enabled policy. */
 export interface ChunkStorage {
   /** Stable identity of this branch/bucket/namespace, excluding credentials. */
   readonly identity: string
   readonly put: (key: string, bytes: Uint8Array) => Promise<void>
   readonly get: (key: string, maxBytes: number) => Promise<Buffer>
+  readonly delete?: (key: string) => Promise<void>
+  readonly list?: (prefix: string, cursor: string | null, limit: number) => Promise<ChunkInventoryPage>
 }
 export interface StorageOptions {
   readonly objects: ChunkStorage
@@ -48,6 +57,7 @@ export interface StoredFrame {
 
 /** Durable claims and immutable FROZEN frames make upload retries deterministic. */
 export class ChunkManager {
+  reclamation = false
   private readonly schema: string
   private readonly target: number
   private readonly maximumFrames: number
@@ -99,12 +109,13 @@ export class ChunkManager {
     let frozen = 0, sealed = 0
     for (let i = 0; i < maximum; i++) {
       const rotated = input.freezeHot === false ? false : await this.guard.run({}, async (client) => {
-        const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
+        const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 AND deleted_at IS NULL ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
       if (rotated) frozen++
       const claim = await this.guard.run({}, async (client) => {
         const candidate = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.chunks WHERE state = 'frozen'
+          ${this.reclamation ? 'AND retired_at IS NULL' : ''}
           AND (claim_until IS NULL OR claim_until <= clock_timestamp()) ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`)
         if (!candidate.rows[0]) return undefined
         const result = await client.query<Manifest>(`UPDATE ${this.schema}.chunks SET claim_token = $2,
@@ -122,13 +133,27 @@ export class ChunkManager {
         const bytes = encodeChunk({ ...identity, frames })
         const digest = chunkDigest(bytes)
         const key = `v1/${identity.installationId}/${identity.streamId}/${identity.chunkId}/${digest}.ndsc`
+        if (this.reclamation) {
+          const intended = await this.guard.run({}, async (client) => {
+            const valid = await client.query(`SELECT id FROM ${this.schema}.chunks WHERE id=$1 AND claim_token=$2 AND claim_epoch=$3
+              AND state='frozen' AND retired_at IS NULL AND claim_until>clock_timestamp() FOR UPDATE`, [claim.id, claim.claim_token, claim.claim_epoch])
+            if (!valid.rowCount) return false
+            await client.query(`INSERT INTO ${this.schema}.chunk_objects (object_key,stream_id,chunk_id,sha256,encoded_bytes)
+              VALUES ($1,$2,$3,$4,$5) ON CONFLICT (object_key) DO NOTHING`, [key, claim.stream_id, claim.id, digest, bytes.length])
+            const intent = await client.query(`SELECT 1 FROM ${this.schema}.chunk_objects WHERE object_key=$1 AND retired_at IS NULL
+              AND NOT orphan_candidate AND quarantine_reason IS NULL AND sha256=$2 AND encoded_bytes=$3`, [key, digest, bytes.length])
+            return !!intent.rowCount
+          })
+          if (!intended) continue
+        }
         await this.options.objects.put(key, bytes)
         // Verify the exact uploaded object before discarding any local payload.
         decodeChunk(await this.options.objects.get(key, bytes.length), identity, digest)
         const published = await this.guard.run({}, async (client) => {
           const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
             encoded_bytes = $6, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
-            WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp() RETURNING id`,
+            WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp()
+            ${this.reclamation ? 'AND retired_at IS NULL' : ''} RETURNING id`,
           [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length])
           if (!result.rowCount) return false
           const cleared = await client.query(`UPDATE ${this.schema}.appends SET payload = NULL, message_ends = NULL WHERE chunk_id = $1 AND payload IS NOT NULL`, [claim.id])
@@ -149,12 +174,13 @@ export class ChunkManager {
     return { frozen, sealed }
   }
 
-  /** The SQL snapshot is already closed; immutable objects cannot be reclaimed. */
-  async materialize(frames: readonly StoredFrame[]): Promise<readonly ChunkFrame[]> {
+  /** The replay owner holds its pins; object I/O holds no SQL transaction. */
+  async materialize(frames: readonly StoredFrame[], deadline: number): Promise<readonly ChunkFrame[]> {
     let currentChunkId: string | undefined
     let decoded: readonly ChunkFrame[] | undefined
     const result: ChunkFrame[] = []
     for (const frame of frames) {
+      assertReplayDeadline(deadline)
       if (frame.payload !== null) { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
       if (!frame.chunk_id || !frame.object_key || !frame.sha256 || !frame.encoded_bytes) throw new Error('Sealed frame is missing its manifest')
       if (currentChunkId !== frame.chunk_id || !decoded) {
@@ -163,6 +189,7 @@ export class ChunkManager {
         decoded = undefined
         const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: frame.chunk_id }
         const bytes = await this.options.objects.get(frame.object_key, frame.encoded_bytes)
+        assertReplayDeadline(deadline)
         if (bytes.length !== frame.encoded_bytes) throw new Error('Sealed object length differs from manifest')
         decoded = decodeChunk(bytes, identity, frame.sha256).frames
         currentChunkId = frame.chunk_id

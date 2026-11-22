@@ -148,11 +148,11 @@ beforeAll(async () => {
   await script('scripts/neon-test-rolling-artifacts.mjs')
   prepared = JSON.parse(await readFile(artifactsFile, 'utf8')) as Artifacts
   expect(prepared.artifacts.baseline.commit).toBe('b22c1675f7eb5c32b52f39be39279c819ea5f21f')
-  for (const migration of await migrationPlan(schema)) {
+  for (const migration of (await migrationPlan(schema)).slice(0, 5)) {
     const prior = await readFile(join(prepared.artifacts.baseline.packageRoot, 'migrations', `${migration.id}.sql`))
     expect(createHash('sha256').update(prior).digest('hex')).toBe(migration.checksum)
   }
-  await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity, maxLiveReaders: 2 })
+  await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity, maxLiveReaders: 2, target: '0005_operations' })
   await initializeSubscriptions(pool, { schema, keyring })
   old = await deploy('baseline', 0); current = await deploy('current', 1)
 }, 600_000)
@@ -170,7 +170,7 @@ afterAll(async () => {
       baselineSourceArchiveSha256: prepared?.baselineSourceArchiveSha256, node: process.version, region: env.AWS_REGION,
       artifacts: prepared ? Object.fromEntries(Object.entries(prepared.artifacts).map(([key, { packageRoot: _root, consumer: _consumer, ...artifact }]) => [key, artifact])) : {},
       runtimes: runtimes.map(({ url: _url, ...runtime }) => runtime), storageVersion: 1,
-      migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })),
+      migrations: (await migrationPlan(schema)).slice(0, 5).map(({ id, checksum }) => ({ id, checksum })),
     }, null, 2) + '\n')
   }
 }, 180_000)

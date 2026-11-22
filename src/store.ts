@@ -10,6 +10,10 @@ import { MIGRATION_IDS } from './migrations.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions, StoredFrame } from './storage.js'
 import type { ChunkFrame } from './chunk-codec.js'
+import { assertReplayDeadline, ReplayPins } from './replay.js'
+import type { ReplayLease } from './replay.js'
+import { ReclamationManager, emptyReclamation } from './reclamation.js'
+import type { ReclamationResult } from './reclamation.js'
 
 export interface Producer {
   readonly id: string
@@ -81,11 +85,13 @@ interface StoreOptions {
   readonly maxStoredBytes?: number | undefined
   readonly maxPageBytes?: number | undefined
   readonly maxPageFrames?: number | undefined
+  readonly replayTimeoutMs?: number | undefined
   readonly storage?: StorageOptions | undefined
   readonly environmentId?: string | undefined
   readonly timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'> | undefined
 }
-interface ReplayPlan extends Omit<ReadResult, 'body'> { readonly frames: readonly StoredFrame[] }
+interface PinnedFrames { readonly frames: readonly StoredFrame[]; readonly lease: ReplayLease | undefined; readonly deadline: number }
+interface ReplayPlan extends Omit<ReadResult, 'body'>, PinnedFrames {}
 
 /** Transactional stream state and bounded replay planning. */
 export class PostgresStreamStore {
@@ -96,22 +102,34 @@ export class PostgresStreamStore {
   private readonly maxStoredBytes: number
   private readonly maxPageBytes: number
   private readonly maxPageFrames: number
+  private readonly replayTimeout: number
+  private readonly pins: ReplayPins
+  private readonly reclamation: ReclamationManager
+  private layout: 5 | 6 | undefined
+  get schemaVersion(): 5 | 6 {
+    if (this.layout === undefined) throw new StorageCompatibilityError('Initialize the runtime before reading schema capabilities')
+    return this.layout
+  }
 
   constructor(
     private readonly pool: Pool,
     schema: string,
     options: StoreOptions = {},
   ) {
-    const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 128, storage, environmentId, timeouts } = options
+    const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 128, replayTimeoutMs = 60_000, storage, environmentId, timeouts } = options
     this.maxStoredBytes = maxStoredBytes
     this.maxPageBytes = maxPageBytes
     this.maxPageFrames = maxPageFrames
     this.schema = validateSchema(schema)
     this.guard = new InstallationGuard(pool, schema, environmentId, timeouts)
+    this.pins = new ReplayPins(this.schema, this.guard)
+    this.reclamation = new ReclamationManager(this.schema, this.guard, storage?.objects)
+    this.replayTimeout = replayTimeoutMs
     this.chunks = storage ? new ChunkManager(pool, schema, storage, this.guard) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024
-      || !Number.isSafeInteger(maxPageFrames) || maxPageFrames < 1 || maxPageFrames > 1024) {
+      || !Number.isSafeInteger(maxPageFrames) || maxPageFrames < 1 || maxPageFrames > 1024
+      || !Number.isSafeInteger(replayTimeoutMs) || replayTimeoutMs < 1 || replayTimeoutMs > 300_000) {
       throw new RangeError('Invalid payload/page limits')
     }
   }
@@ -121,11 +139,17 @@ export class PostgresStreamStore {
       .then(async (result) => {
         if (result.rows.length !== 1 || result.rows[0]!.storage_version !== 1) throw new StorageCompatibilityError('Unsupported storage version')
         const migrations = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.migrations ORDER BY id`)
-        if (JSON.stringify(migrations.rows.map((row) => row.id)) !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations')
+        const history = JSON.stringify(migrations.rows.map((row) => row.id))
+        const legacy = history === JSON.stringify(MIGRATION_IDS.slice(0, 5))
+        if (!legacy && history !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations')
+        this.pins.enabled = !legacy
+        this.layout = legacy ? 5 : 6
+        if (this.chunks) this.chunks.reclamation = !legacy
         if (result.rows[0]!.storage_identity !== null && !this.chunks) throw new StorageCompatibilityError('This installation requires its configured object storage')
         await this.chunks?.assertBinding()
+        if (!legacy) await this.reclamation.assertReady()
       })
-      .catch((error: unknown) => { this.ready = undefined; throw error })
+      .catch((error: unknown) => { this.ready = undefined; this.layout = undefined; throw error })
     await this.ready
   }
 
@@ -203,7 +227,8 @@ export class PostgresStreamStore {
     this.checkPayload(payload.bytes)
     const outcome = await this.transaction({}, async (client) => {
       await client.query(`INSERT INTO ${this.schema}.paths (tenant_id, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [tenant, path])
-      await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = $2 FOR UPDATE`, [tenant, path])
+      const namespace = await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = $2 FOR UPDATE`, [tenant, path])
+      if (namespace.rowCount !== 1) throw new StreamError(503, 'NAMESPACE_RETRY', 'Namespace changed; retry creation', { 'Retry-After': '1' })
       let existing = await this.lock(client, tenant, path)
       if (existing?.deleted_at) throw new StreamError(409, 'STREAM_RETAINED', 'Stream has active forks')
       if (existing?.expired) {
@@ -274,27 +299,35 @@ export class PostgresStreamStore {
     return result.rows
   }
 
-  private async materialize(frames: readonly StoredFrame[]): Promise<readonly ChunkFrame[]> {
-    if (this.chunks) return this.chunks.materialize(frames)
-    return frames.map((frame) => {
-      if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
-      return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
-    })
+  private async materialize(plan: PinnedFrames): Promise<readonly ChunkFrame[]> {
+    const { frames, deadline, lease } = plan
+    try {
+      assertReplayDeadline(deadline)
+      const result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
+        if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
+        return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
+      })
+      await this.pins.validate(lease)
+      assertReplayDeadline(deadline)
+      return result
+    } finally { await this.pins.release(lease) }
   }
 
   async createFork(tenant: string, path: string, options: ForkOptions): Promise<{ stream: StreamMetadata; created: boolean }> {
+    const deadline = performance.now() + this.replayTimeout
     await this.assertReady()
     if (options.offset !== undefined) parseOffset(options.offset)
     if (!Number.isSafeInteger(options.subOffset) || options.subOffset < 0) throw new StreamError(400, 'INVALID_SUB_OFFSET', 'Invalid sub-offset')
     type Prefix = { sourceId: string; anchor: string; frame: ChunkFrame }
     type Outcome = { stream: StreamMetadata; created: boolean } | { error: StreamError }
-      | { prepare: { sourceId: string; anchor: string; contentType: string; frames: readonly StoredFrame[] } }
+      | { prepare: PinnedFrames & { sourceId: string; anchor: string; contentType: string } }
     const execute = (prefix?: Prefix): Promise<Outcome> => this.transaction({}, async (client) => {
       // Lock every namespace claim before locking any stream row. Inserts obey
       // the same byte ordering, including when both paths are initially absent.
       const paths = [...new Set([path, options.sourcePath])].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)))
       for (const claim of paths) await client.query(`INSERT INTO ${this.schema}.paths (tenant_id, path) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [tenant, claim])
-      await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = ANY($2::text[]) ORDER BY path FOR UPDATE`, [tenant, paths])
+      const namespaces = await client.query(`SELECT path FROM ${this.schema}.paths WHERE tenant_id = $1 AND path = ANY($2::text[]) ORDER BY path FOR UPDATE`, [tenant, paths])
+      if (namespaces.rowCount !== paths.length) throw new StreamError(503, 'NAMESPACE_RETRY', 'Namespace changed; retry fork creation', { 'Retry-After': '1' })
       let existing = await this.lock(client, tenant, path)
       if (existing?.deleted_at) throw new StreamError(409, 'STREAM_RETAINED', 'Target stream has active forks')
       if (existing?.expired) {
@@ -331,7 +364,9 @@ export class PostgresStreamStore {
       if (options.subOffset && !prefix) {
         const frames = await this.framePlan(client, source.id, anchor, 1, this.maxStoredBytes)
         if (!frames[0] || frames[0].start_offset !== anchor) throw new StreamError(400, 'SUB_OFFSET_BEYOND_TAIL', 'Sub-offset has no following source frame')
-        return { prepare: { sourceId: source.id, anchor, contentType: source.content_type, frames } }
+        assertReplayDeadline(deadline)
+        const lease = await this.pins.acquire(client, frames)
+        return { prepare: { sourceId: source.id, anchor, contentType: source.content_type, frames, lease, deadline } }
       }
       const ttl = options.ttlSeconds ?? (options.expiresAt ? null : source.ttl_seconds)
       const expiry = options.expiresAt ?? (options.ttlSeconds !== undefined ? null : source.expires_at)
@@ -357,7 +392,7 @@ export class PostgresStreamStore {
     let outcome = await execute()
     if ('prepare' in outcome) {
       const plan = outcome.prepare
-      const frame = (await this.materialize(plan.frames))[0]!
+      const frame = (await this.materialize(plan))[0]!
       const json = mediaType(plan.contentType) === 'application/json'
       const units = json ? frame.messageEnds?.length ?? 0 : frame.payload.length
       if (options.subOffset > units) throw new StreamError(400, 'SUB_OFFSET_OVERSHOOT', 'Sub-offset exceeds the next source frame')
@@ -494,16 +529,20 @@ export class PostgresStreamStore {
   }
 
   private async planRead(client: PoolClient, stream: StreamMetadata, offset: string, observedAt: number): Promise<ReplayPlan> {
+    const deadline = observedAt + this.replayTimeout
+    assertReplayDeadline(deadline)
     const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
     await this.boundary(client, stream, start)
     const frames = await this.framePlan(client, stream.id, start)
+    assertReplayDeadline(deadline)
+    const lease = await this.pins.acquire(client, frames)
     const next = frames.at(-1)?.end_offset ?? start
-    return { stream, frames, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
+    return { stream, frames, lease, deadline, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
       validatedAt: observedAt, validUntil: observedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
   }
 
   private async materializeRead(plan: ReplayPlan): Promise<ReadResult> {
-    const frames = await this.materialize(plan.frames)
+    const frames = await this.materialize(plan)
     if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
     return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
       validatedAt: plan.validatedAt, validUntil: plan.validUntil }
@@ -533,13 +572,13 @@ export class PostgresStreamStore {
   async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
     const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
-    const plan = await this.transaction({ readOnly: true }, async (client) => {
+    const plan = await this.transaction(this.pins.enabled ? { repeatableRead: true } : { readOnly: true }, async (client) => {
       return this.planRead(client, await this.generation(client, tenant, id), offset, observedAt)
     })
     return this.materializeRead(plan)
   }
 
-  async maintain(options: { readonly maxChunks?: number; readonly freezeHot?: boolean } = {}): Promise<{ frozen: number; sealed: number; retired: number }> {
+  async maintain(options: { readonly maxChunks?: number; readonly freezeHot?: boolean } = {}): Promise<{ frozen: number; sealed: number; retired: number; reclamationWorked: boolean } & ReclamationResult> {
     await this.assertReady()
     const maximum = options.maxChunks ?? 8
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')
@@ -565,7 +604,9 @@ export class PostgresStreamStore {
       retired++
     }
     const chunks = this.chunks ? await this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
-    return { ...chunks, retired }
+    const collected = this.schemaVersion === 6 ? await this.reclamation.maintain() : { ...emptyReclamation(), worked: false }
+    const { worked: reclamationWorked, ...counts } = collected
+    return { ...chunks, retired, ...counts, reclamationWorked }
   }
 
   /** One bounded query per watched generation, shared by all local readers. */

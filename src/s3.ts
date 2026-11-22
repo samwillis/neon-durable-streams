@@ -1,8 +1,13 @@
 import { createHash } from 'node:crypto'
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
-import { MAX_CHUNK_BYTES } from './chunk-codec.js'
+import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-codec.js'
 import { StreamError } from './errors.js'
 import type { ChunkStorage } from './storage.js'
+import { ChunkNotFoundError } from './storage.js'
+
+const UUID_KEY = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
+const IMMUTABLE_KEY = new RegExp(`^v1/${UUID_KEY}/${UUID_KEY}/${UUID_KEY}/[0-9a-f]{64}\\.ndsc$`)
+const INVENTORY_PREFIX = new RegExp(`^v1/${UUID_KEY}/$`)
 
 export interface S3StorageOptions {
   readonly endpoint: string
@@ -16,7 +21,9 @@ export interface S3StorageOptions {
 }
 
 /** Consumer-owned adapter; call close after all servers/workers have stopped. */
-export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & { close(): void } {
+export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & {
+  close(): void; delete: NonNullable<ChunkStorage['delete']>; list: NonNullable<ChunkStorage['list']>
+} {
   const endpoint = new URL(options.endpoint)
   if ((!options.allowHttp && endpoint.protocol !== 'https:') || !['https:', 'http:'].includes(endpoint.protocol)
     || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) throw new TypeError('Invalid object storage endpoint')
@@ -71,20 +78,41 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
     get(key, maxBytes) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_CHUNK_BYTES) throw new RangeError('Invalid encoded chunk limit')
       return run(async (abortSignal) => {
-        const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key }), { abortSignal })
+        const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key }), { abortSignal }).catch((error: unknown) => {
+          if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
+          throw error
+        })
         if (!response.Body) throw new Error('Object storage returned no body')
         const body = response.Body as AsyncIterable<Uint8Array> & { destroy(error?: Error): void }
-        if (response.ContentLength !== undefined && response.ContentLength > maxBytes) { body.destroy(); throw new Error('Object exceeds manifest size') }
+        if (response.ContentLength !== undefined && response.ContentLength > maxBytes) { body.destroy(); throw new ChunkIntegrityError('Object exceeds manifest size') }
         let size = 0
         const parts: Uint8Array[] = []
         try {
           for await (const part of body) {
             size += part.byteLength
-            if (size > maxBytes) throw new Error('Object exceeds manifest size')
+            if (size > maxBytes) throw new ChunkIntegrityError('Object exceeds manifest size')
             parts.push(part)
           }
         } finally { body.destroy() }
         return Buffer.concat(parts, size)
+      })
+    },
+    delete(key) {
+      if (!IMMUTABLE_KEY.test(key)) throw new TypeError('Collection requires an exact immutable chunk key')
+      return run(async (abortSignal) => { await client.send(new DeleteObjectCommand({ Bucket: options.bucket, Key: key }), { abortSignal }) })
+    },
+    list(prefix, cursor, limit) {
+      if (!INVENTORY_PREFIX.test(prefix) || !Number.isSafeInteger(limit) || limit < 1 || limit > 128
+        || (cursor !== null && (typeof cursor !== 'string' || !cursor || cursor.length > 8192))) throw new TypeError('Invalid bounded chunk inventory')
+      return run(async (abortSignal) => {
+        const response = await client.send(new ListObjectsV2Command({ Bucket: options.bucket, Prefix: prefix, MaxKeys: limit,
+          ...(cursor === null ? {} : { ContinuationToken: cursor }) }), { abortSignal })
+        const objects = (response.Contents ?? []).map((object) => {
+          if (!object.Key?.startsWith(prefix) || !Number.isSafeInteger(object.Size) || object.Size! < 0) throw new Error('Invalid object inventory response')
+          return { key: object.Key, size: object.Size! }
+        })
+        if (objects.length > limit || (response.IsTruncated && !response.NextContinuationToken)) throw new Error('Unbounded or incomplete object inventory')
+        return { objects, cursor: response.IsTruncated ? response.NextContinuationToken! : null }
       })
     },
     close() {

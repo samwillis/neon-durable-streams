@@ -2,6 +2,8 @@ import type { Pool, PoolClient } from 'pg'
 
 export interface TransactionOptions {
   readonly readOnly?: boolean
+  /** Snapshot replay can write its pins while preserving one MVCC snapshot. */
+  readonly repeatableRead?: boolean
   readonly timeoutMs?: number
   readonly lockTimeoutMs?: number
 }
@@ -19,8 +21,8 @@ export async function transaction<T>(
   let releaseError: Error | undefined
   let phase: 'begin' | 'work' | 'commit' = 'begin'
   try {
-    const begin = options.readOnly
-      ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'
+    const begin = options.readOnly ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY'
+      : options.repeatableRead ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ WRITE'
       : 'BEGIN ISOLATION LEVEL READ COMMITTED READ WRITE'
     // Both interpolated values were validated as bounded positive integers.
     // One simple-protocol round trip preserves explicit BEGIN/SET LOCAL while

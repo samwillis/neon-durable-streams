@@ -58,4 +58,7 @@ export class InstallationGuard {
   async releaseLiveLease(id: string): Promise<void> {
     await transaction(this.pool, this.timeouts, async (client) => { await client.query(`DELETE FROM ${this.schema}.live_leases WHERE id = $1`, [id]) })
   }
+  async releaseReplayPins(id: string): Promise<void> {
+    await transaction(this.pool, this.timeouts, async (client) => { await client.query(`DELETE FROM ${this.schema}.replay_pins WHERE id = $1`, [id]) })
+  }
 }

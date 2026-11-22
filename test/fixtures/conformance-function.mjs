@@ -16,7 +16,7 @@ if (process.env.DURABLE_STREAMS_KEYRING) sensitive.push(...Object.values(JSON.pa
 function redact(value) {
   let text = String(value)
   for (const secret of sensitive) text = text.replaceAll(secret, '[redacted]')
-  return text.replace(/postgres(?:ql)?:\/\/[^\s'"<>]+/g, '[database URL]').replace(/dsw\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/gi, '[wake token]')
+  return text.replace(/postgres(?:ql)?:\/\/[^\s'"<>]+/g, '[database URL]').replace(/dsw\.2\.[A-Za-z0-9_-]{1,128}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}|dsw\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/gi, '[wake token]')
 }
 function authorized(request) {
   const supplied = Buffer.from(request.headers.get('authorization') ?? '')

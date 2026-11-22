@@ -9,7 +9,7 @@ const redact = (message) => {
   let text = String(message)
   for (const secret of secrets) text = text.replaceAll(secret, '[redacted]')
   return text.replace(/postgres(?:ql)?:\/\/[^\s'"<>]+/g, '[database URL]')
-    .replace(/dsw\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/gi, '[wake token]').slice(0, 8000)
+    .replace(/dsw\.2\.[A-Za-z0-9_-]{1,128}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}|dsw\.[0-9a-f-]{36}\.[A-Za-z0-9_-]{43}/gi, '[wake token]').slice(0, 8000)
 }
 await writeFile(output, JSON.stringify({ total: report.numTotalTests, passed: report.numPassedTests,
   failed: report.numFailedTests, pending: report.numPendingTests,
