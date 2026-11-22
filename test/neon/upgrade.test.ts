@@ -9,6 +9,7 @@ import { migrate, migrationPlan } from '../../src/migrations.js'
 import { advanceOffset, ZERO_OFFSET } from '../../src/offset.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { transaction } from '../../src/transaction.js'
+import { inspectReclamation } from '../../src/operations.js'
 
 const env = process.env
 if (!env.TEST_DATABASE_URL_UNPOOLED || !env.AWS_ENDPOINT_URL_S3 || !env.AWS_REGION || !env.NEON_TEST_BUCKET) throw new Error('Upgrade qualification requires real Neon services')
@@ -74,6 +75,7 @@ test('stopped schema-0005 upgrade fences warmed runtimes and preserves producer 
     headers: { 'Content-Type': 'text/plain', ...headers }, ...(body === undefined ? {} : { body }) }))
   try {
     await migrate(pool, { schema: isolated, target: '0005_operations', storageIdentity: objects.identity, environmentId: 'stopped-upgrade' })
+    expect(await inspectReclamation(pool, { schema: isolated })).toEqual({ supported: false })
     const old = make()
     expect((await request(old, 'source', 'PUT')).status).toBe(201)
     const tuple = { 'Producer-Id': 'writer', 'Producer-Epoch': '7', 'Producer-Seq': '0' }

@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeEach, expect, test } from 'vitest'
 import { createDurableStreams } from '../../src/index.js'
 import type { ChunkStorage, DurableStreamsServer } from '../../src/index.js'
 import { migrate } from '../../src/migrations.js'
-import { beginRecovery, configureReclamation, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
+import { beginRecovery, configureReclamation, finishRecovery, inspectInstallation, inspectReclamation, verifyRecovery } from '../../src/operations.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { InstallationGuard } from '../../src/installation.js'
 import { ReclamationManager } from '../../src/reclamation.js'
@@ -86,12 +86,15 @@ test('policy requires quiesced administration and collection respects both persi
   expect((await sql('SELECT * FROM ds.chunk_objects WHERE chunk_id=$1', [chunk.id])).rows).toHaveLength(1)
   expect((await request(value, 'source', 'DELETE')).status).toBe(204)
   expect((await phase(0)).reclaimedChunks).toBe(1)
+  expect(await inspectReclamation(direct, { schema, includeBacklog: true })).toMatchObject({ supported: true, enabled: true, recoveryWindowMs: 0,
+    safetyMarginMs: 900_000, backlog: { pendingDeletes: 1, orphanCandidates: 0, quarantinedObjects: 0 } })
   expect((await phase(1)).deletedObjects).toBe(0)
   expect((await objects.get(chunk.object_key, chunk.encoded_bytes)).length).toBe(chunk.encoded_bytes)
   await sql("UPDATE ds.chunk_objects SET collect_after=clock_timestamp()-interval '1 second'")
   expect((await phase(1)).deletedObjects).toBe(0) // Global hold independently applies.
   await elapse()
   expect((await phase(1)).deletedObjects).toBe(1)
+  expect(await inspectReclamation(direct, { schema, includeBacklog: true })).toMatchObject({ backlog: { pendingDeletes: 0 } })
   expect((await phase(1)).deletedObjects).toBe(0)
   await expect(objects.get(chunk.object_key, chunk.encoded_bytes)).rejects.toThrow('not found')
   expect((await sql('SELECT collected_at FROM ds.chunk_objects WHERE chunk_id=$1', [chunk.id])).rows[0].collected_at).not.toBe(null)

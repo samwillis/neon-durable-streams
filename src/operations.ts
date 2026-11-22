@@ -54,6 +54,33 @@ export interface ReclamationPolicyOptions extends OperationTarget {
   /** At least fifteen minutes in addition to the recovery window. */
   readonly safetyMarginMs?: number
 }
+export type ReclamationStatus = { readonly supported: false } | {
+  readonly supported: true
+  readonly enabled: boolean
+  readonly recoveryWindowMs: number
+  readonly safetyMarginMs: number
+  readonly holdUntil: Date
+  readonly inventoryCompletedAt: Date | null
+  readonly backlog?: { readonly pendingDeletes: number; readonly orphanCandidates: number; readonly quarantinedObjects: number; readonly oldestCollectAfter: Date | null }
+}
+/** Operator diagnostics. Backlog aggregates are opt-in; use a separate pool. */
+export async function inspectReclamation(pool: Pool, options: OperationTarget & { readonly includeBacklog?: boolean } = {}): Promise<ReclamationStatus> {
+  const schema = target(options)
+  if (options.includeBacklog !== undefined && typeof options.includeBacklog !== 'boolean') throw new TypeError('Invalid reclamation diagnostics selection')
+  return transaction(pool, { readOnly: true, repeatableRead: true }, async (client) => {
+    if (!(await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)).rowCount) return { supported: false }
+    const policy = (await client.query<{ enabled: boolean; recovery_window_ms: string; safety_margin_ms: number; hold_until: Date; inventory_completed_at: Date | null }>(`SELECT * FROM ${schema}.reclamation_policy`)).rows[0]!
+    const result = { supported: true as const, enabled: policy.enabled, recoveryWindowMs: Number(policy.recovery_window_ms), safetyMarginMs: policy.safety_margin_ms,
+      holdUntil: policy.hold_until, inventoryCompletedAt: policy.inventory_completed_at }
+    if (!options.includeBacklog) return result
+    const counts = (await client.query<{ pending: string; orphans: string; quarantined: string; oldest: Date | null }>(`SELECT
+      count(*) FILTER (WHERE retired_at IS NOT NULL AND collected_at IS NULL) AS pending,
+      count(*) FILTER (WHERE orphan_candidate) AS orphans,
+      count(*) FILTER (WHERE quarantine_reason IS NOT NULL) AS quarantined,
+      min(collect_after) FILTER (WHERE retired_at IS NOT NULL AND collected_at IS NULL) AS oldest FROM ${schema}.chunk_objects`)).rows[0]!
+    return { ...result, backlog: { pendingDeletes: Number(counts.pending), orphanCandidates: Number(counts.orphans), quarantinedObjects: Number(counts.quarantined), oldestCollectAfter: counts.oldest } }
+  })
+}
 /** Once per recovery operation; retry with identical settings after lost replies. */
 export async function configureReclamation(pool: Pool, options: ReclamationPolicyOptions): Promise<void> {
   const schema = target(options), margin = options.safetyMarginMs ?? 900_000
