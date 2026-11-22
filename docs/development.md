@@ -11,7 +11,7 @@ mise exec node@24 -- pnpm install --frozen-lockfile
 mise exec node@24 -- pnpm neon:test:create
 mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run neon:test:deploy
 mise exec node@24 -- node --env-file=.env.neon.test --env-file=.env.neon.function --run test:function
-mise exec node@24 -- node --env-file=.env.neon.test --run test:neon
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:neon
 mise exec node@24 -- node --env-file=.env.neon.test --run test:integration
 mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:recovery
 mise exec node@24 -- node --env-file=.env.neon.test --run test:conformance
@@ -57,3 +57,5 @@ The test coordinator uses explicit 120-second transaction/90-second lock budgets
 A separate required `Neon append-hint delivery` job provisions its own labeled branch with hints enabled and **no cron trigger**. Two tests verify hinted pull wakes through real Realtime and full 4 MiB chunk publication to Object Storage; they also verify that smaller tails stay in Postgres. The ordinary Function qualification uses hints disabled and proves actual scheduled recovery. Both profiles use the same consumer code.
 
 `test:recovery` also allocates a separate `ds-test-inplace-<UUID>` branch directly from the non-expiring test parent. It stops the deployed Function/cron, drains an actual SSE reader, restores at a flushed WAL LSN, reconciles HOT/SEALED state, and redeploys with a fresh deployment ID before validating public replay and Realtime. It records `.neon-test-state-inplace.json` before allocation/restore so cleanup can resolve both exact names even after an ambiguous API response. `scripts/neon-test-inplace-cleanup.mjs` deletes leaves before the preserved parent; CI always invokes it when a ledger remains. The scheduled janitor recognizes both reserved names. See the [in-place runbook](inplace-restore-v1.md). A local diagnostic run can set `NEON_TEST_KEEP_INPLACE=1`; GitHub Actions ignores that flag. Run the cleanup script with the same project-scoped management environment afterward.
+
+The Neon project includes eight mixed-binary checks in `test/neon/rolling.test.ts`. They independently build/pack/install the pinned pre-payload baseline and current library, then deploy the same test consumer against each package on the recorded test branch. Four exact reserved Function slugs and one random schema are recorded before allocation; `scripts/neon-test-rolling-cleanup.mjs` removes only those resources and the temporary consumers. CI preserves `qualification-results/rolling-upgrade.json` and always retries remaining recorded cleanup. All eight cases must pass, with no filtering, for the report to say `passed: true`. The [upgrade matrix](upgrade-compatibility-v1.md) lists the supported boundary and the separate stopped-schema upgrade requirement.

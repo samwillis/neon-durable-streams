@@ -1,0 +1,106 @@
+{
+  "passed": true,
+  "checks": {
+    "expected": 8,
+    "passed": 8,
+    "names": [
+      "both packed versions share producer deduplication, ordering, and fencing during concurrent writes",
+      "old and new seal workers publish mutually readable chunks and retain producer sessions",
+      "cross-version forks preserve exact-number JSON and inherited sealed ranges",
+      "subscription registration, dispatch, claims, and scoped acks interoperate across versions",
+      "both Realtime implementations deliver the other version\u2019s final append before EOF",
+      "installation-wide admission bounds both versions and releases canceled readers",
+      "tenant and generation isolation survive cross-version path deletion and recreation",
+      "recovery fences both running binaries and fresh old/current artifacts can resume the installation"
+    ]
+  },
+  "cleaned": true,
+  "generatedAt": "2026-11-22T21:42:47.663Z",
+  "testSha256": "b113334eedb4cef41185a9c79b12205f817f514887e4663840072a89884485cb",
+  "baselineSourceArchiveSha256": "b5c70994422e333a2948f060d2b8851c82eb011aa8b5feeb05474be1ed7b4373",
+  "node": "v24.22.2",
+  "region": "eu-central-1",
+  "artifacts": {
+    "baseline": {
+      "commit": "b22c1675f7eb5c32b52f39be39279c819ea5f21f",
+      "sourceDirty": false,
+      "sourceSnapshotSha256": "6c33f9eff621a29f1fa87ed6d728f09a37bac6c376eff37a5df765e12239656b",
+      "tarballSha256": "0893a9216a4f0cff94fcceedddd64ddc66d4bbbdeb0fbff3dc1adfb1ddff3a1e",
+      "sourceLockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+      "consumerLockSha256": "0adb783a27ed2f89693411801a7b0bb5f914c983360308f658f3399511653b3c"
+    },
+    "current": {
+      "commit": "01643614c6ba142ef945e5a3c3607731293cf875",
+      "sourceDirty": false,
+      "sourceSnapshotSha256": "c89242c9fdf9a3426efbd9a47b1cc2942b3d79a84510ebe14179c050844d0874",
+      "tarballSha256": "de97791ebd1a00e801ad49fdd02776b5bd41b94d0178a0ae508ec7f41a504c30",
+      "sourceLockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+      "consumerLockSha256": "d5cc2d2cfb70e3a30bd4401b4563cd9f5097884352c6816ff586c866667294f5"
+    }
+  },
+  "runtimes": [
+    {
+      "kind": "baseline",
+      "slug": "dsmixab74f8c64b75b",
+      "revision": "b22c1675f7eb5c32b52f39be39279c819ea5f21f",
+      "instance": "9a3af845-2b1e-4351-ac4b-2324dc12da33",
+      "bundleSha256": "6d54ea30a46b28d96570423deefd50b24e43b040d3764c3762df472ac43e73e5",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "current",
+      "slug": "dsmixbb74f8c64b75b",
+      "revision": "01643614c6ba142ef945e5a3c3607731293cf875",
+      "instance": "38cb7d59-d574-4a36-88f4-a2bb8f20e8ab",
+      "bundleSha256": "5e32affdbeb452ecbcf25b3274d14977fdbd0a0f89355350faceca6781189968",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "current",
+      "slug": "dsmixcb74f8c64b75b",
+      "revision": "01643614c6ba142ef945e5a3c3607731293cf875",
+      "instance": "3dce3c3d-84c7-483f-b476-ce0db8739738",
+      "bundleSha256": "5e32affdbeb452ecbcf25b3274d14977fdbd0a0f89355350faceca6781189968",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "baseline",
+      "slug": "dsmixdb74f8c64b75b",
+      "revision": "b22c1675f7eb5c32b52f39be39279c819ea5f21f",
+      "instance": "5a14194e-5726-4749-a8c4-6fe384da3c2d",
+      "bundleSha256": "6d54ea30a46b28d96570423deefd50b24e43b040d3764c3762df472ac43e73e5",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    }
+  ],
+  "storageVersion": 1,
+  "migrations": [
+    {
+      "id": "0001_core",
+      "checksum": "b82b8b16dc07ed3379362e69833d04281a20b119c8aee0348cb249405893cafa"
+    },
+    {
+      "id": "0002_chunks",
+      "checksum": "71cfea906456676db5f8073ccfdde1a2261c794d9b2d76d77f170ad3269d18dd"
+    },
+    {
+      "id": "0003_forks",
+      "checksum": "35ae0c169d37119b8e982145358d683b505a703c3e5c3bad89cae2ddf77a10f2"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "5615a839ce24444ab5d63af4e5dba6589e49efc5d2efe27461c5d56886e9de5c"
+    },
+    {
+      "id": "0005_operations",
+      "checksum": "6b9ca1130a6acf0305e03501bcc6f0a0c9ac2d40f1e720af1f17df6824fc91e6"
+    }
+  ]
+}

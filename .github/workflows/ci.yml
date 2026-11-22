@@ -51,6 +51,12 @@ jobs:
         run: pnpm test:function
       - name: Real Neon Realtime and Object Storage integration
         run: pnpm test:neon --reporter=default --reporter=json --outputFile=neon-results.json
+      - name: Preserve packed mixed-version Function evidence
+        if: ${{ always() && hashFiles('qualification-results/rolling-upgrade.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rolling-upgrade-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/rolling-upgrade.json
       - name: Summarize real-service test results immediately
         if: ${{ always() && hashFiles('neon-results.json') != '' }}
         run: node scripts/summarize-test-results.mjs neon-results.json neon-test-summary.json
@@ -72,7 +78,15 @@ jobs:
           path: integration-test-summary.json
       - name: Point-in-time branch adoption and stopped-Function in-place restore
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
-        run: pnpm test:recovery
+        run: pnpm test:recovery --reporter=default --reporter=json --outputFile=recovery-results.json
+      - name: Summarize recovery failures immediately
+        if: ${{ always() && hashFiles('recovery-results.json') != '' }}
+        run: node scripts/summarize-test-results.mjs recovery-results.json recovery-test-summary.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && hashFiles('recovery-test-summary.json') != '' }}
+        with:
+          name: recovery-tests-${{ github.run_id }}-${{ github.run_attempt }}
+          path: recovery-test-summary.json
       - name: Preserve in-place restore evidence
         if: ${{ always() && hashFiles('qualification-results/inplace-restore.json') != '' }}
         uses: actions/upload-artifact@v4
@@ -102,6 +116,9 @@ jobs:
       - name: Delete interrupted in-place restore branches
         if: ${{ always() && hashFiles('.neon-test-state-inplace.json') != '' }}
         run: node scripts/neon-test-inplace-cleanup.mjs
+      - name: Delete interrupted rolling Functions and installed consumers
+        if: ${{ always() && (hashFiles('.neon-test-state-rolling.json') != '' || hashFiles('.neon-test-state-rolling-artifacts.json') != '') }}
+        run: node scripts/neon-test-rolling-cleanup.mjs
       - name: Delete this run's Neon branch
         if: ${{ always() && hashFiles('.neon-test-state.json') != '' }}
         run: pnpm neon:test:delete
