@@ -7,14 +7,19 @@ import { afterAll, beforeAll } from 'vitest'
 import { runConformanceTests } from '@durable-streams/server-conformance-tests'
 import { createDurableStreams } from '../../src/index.js'
 import { migrate } from '../../src/migrations.js'
+import { createNeonRealtimeNotifier } from '../../src/neon.js'
 
 if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to disposable Postgres 18')
+if (!process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET) throw new Error('Full conformance requires real Neon Realtime credentials')
 const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, max: 10, connectionTimeoutMillis: 5000 })
 const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? process.env.TEST_DATABASE_URL, max: 1, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})
 migrationPool.on('error', () => {})
 const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
+const notifier = createNeonRealtimeNotifier({ url: process.env.NEON_REALTIME_URL, secret: process.env.NEON_REALTIME_SECRET,
+  database: new URL(process.env.TEST_DATABASE_URL).pathname.slice(1) })
 const handler = createDurableStreams({ postgres: { pool, schema },
+  live: { notifier, longPollTimeoutMs: 1000 },
   allowedOrigins: ['https://example.com'],
   // Explicit anonymous access is confined to the disposable test fixture.
   auth: { authenticate: () => ({ tenantId: 'conformance', subject: 'fixture' }), authorize: () => true },
@@ -64,6 +69,7 @@ afterAll(async () => {
   http.closeAllConnections()
   if (http.listening) await new Promise<void>((resolve, reject) => http.close((error) => error ? reject(error) : resolve()))
   await handler.close()
+  notifier.close()
   await pool.query(`DROP SCHEMA "${schema}" CASCADE`)
   await pool.end()
   await migrationPool.end()

@@ -1,6 +1,6 @@
 # Initial hot-log storage contract
 
-Implemented during M0/M1. This is an unreleased storage version; sealed-chunk encoding, live-reader TTL leases, forks, subscription dispatch, and object reclamation remain unimplemented. Migration 0001 establishes only the hot log and durable change outbox.
+Implemented during M0/M1. This is an unreleased storage version; sealed-chunk encoding, forks, subscription dispatch, and object reclamation remain unimplemented. Migration 0001 establishes only the hot log and durable change outbox.
 
 ## Identity and transactions
 
@@ -30,7 +30,7 @@ The stream lock protects producer validation, append insertion, tail and sequenc
 
 Creation is serialized even for a previously absent path. A matching repeated PUT does not append its initial body again. Logical delete/expiry clears the active namespace pointer, retains the previous generation, and writes a durable lifecycle change. Recreating the URL creates a fresh UUID, producer namespace, and ETag identity.
 
-Expiry uses the database clock under the path/stream locks. Successful GET on a TTL stream renews access time; successful nonduplicate appends renew it. HEAD does not renew. Absolute expiry never moves. Live-read renewal policy is still pending because live modes are not implemented.
+Expiry uses the database clock under the path/stream locks. Successful GET on a TTL stream renews access time; successful nonduplicate appends renew it. HEAD does not renew. Absolute expiry never moves. A live request renews TTL once when it begins, as specified by the pinned protocol; notifications, heartbeats, and background replay do not extend it. Generation reads recheck expiry with the database clock. HEAD and absolute-expiry behavior are the same across read modes.
 
 ## Change outbox
 
@@ -40,4 +40,13 @@ Every successful creation, new append, closure, deletion, and expiry writes a bo
 
 Tests cover exact arithmetic above JavaScript's safe integer limit, generated JSON/binary cases, concurrent creates/retries, rolled-back work, tenant isolation, expiry, ETags/closure, path recreation, fresh-process reads, and SIGKILL before versus after commit. A separate consumer test installs the packed npm artifact and verifies declarations, runtime exports, and SQL assets.
 
-These checks run against local Postgres 18. Real Neon pooler/runtime behavior, object storage, Realtime, full protocol coverage, format upgrades, and recovery/GC still require the qualification work in the implementation plan.
+Required CI runs against real Neon Postgres 18 and Realtime. Actual Realtime tests verify append-and-close ordering, EOF, tenant filtering, cancellation, and generation isolation with fallback polling set beyond the test deadline. Deployed Function ingress, object storage, full protocol coverage, format upgrades, and recovery/GC still require the qualification work in the implementation plan.
+
+
+## Live delivery
+
+Consumers enable live modes by supplying a notifier in `live.notifier`; the Neon adapter is exported from `/neon`. The notifier and database pool are consumer-owned. Disposing a server releases its watches without closing a shared notifier or pool.
+
+Realtime observes UUID-scoped, tenant-filtered stream heads. Registrations are shared between local readers. Register-then-recheck and a revision counter cover notifications racing a durable replay. Each watched generation also has a coalesced SQL fallback (default every five seconds), so lost notifications delay delivery rather than losing data. A request resolves `now` once and pins its original UUID for its entire lifetime.
+
+Long-poll defaults to 25 seconds. SSE emits bounded data/control pairs, base64 for binary types, text with every line framed, 15-second heartbeat comments, and a 60-second rotation. EOF comes from replaying the final durable offset, never directly from a close notification. Backpressure permits one encoded page in the response queue. Cancellation, authentication expiry, server shutdown, EOF, and rotation release registrations. Per-instance live admission defaults to 80 readers; the consuming deployment must budget aggregate Neon Function concurrency across instances and services. This default is a resource bound, not a certified capacity target.

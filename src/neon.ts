@@ -69,6 +69,7 @@ export function createNeonRealtimeNotifier(options: NeonRealtimeOptions): Stream
           if (current.disposed) { subscription.unsubscribe(); return }
           current.subscription = subscription
           const publish = () => {
+            if (current.disposed) return
             const snapshot = subscription.getSnapshot()
             if (snapshot.data === undefined || snapshot.status !== 'live') return
             const row = snapshot.data[0]
@@ -90,7 +91,7 @@ export function createNeonRealtimeNotifier(options: NeonRealtimeOptions): Stream
       const watched = entry
       watched.listeners.add(listener)
       if (watched.head !== undefined) queueMicrotask(() => {
-        if (watched.listeners.has(listener)) { try { listener(watched.head ?? null) } catch (error) { report(error) } }
+        if (!watched.disposed && watched.listeners.has(listener)) { try { listener(watched.head ?? null) } catch (error) { report(error) } }
       })
       let disposed = false
       return { ready: watched.ready, close() {

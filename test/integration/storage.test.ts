@@ -224,7 +224,7 @@ describe('durable HTTP hot log', () => {
   test('unsupported reserved features fail explicitly and never create streams', async () => {
     expect((await request('__ds/subscriptions/sub', 'PUT', '{}')).status).toBe(501)
     expect((await request('fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/private' })).status).toBe(501)
-    expect((await request('private?offset=-1&live=sse')).status).toBe(501)
+    expect((await request('private?offset=-1&live=sse')).status).toBe(503)
     expect((await request('fork', 'HEAD')).status).toBe(404)
   })
   test('unknown methods cannot fall through to reads and invalid calendar expiry is rejected', async () => {

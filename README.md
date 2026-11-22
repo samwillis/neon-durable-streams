@@ -18,19 +18,26 @@ The main findings are:
 - The upstream Cloudflare server is already distributed as an embeddable library, providing a useful API precedent. Its platform coordination mechanisms need a transactional Postgres implementation here.
 - Neon's published SLA covers Postgres compute endpoints; it does not establish an availability guarantee for the complete Functions/Storage/Realtime stack.
 
-The quality target is a production library. Implementation has started: the unreleased package provides an authenticated Fetch handler, explicit migrations, and a durable Postgres hot log. Live reads, sealed object storage, forks, subscriptions, and production qualification remain pending.
+The quality target is a production library. Implementation has started: the unreleased package provides an authenticated Fetch handler, explicit migrations, and a durable Postgres hot log. Realtime-backed long-poll/SSE is implemented and under qualification. Sealed object storage, forks, subscriptions, and production qualification remain pending.
 
 ## Current implementation
 
-The initial API supports PUT/POST/GET/HEAD/DELETE, JSON batching, producer deduplication/fencing, Stream-Seq, closure, TTL/absolute expiry, conditional reads, tenant isolation, and bounded replay pages. Unsupported live/fork/subscription requests return 501 explicitly. Consumer-owned database pools remain open when the handler closes; importing the library never provisions resources or migrates a database.
+The initial API supports PUT/POST/GET/HEAD/DELETE, JSON batching, producer deduplication/fencing, Stream-Seq, closure, TTL/absolute expiry, conditional reads, tenant isolation, and bounded replay pages. Long-poll and SSE are available with an explicitly configured notifier. Fork/subscription requests still return 501. Consumer-owned database pools remain open when the handler closes; importing the library never provisions resources or migrates a database.
 
 ```ts
 import { Pool } from 'pg'
 import { createDurableStreams } from '@samwillis/durable-streams-neon'
+import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+const notifier = createNeonRealtimeNotifier({
+  url: process.env.NEON_REALTIME_URL!,
+  secret: process.env.NEON_REALTIME_SECRET!,
+  database: new URL(process.env.DATABASE_URL!).pathname.slice(1),
+})
 const streams = createDurableStreams({
   postgres: { pool, schema: 'durable_streams' },
+  live: { notifier },
   auth: {
     authenticate: verifyCaller, // Return { tenantId, subject }, or null.
     authorize: checkPermission, // Check operation and path for that principal.

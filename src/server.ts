@@ -4,6 +4,8 @@ import { StreamError } from './errors.js'
 import { normalizeBasePath, streamPath } from './path.js'
 import { PostgresStreamStore } from './store.js'
 import type { Producer, StreamMetadata } from './store.js'
+import { LiveReads } from './live.js'
+import type { LiveOptions } from './live.js'
 
 export type Operation = 'create' | 'append' | 'read' | 'head' | 'delete'
 export interface Principal {
@@ -27,6 +29,7 @@ export interface ServerOptions {
   readonly basePath?: string
   readonly publicBaseUrl?: string
   readonly allowedOrigins?: readonly string[]
+  readonly live?: LiveOptions
   readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly bodyTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
 }
@@ -37,7 +40,7 @@ export interface DurableStreamsServer {
 }
 
 const METHODS = new Map<string, Operation>([['PUT', 'create'], ['POST', 'append'], ['GET', 'read'], ['HEAD', 'head'], ['DELETE', 'delete']])
-const EXPOSED = 'Stream-Next-Offset, Stream-Up-To-Date, Stream-Closed, Stream-TTL, Stream-Expires-At, Producer-Epoch, Producer-Seq, Producer-Expected-Seq, Producer-Received-Seq, ETag, Location'
+const EXPOSED = 'Stream-Next-Offset, Stream-Up-To-Date, Stream-Closed, Stream-Cursor, Stream-SSE-Data-Encoding, Stream-TTL, Stream-Expires-At, Producer-Epoch, Producer-Seq, Producer-Expected-Seq, Producer-Received-Seq, ETag, Location'
 
 async function readBody(request: Request, limit: number, timeoutMs: number): Promise<Buffer> {
   const declared = request.headers.get('content-length')
@@ -125,6 +128,8 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
   const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', options.limits?.maxStoredBytes, options.limits?.maxPageBytes)
+  const report = (error: unknown) => { try { options.onError?.(error) } catch { /* observer only */ } }
+  const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
   const pending = new Set<Promise<Response>>()
   let closed = false
 
@@ -156,15 +161,15 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       if (!principal.subject || !principal.tenantId || Buffer.byteLength(principal.tenantId) > 512
         || (principal.expiresAt !== undefined && !Number.isFinite(principal.expiresAt))) throw new Error('Authentication policy returned an invalid principal')
       if (!await options.auth.authorize({ principal, path, operation, request })) throw new StreamError(403, 'FORBIDDEN', 'Operation is not authorized')
-      if (path.split('/')[0] === '__ds' || url.searchParams.has('live')
+      if (path.split('/')[0] === '__ds'
         || ['stream-forked-from', 'stream-fork-offset', 'stream-fork-sub-offset'].some((h) => request.headers.has(h))) {
-        throw new StreamError(501, 'FEATURE_NOT_IMPLEMENTED', 'Live reads, forks, and subscriptions are not implemented yet')
+        throw new StreamError(501, 'FEATURE_NOT_IMPLEMENTED', 'Forks and subscriptions are not implemented yet')
       }
       if (request.method === 'PUT') {
         const body = await readBody(request, maxAppendBytes, bodyTimeoutMs)
         const result = await store.create(principal.tenantId, path, { body, contentType: contentType(request), closed: request.headers.get('stream-closed')?.toLowerCase() === 'true', ...createExpiry(request.headers) })
         const headers = metadataHeaders(result.stream)
-        if (result.created && canonical) headers.set('Location', `${canonical.href}/${url.pathname.slice(basePath.length + 1)}`)
+        if (result.created) headers.set('Location', canonical ? `${canonical.href}/${url.pathname.slice(basePath.length + 1)}` : new URL(url.pathname, url.origin).href)
         return respond(null, result.created ? 201 : 200, headers)
       }
       if (request.method === 'POST') {
@@ -183,6 +188,13 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       if (request.method === 'HEAD') return respond(null, 200, metadataHeaders(await store.head(principal.tenantId, path)))
       if (url.searchParams.getAll('offset').length > 1) throw new StreamError(400, 'MULTIPLE_OFFSETS', 'Specify one offset')
       const offset = url.searchParams.get('offset') ?? '-1'
+      if (url.searchParams.has('live')) {
+        if (url.searchParams.getAll('live').length !== 1 || !['long-poll', 'sse'].includes(url.searchParams.get('live')!)) throw new StreamError(400, 'INVALID_LIVE_MODE', 'Expected live=long-poll or live=sse')
+        if (!url.searchParams.has('offset')) throw new StreamError(400, 'MISSING_OFFSET', 'Live reads require an offset')
+        if (!live) throw new StreamError(503, 'LIVE_NOT_CONFIGURED', 'Live reads require a configured notifier')
+        const response = await live.serve(request, principal.tenantId, path, offset, principal.expiresAt)
+        return respond(response.body, response.status, response.headers)
+      }
       const result = await store.read(principal.tenantId, path, offset)
       const headers = metadataHeaders(result.stream)
       headers.set('Stream-Next-Offset', result.next)
@@ -210,10 +222,11 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       void response.finally(() => pending.delete(response)).catch(() => {})
       return response
     },
-    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl'] } },
+    async inspectHealth() { await store.assertReady(); return { ready: !closed, mode: 'hot-log', features: ['create', 'append', 'catch-up', 'head', 'close', 'delete', 'json', 'idempotent-producers', 'ttl', ...(live ? ['long-poll', 'sse'] : [])] } },
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true
+      live?.close()
       let timer: ReturnType<typeof setTimeout> | undefined
       try { await Promise.race([Promise.allSettled([...pending]), new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs) })]) }
       finally { clearTimeout(timer) }

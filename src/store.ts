@@ -48,6 +48,13 @@ export interface AppendResult {
   readonly status: 200 | 204
   readonly producer?: { epoch: number; seq: number }
 }
+export interface ReadResult {
+  readonly stream: StreamMetadata
+  readonly body: Buffer
+  readonly next: string
+  readonly upToDate: boolean
+  readonly hasData: boolean
+}
 
 /** Internal hot-log storage. Sealing/forks/subscriptions are later milestones. */
 export class PostgresStreamStore {
@@ -203,7 +210,7 @@ export class PostgresStreamStore {
         WHERE id = $1 RETURNING *`, [stream.id, next, options.close, options.close && producer ? producer : null, options.sequence ?? null])
       const value = updated.rows[0]!
       await this.change(client, value, stream.tail_offset, options.close ? 'closed' : 'appended')
-      return { stream: value, status: producer ? 200 : 204, ...(producer ? { producer: { epoch: producer.epoch, seq: producer.seq } } : {}) }
+      return { stream: value, status: producer && payload.bytes.length ? 200 : 204, ...(producer ? { producer: { epoch: producer.epoch, seq: producer.seq } } : {}) }
     })
   }
 
@@ -211,14 +218,22 @@ export class PostgresStreamStore {
     return this.withStream(tenant, path, async (_client, stream) => stream)
   }
 
-  async read(tenant: string, path: string, offset: string): Promise<{ stream: StreamMetadata; body: Buffer; next: string; upToDate: boolean }> {
+  async read(tenant: string, path: string, offset: string): Promise<ReadResult> {
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     const accessed = await this.withStream(tenant, path, async (client, stream) => {
       if (stream.ttl_seconds !== null) await client.query(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1`, [stream.id])
       return stream
     })
+    return this.readGeneration(tenant, accessed.id, offset)
+  }
+
+  /** An active live read must never switch to a recreated path generation. */
+  async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
+    if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     return transaction(this.pool, { readOnly: true }, async (client) => {
-      const metadata = await client.query<StreamMetadata>(`SELECT * FROM ${this.schema}.streams WHERE id = $1 AND deleted_at IS NULL`, [accessed.id])
+      const metadata = await client.query<StreamMetadata>(`SELECT * FROM ${this.schema}.streams WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+        AND (expires_at IS NULL OR expires_at > clock_timestamp())
+        AND (ttl_seconds IS NULL OR accessed_at + ttl_seconds * interval '1 second' > clock_timestamp())`, [tenant, id])
       const stream = metadata.rows[0]
       if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream no longer exists')
       const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
@@ -238,8 +253,16 @@ export class PostgresStreamStore {
         length += row.payload.length
         next = row.end_offset
       }
-      return { stream, body: formatPayloads(payloads, stream.content_type), next, upToDate: next === stream.tail_offset }
+      return { stream, body: formatPayloads(payloads, stream.content_type), next, upToDate: next === stream.tail_offset, hasData: payloads.length > 0 }
     })
+  }
+
+  /** One bounded query per watched generation, shared by all local readers. */
+  async headVersion(tenant: string, id: string): Promise<string | null> {
+    const result = await this.pool.query<{ change_version: string }>(`SELECT change_version FROM ${this.schema}.streams WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+      AND (expires_at IS NULL OR expires_at > clock_timestamp())
+      AND (ttl_seconds IS NULL OR accessed_at + ttl_seconds * interval '1 second' > clock_timestamp())`, [tenant, id])
+    return result.rows[0]?.change_version ?? null
   }
 
   async delete(tenant: string, path: string): Promise<void> {
