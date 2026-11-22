@@ -175,14 +175,14 @@ test('final close waits for its contiguous bytes and delete/recreate never switc
 }, 25_000)
 
 test('authentication expiry closes a raw payload session', async () => {
-  const handler = server({ authMs: 1500 })
+  const handler = server({ authMs: 5000 })
   await request(handler, 'auth', 'PUT')
   const live = await open(handler, 'auth')
   try {
     for (;;) { if ((await live.reader.read()).done) break }
     expect(live.content()).not.toContain('event: data')
   } finally { await live.close() }
-}, 10_000)
+}, 15_000)
 
 test('a paused reader survives payload overflow and sealing before final closure', async () => {
   const handler = server({ frames: 2, windowMs: 60_000 })
@@ -205,13 +205,16 @@ test('a paused reader survives payload overflow and sealing before final closure
 test.each(['ttl', 'absolute'])('%s expiry stops an idle payload session without extending its lifetime', async (mode) => {
   const handler = server()
   const path = `expiry-${mode}`
-  await request(handler, path, 'PUT', undefined, mode === 'ttl' ? { 'Stream-TTL': '1' } : { 'Stream-Expires-At': new Date(Date.now() + 1500).toISOString() })
+  // Leave time for bounded request/subscription setup before testing idle
+  // expiry. Periodic validation and fallback remain at 60 seconds.
+  const headers: Record<string, string> = mode === 'ttl' ? { 'Stream-TTL': '5' } : { 'Stream-Expires-At': new Date(Date.now() + 5000).toISOString() }
+  expect((await request(handler, path, 'PUT', undefined, headers)).status).toBe(201)
   const live = await open(handler, path)
   try {
     for (;;) { if ((await live.reader.read()).done) break }
     expect((await request(handler, path, 'HEAD')).status).toBe(404)
   } finally { await live.close() }
-}, 10_000)
+}, 15_000)
 
 test('serving-epoch validation fences a raw session before recovery can activate', async () => {
   const handler = server({ validationMs: 60_000, windowMs: 60_000 })
