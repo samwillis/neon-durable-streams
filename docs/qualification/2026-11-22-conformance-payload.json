@@ -1,0 +1,2054 @@
+{
+  "qualification": {
+    "sourceCommit": "f79d35e72010230d1c72074db80e37ff8b734456",
+    "sourceNote": "Run launched before commit; implementation matches the committed payload source, before cancellation-drain hardening.",
+    "upstreamCommit": "461b40267aabd644558f9b19dbb9507dd5f691cf",
+    "conformancePackage": "0.3.7",
+    "subscriptions": true,
+    "services": "Actual Neon Postgres 18, Realtime, Object Storage",
+    "region": "aws-eu-central-1",
+    "coordinator": "London, Node.js 24.22.2",
+    "durationSeconds": 574.58
+  },
+  "total": 338,
+  "passed": 338,
+  "failed": 0,
+  "pending": 0,
+  "suites": [
+    {
+      "file": "server.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "Basic Stream Operations should create a stream",
+          "status": "passed",
+          "durationMs": 528.6793749999999,
+          "failures": []
+        },
+        {
+          "name": "Basic Stream Operations should allow idempotent create with same config",
+          "status": "passed",
+          "durationMs": 396.5787499999999,
+          "failures": []
+        },
+        {
+          "name": "Basic Stream Operations should reject create with different config (409)",
+          "status": "passed",
+          "durationMs": 405.76258299999995,
+          "failures": []
+        },
+        {
+          "name": "Basic Stream Operations should delete a stream",
+          "status": "passed",
+          "durationMs": 547.002708,
+          "failures": []
+        },
+        {
+          "name": "Basic Stream Operations should properly isolate recreated stream after delete",
+          "status": "passed",
+          "durationMs": 1672.5098749999997,
+          "failures": []
+        },
+        {
+          "name": "Append Operations should append string data",
+          "status": "passed",
+          "durationMs": 614.988042,
+          "failures": []
+        },
+        {
+          "name": "Append Operations should append multiple chunks",
+          "status": "passed",
+          "durationMs": 1096.7387079999999,
+          "failures": []
+        },
+        {
+          "name": "Append Operations should enforce sequence ordering with seq",
+          "status": "passed",
+          "durationMs": 845.3155829999996,
+          "failures": []
+        },
+        {
+          "name": "Read Operations should read empty stream",
+          "status": "passed",
+          "durationMs": 376.9815840000001,
+          "failures": []
+        },
+        {
+          "name": "Read Operations should read stream with data",
+          "status": "passed",
+          "durationMs": 641.8201670000008,
+          "failures": []
+        },
+        {
+          "name": "Read Operations should read from offset",
+          "status": "passed",
+          "durationMs": 1032.8022910000009,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Operations should wait for new data with long-poll",
+          "status": "passed",
+          "durationMs": 1928.7310419999994,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Operations should return immediately if data already exists",
+          "status": "passed",
+          "durationMs": 625.0949579999997,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return correct headers on PUT",
+          "status": "passed",
+          "durationMs": 228.7663330000014,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 200 on idempotent PUT with same config",
+          "status": "passed",
+          "durationMs": 390.377625000001,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 409 on PUT with different config",
+          "status": "passed",
+          "durationMs": 416.7011659999989,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return correct headers on POST",
+          "status": "passed",
+          "durationMs": 477.7789580000008,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 404 on POST to non-existent stream",
+          "status": "passed",
+          "durationMs": 98.40266700000029,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 409 on content-type mismatch",
+          "status": "passed",
+          "durationMs": 351.40799999999945,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return correct headers on GET",
+          "status": "passed",
+          "durationMs": 418.3657919999987,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return empty body with up-to-date for empty stream",
+          "status": "passed",
+          "durationMs": 384.8440420000006,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should read from offset",
+          "status": "passed",
+          "durationMs": 1516.0688329999994,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 404 on DELETE non-existent stream",
+          "status": "passed",
+          "durationMs": 93.49825000000055,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should return 204 on successful DELETE",
+          "status": "passed",
+          "durationMs": 558.1178330000021,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should enforce sequence ordering",
+          "status": "passed",
+          "durationMs": 834.7794590000012,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should enforce lexicographic seq ordering (\"2\" then \"10\" rejects)",
+          "status": "passed",
+          "durationMs": 613.1497499999969,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should allow lexicographic seq ordering (\"09\" then \"10\" succeeds)",
+          "status": "passed",
+          "durationMs": 750.6236660000031,
+          "failures": []
+        },
+        {
+          "name": "HTTP Protocol should reject duplicate seq values",
+          "status": "passed",
+          "durationMs": 612.9247090000026,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on GET responses",
+          "status": "passed",
+          "durationMs": 460.42833299999984,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on PUT responses",
+          "status": "passed",
+          "durationMs": 259.48541699999987,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on POST responses",
+          "status": "passed",
+          "durationMs": 530.8418330000022,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on HEAD responses",
+          "status": "passed",
+          "durationMs": 373.45345799999996,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include Cross-Origin-Resource-Policy header on GET responses",
+          "status": "passed",
+          "durationMs": 460.7855410000011,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include Cache-Control: no-store on HEAD responses",
+          "status": "passed",
+          "durationMs": 368.7320839999993,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on SSE responses",
+          "status": "passed",
+          "durationMs": 687.6438330000019,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include X-Content-Type-Options: nosniff on long-poll responses",
+          "status": "passed",
+          "durationMs": 1054.8552920000002,
+          "failures": []
+        },
+        {
+          "name": "Browser Security Headers should include security headers on error responses",
+          "status": "passed",
+          "durationMs": 106.61133300000074,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Validation should reject both TTL and Expires-At (400)",
+          "status": "passed",
+          "durationMs": 2.5305829999997513,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Validation should reject invalid TTL (non-integer)",
+          "status": "passed",
+          "durationMs": 11.575292000001355,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Validation should reject negative TTL",
+          "status": "passed",
+          "durationMs": 3.0266669999982696,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Validation should accept valid TTL",
+          "status": "passed",
+          "durationMs": 280.0752500000017,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Validation should accept valid Expires-At",
+          "status": "passed",
+          "durationMs": 285.25662499999817,
+          "failures": []
+        },
+        {
+          "name": "Case-Insensitivity should treat content-type case-insensitively",
+          "status": "passed",
+          "durationMs": 512.155958000003,
+          "failures": []
+        },
+        {
+          "name": "Case-Insensitivity should allow idempotent create with different case content-type",
+          "status": "passed",
+          "durationMs": 436.37287500000093,
+          "failures": []
+        },
+        {
+          "name": "Case-Insensitivity should accept headers with different casing",
+          "status": "passed",
+          "durationMs": 515.8685000000005,
+          "failures": []
+        },
+        {
+          "name": "Content-Type Validation should enforce content-type match on append",
+          "status": "passed",
+          "durationMs": 387.92620800000077,
+          "failures": []
+        },
+        {
+          "name": "Content-Type Validation should allow append with matching content-type",
+          "status": "passed",
+          "durationMs": 506.6531250000007,
+          "failures": []
+        },
+        {
+          "name": "Content-Type Validation should return stream content-type on GET",
+          "status": "passed",
+          "durationMs": 468.5395830000016,
+          "failures": []
+        },
+        {
+          "name": "HEAD Metadata should return metadata without body",
+          "status": "passed",
+          "durationMs": 435.2357499999998,
+          "failures": []
+        },
+        {
+          "name": "HEAD Metadata should return 404 for non-existent stream",
+          "status": "passed",
+          "durationMs": 103.60854200000176,
+          "failures": []
+        },
+        {
+          "name": "HEAD Metadata should return tail offset",
+          "status": "passed",
+          "durationMs": 753.6188750000001,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should accept -1 as sentinel for stream beginning",
+          "status": "passed",
+          "durationMs": 468.9792910000033,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return same data for offset=-1 and no offset",
+          "status": "passed",
+          "durationMs": 621.6107499999998,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should accept offset=now as sentinel for current tail position",
+          "status": "passed",
+          "durationMs": 452.4211249999971,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return correct tail offset for offset=now",
+          "status": "passed",
+          "durationMs": 650.2307079999991,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should be able to resume from offset=now result",
+          "status": "passed",
+          "durationMs": 917.0995829999993,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should work with offset=now on empty stream",
+          "status": "passed",
+          "durationMs": 414.3877919999977,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return empty JSON array for offset=now on JSON streams",
+          "status": "passed",
+          "durationMs": 470.29708400000163,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return empty body for offset=now on non-JSON streams",
+          "status": "passed",
+          "durationMs": 455.99958400000105,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should support offset=now with long-poll mode (waits for data)",
+          "status": "passed",
+          "durationMs": 5738.376917000001,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should receive data with offset=now long-poll when appended",
+          "status": "passed",
+          "durationMs": 1884.7176249999975,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should support offset=now with SSE mode",
+          "status": "passed",
+          "durationMs": 2968.4085420000047,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return 404 for offset=now on non-existent stream",
+          "status": "passed",
+          "durationMs": 95.12220900000102,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return 404 for offset=now with long-poll on non-existent stream",
+          "status": "passed",
+          "durationMs": 201.11645799999678,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return 404 for offset=now with SSE on non-existent stream",
+          "status": "passed",
+          "durationMs": 223.9734580000004,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should support offset=now with long-poll on empty stream",
+          "status": "passed",
+          "durationMs": 5883.174874999997,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should support offset=now with SSE on empty stream",
+          "status": "passed",
+          "durationMs": 518.7997910000049,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should reject malformed offset (contains comma)",
+          "status": "passed",
+          "durationMs": 284.4701669999995,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should reject offset with spaces",
+          "status": "passed",
+          "durationMs": 318.15062499999476,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should support resumable reads (no duplicate data)",
+          "status": "passed",
+          "durationMs": 1042.6302090000027,
+          "failures": []
+        },
+        {
+          "name": "Offset Validation and Resumability should return empty response when reading from tail offset",
+          "status": "passed",
+          "durationMs": 604.0551659999983,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should reject empty POST body with 400",
+          "status": "passed",
+          "durationMs": 386.80295900000056,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should handle PUT with initial body correctly",
+          "status": "passed",
+          "durationMs": 452.1269170000014,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should preserve data immutability by position",
+          "status": "passed",
+          "durationMs": 1153.6096249999973,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should generate unique, monotonically increasing offsets",
+          "status": "passed",
+          "durationMs": 1507.4742920000062,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should reject empty offset parameter",
+          "status": "passed",
+          "durationMs": 296.2306250000038,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should reject multiple offset parameters",
+          "status": "passed",
+          "durationMs": 319.6796250000043,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should enforce case-sensitive seq ordering",
+          "status": "passed",
+          "durationMs": 642.348917000003,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should handle binary data with integrity",
+          "status": "passed",
+          "durationMs": 436.5719160000008,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should return Location header on 201",
+          "status": "passed",
+          "durationMs": 242.08858399999735,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should reject missing Content-Type on POST",
+          "status": "passed",
+          "durationMs": 360.53575000000274,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should accept PUT without Content-Type (use default)",
+          "status": "passed",
+          "durationMs": 239.41712499999994,
+          "failures": []
+        },
+        {
+          "name": "Protocol Edge Cases should ignore unknown query parameters",
+          "status": "passed",
+          "durationMs": 446.13454099999944,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Edge Cases should require offset parameter for long-poll",
+          "status": "passed",
+          "durationMs": 249.63791599999968,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Edge Cases should generate Stream-Cursor header on long-poll responses",
+          "status": "passed",
+          "durationMs": 555.3441670000029,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Edge Cases should return immediately with Stream-Up-To-Date when data exists at offset",
+          "status": "passed",
+          "durationMs": 549.6437090000036,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Edge Cases should echo cursor and handle collision with jitter",
+          "status": "passed",
+          "durationMs": 846.9148330000025,
+          "failures": []
+        },
+        {
+          "name": "Long-Poll Edge Cases should return Stream-Cursor, Stream-Up-To-Date and Stream-Next-Offset on 204 timeout",
+          "status": "passed",
+          "durationMs": 5379.440291999999,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject TTL with leading zeros",
+          "status": "passed",
+          "durationMs": 7.90625,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject TTL with plus sign",
+          "status": "passed",
+          "durationMs": 3.305625000008149,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject TTL with float value",
+          "status": "passed",
+          "durationMs": 1.8261250000068685,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject TTL with scientific notation",
+          "status": "passed",
+          "durationMs": 1.268458999998984,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject invalid Expires-At timestamp",
+          "status": "passed",
+          "durationMs": 1.2845830000005662,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should accept Expires-At with Z timezone",
+          "status": "passed",
+          "durationMs": 259.2715829999943,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should accept Expires-At with timezone offset",
+          "status": "passed",
+          "durationMs": 262.39387500000885,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should handle idempotent PUT with same TTL",
+          "status": "passed",
+          "durationMs": 433.90183299999626,
+          "failures": []
+        },
+        {
+          "name": "TTL and Expiry Edge Cases should reject idempotent PUT with different TTL",
+          "status": "passed",
+          "durationMs": 424.41287499999453,
+          "failures": []
+        },
+        {
+          "name": "HEAD Metadata Edge Cases should return TTL metadata if configured",
+          "status": "passed",
+          "durationMs": 380.1255409999867,
+          "failures": []
+        },
+        {
+          "name": "HEAD Metadata Edge Cases should return Expires-At metadata if configured",
+          "status": "passed",
+          "durationMs": 395.2579160000023,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on HEAD after TTL expires",
+          "status": "passed",
+          "durationMs": 1751.1824580000102,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on GET after TTL expires (idle)",
+          "status": "passed",
+          "durationMs": 1885.6912079999893,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on POST append after TTL expires (idle)",
+          "status": "passed",
+          "durationMs": 1613.1889999999985,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on HEAD after Expires-At passes",
+          "status": "passed",
+          "durationMs": 3745.459833000001,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on GET after Expires-At passes",
+          "status": "passed",
+          "durationMs": 4007.475707999998,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should return 404 on POST append after Expires-At passes",
+          "status": "passed",
+          "durationMs": 3893.581707999998,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should allow recreating stream after TTL expires",
+          "status": "passed",
+          "durationMs": 2047.5779579999944,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should extend TTL on write (sliding window)",
+          "status": "passed",
+          "durationMs": 3666.501457999999,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should extend TTL on GET ?offset=now (sliding window)",
+          "status": "passed",
+          "durationMs": 3574.423708000002,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should extend TTL on close-only POST (sliding window)",
+          "status": "passed",
+          "durationMs": 3608.3199579999928,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should extend TTL on producer close-only POST (sliding window)",
+          "status": "passed",
+          "durationMs": 3661.9409580000065,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should extend TTL on read (sliding window)",
+          "status": "passed",
+          "durationMs": 3623.010791000008,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should NOT extend TTL on HEAD",
+          "status": "passed",
+          "durationMs": 2734.7578340000036,
+          "failures": []
+        },
+        {
+          "name": "TTL Expiration Behavior should NOT extend Expires-At on read or write",
+          "status": "passed",
+          "durationMs": 4724.371583,
+          "failures": []
+        },
+        {
+          "name": "Caching and ETag should generate ETag on GET responses",
+          "status": "passed",
+          "durationMs": 432.04383300000336,
+          "failures": []
+        },
+        {
+          "name": "Caching and ETag should return 304 Not Modified for matching If-None-Match",
+          "status": "passed",
+          "durationMs": 600.8807920000108,
+          "failures": []
+        },
+        {
+          "name": "Caching and ETag should allow If-None-Match in CORS preflight responses",
+          "status": "passed",
+          "durationMs": 5.023416000010911,
+          "failures": []
+        },
+        {
+          "name": "Caching and ETag should return 200 for non-matching If-None-Match",
+          "status": "passed",
+          "durationMs": 434.9908330000035,
+          "failures": []
+        },
+        {
+          "name": "Caching and ETag should return new ETag after data changes",
+          "status": "passed",
+          "durationMs": 957.2900829999999,
+          "failures": []
+        },
+        {
+          "name": "Chunking and Large Payloads should handle chunk-size pagination correctly",
+          "status": "passed",
+          "durationMs": 1343.3350000000064,
+          "failures": []
+        },
+        {
+          "name": "Chunking and Large Payloads should handle large payload appropriately",
+          "status": "passed",
+          "durationMs": 233.16987499999232,
+          "failures": []
+        },
+        {
+          "name": "Read-Your-Writes Consistency should immediately read message after append",
+          "status": "passed",
+          "durationMs": 446.0729160000046,
+          "failures": []
+        },
+        {
+          "name": "Read-Your-Writes Consistency should immediately read multiple appends",
+          "status": "passed",
+          "durationMs": 1119.1003329999949,
+          "failures": []
+        },
+        {
+          "name": "Read-Your-Writes Consistency should serve offset-based reads immediately after append",
+          "status": "passed",
+          "durationMs": 1117.353958000007,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should return text/event-stream content-type for SSE requests",
+          "status": "passed",
+          "durationMs": 565.8395420000015,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should accept live=sse query parameter for application/json",
+          "status": "passed",
+          "durationMs": 685.3076250000013,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should require offset parameter for SSE mode",
+          "status": "passed",
+          "durationMs": 231.53212500001246,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should stream data events via SSE",
+          "status": "passed",
+          "durationMs": 826.1702919999952,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode JSON SSE catch-up pairs every data event with a control event",
+          "status": "passed",
+          "durationMs": 801.9027090000018,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode base64 SSE catch-up pairs every data event with a control event",
+          "status": "passed",
+          "durationMs": 756.9230410000018,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should send control events with offset",
+          "status": "passed",
+          "durationMs": 558.5295829999959,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should generate streamCursor in SSE control events",
+          "status": "passed",
+          "durationMs": 577.0425410000025,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle cursor collision with jitter in SSE mode",
+          "status": "passed",
+          "durationMs": 822.17758399999,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should wrap JSON data in arrays for SSE and produce valid JSON",
+          "status": "passed",
+          "durationMs": 577.3794579999958,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle SSE for empty stream with correct offset",
+          "status": "passed",
+          "durationMs": 704.281416999991,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should send upToDate flag in SSE control events when caught up",
+          "status": "passed",
+          "durationMs": 579.447874999998,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should have correct SSE headers (no Content-Length, proper Cache-Control)",
+          "status": "passed",
+          "durationMs": 544.155792000005,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle newlines in text/plain payloads",
+          "status": "passed",
+          "durationMs": 596.002250000005,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should prevent CRLF injection in payloads - embedded event boundaries become literal data",
+          "status": "passed",
+          "durationMs": 586.2232079999958,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should prevent CRLF injection - LF-only attack vectors",
+          "status": "passed",
+          "durationMs": 549.8351669999975,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should prevent CRLF injection - carriage return only attack vectors",
+          "status": "passed",
+          "durationMs": 553.2192499999946,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle JSON payloads with embedded newlines safely",
+          "status": "passed",
+          "durationMs": 564.465750000003,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should generate unique, monotonically increasing offsets in SSE mode",
+          "status": "passed",
+          "durationMs": 1764.7583339999983,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should support reconnection with last known offset",
+          "status": "passed",
+          "durationMs": 1365.6824580000102,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should auto-detect binary streams and return base64 encoded data in SSE mode",
+          "status": "passed",
+          "durationMs": 574.6223750000063,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should include Stream-SSE-Data-Encoding header for binary streams",
+          "status": "passed",
+          "durationMs": 552.3430419999931,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should NOT include Stream-SSE-Data-Encoding header for text/plain streams",
+          "status": "passed",
+          "durationMs": 542.5457909999968,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should NOT include Stream-SSE-Data-Encoding header for application/json streams",
+          "status": "passed",
+          "durationMs": 584.4447920000093,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should base64 encode data events only, control events remain JSON",
+          "status": "passed",
+          "durationMs": 551.4473330000037,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle empty binary payload with auto-detected base64 encoding",
+          "status": "passed",
+          "durationMs": 494.64250000000175,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle large binary payload with auto-detected base64 encoding",
+          "status": "passed",
+          "durationMs": 570.7124170000025,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle binary data with special bytes using auto-detected base64 encoding",
+          "status": "passed",
+          "durationMs": 566.0195000000094,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should auto-detect base64 encoding for application/x-protobuf streams",
+          "status": "passed",
+          "durationMs": 572.523874999999,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should auto-detect base64 encoding for image/png streams",
+          "status": "passed",
+          "durationMs": 574.4368749999994,
+          "failures": []
+        },
+        {
+          "name": "SSE Mode should handle offset=now with auto-detected base64 encoding for binary streams",
+          "status": "passed",
+          "durationMs": 642.6807499999995,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should allow PUT with empty array body (creates empty stream)",
+          "status": "passed",
+          "durationMs": 379.7440420000057,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should reject POST with empty array body",
+          "status": "passed",
+          "durationMs": 370.7872079999943,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should handle content-type with charset parameter",
+          "status": "passed",
+          "durationMs": 632.3179579999996,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should wrap single JSON value in array",
+          "status": "passed",
+          "durationMs": 653.6840830000001,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should store arrays as single messages",
+          "status": "passed",
+          "durationMs": 662.1204589999979,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should concatenate multiple appends into single array",
+          "status": "passed",
+          "durationMs": 1117.7080409999908,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should handle mixed single values and arrays",
+          "status": "passed",
+          "durationMs": 1104.7317089999997,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should reject invalid JSON with 400",
+          "status": "passed",
+          "durationMs": 399.2950830000045,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should handle various JSON value types",
+          "status": "passed",
+          "durationMs": 1850.5135420000006,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should preserve JSON structure and nesting",
+          "status": "passed",
+          "durationMs": 605.6628329999949,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should work with client json() iterator",
+          "status": "passed",
+          "durationMs": 1114.2597499999974,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should reject empty JSON arrays with 400",
+          "status": "passed",
+          "durationMs": 346.33899999999267,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should store nested arrays as single messages",
+          "status": "passed",
+          "durationMs": 580.3239170000015,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should store arrays as values when double-wrapped",
+          "status": "passed",
+          "durationMs": 599.4357500000042,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should store primitive arrays as single messages",
+          "status": "passed",
+          "durationMs": 897.2106249999924,
+          "failures": []
+        },
+        {
+          "name": "JSON Mode should handle mixed batching - single values, arrays, and nested arrays",
+          "status": "passed",
+          "durationMs": 1312.9135839999944,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Byte-Exactness Property concurrent readers see consistent data during writes",
+          "status": "passed",
+          "durationMs": 10005.224958000006,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Byte-Exactness Property single byte values cover full range (0-255) with concurrent readers during write",
+          "status": "passed",
+          "durationMs": 10003.656209000008,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Operation Sequence Properties random operation sequences maintain stream invariants",
+          "status": "passed",
+          "durationMs": 30002.424834000005,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Operation Sequence Properties offsets are always monotonically increasing",
+          "status": "passed",
+          "durationMs": 45663.692916,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Operation Sequence Properties read-your-writes: data is immediately visible after append",
+          "status": "passed",
+          "durationMs": 18696.829041999998,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Immutability Properties data at offset never changes after additional appends",
+          "status": "passed",
+          "durationMs": 29779.85583299998,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Offset Validation Properties should reject offsets with invalid characters",
+          "status": "passed",
+          "durationMs": 8592.696166999987,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Sequence Ordering Properties lexicographically ordered seq values are accepted",
+          "status": "passed",
+          "durationMs": 36100.24004199996,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Sequence Ordering Properties out-of-order seq values are rejected",
+          "status": "passed",
+          "durationMs": 15100.200750000018,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Concurrent Writer Stress Tests concurrent writers with sequence numbers - server handles gracefully",
+          "status": "passed",
+          "durationMs": 853.7745409999625,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Concurrent Writer Stress Tests concurrent writers racing with incrementing seq values",
+          "status": "passed",
+          "durationMs": 10692.914875000017,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Concurrent Writer Stress Tests concurrent appends without seq - all data is persisted",
+          "status": "passed",
+          "durationMs": 2184.1564170000493,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) Concurrent Writer Stress Tests mixed readers and writers - readers see consistent state",
+          "status": "passed",
+          "durationMs": 3216.321333000029,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) State Hash Verification replay produces identical content hash",
+          "status": "passed",
+          "durationMs": 45667.09233300004,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) State Hash Verification content hash changes with each append",
+          "status": "passed",
+          "durationMs": 2134.958500000008,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) State Hash Verification empty stream has consistent hash",
+          "status": "passed",
+          "durationMs": 745.2350829999777,
+          "failures": []
+        },
+        {
+          "name": "Property-Based Tests (fast-check) State Hash Verification deterministic ordering - same data in same order produces same hash",
+          "status": "passed",
+          "durationMs": 22690.61833300005,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should accept first append with producer headers (epoch=0, seq=0)",
+          "status": "passed",
+          "durationMs": 529.4202919999952,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should accept sequential producer sequences",
+          "status": "passed",
+          "durationMs": 1168.602790999983,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should return 204 for duplicate sequence (idempotent success)",
+          "status": "passed",
+          "durationMs": 682.8992909999797,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should accept epoch upgrade (new epoch starts at seq=0)",
+          "status": "passed",
+          "durationMs": 1085.8780410000472,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject stale epoch with 403 (zombie fencing)",
+          "status": "passed",
+          "durationMs": 714.1413750000065,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject sequence gap with 409",
+          "status": "passed",
+          "durationMs": 648.509291000024,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject epoch increase with seq != 0",
+          "status": "passed",
+          "durationMs": 665.4005420000176,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should require all producer headers together",
+          "status": "passed",
+          "durationMs": 247.43037499999627,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject invalid integer formats in producer headers",
+          "status": "passed",
+          "durationMs": 579.9299170000013,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations multiple producers should have independent state",
+          "status": "passed",
+          "durationMs": 1455.6893339999951,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations duplicate of seq=0 should not corrupt state",
+          "status": "passed",
+          "durationMs": 943.3251670000027,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations duplicate response should return highest accepted seq, not request seq",
+          "status": "passed",
+          "durationMs": 1235.1637920000358,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations split-brain fencing scenario",
+          "status": "passed",
+          "durationMs": 960.2066659999546,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations epoch rollback should be rejected",
+          "status": "passed",
+          "durationMs": 642.6910420000204,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations producer headers work with Stream-Seq header",
+          "status": "passed",
+          "durationMs": 497.09479199995985,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations producer duplicate should return 204 even with Stream-Seq header",
+          "status": "passed",
+          "durationMs": 719.6410409999662,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should store and read back data correctly",
+          "status": "passed",
+          "durationMs": 640.8890000000247,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should preserve order of sequential producer writes",
+          "status": "passed",
+          "durationMs": 1734.8034169999883,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations duplicate should not corrupt or duplicate data",
+          "status": "passed",
+          "durationMs": 1058.2945000000182,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations multiple producers should interleave correctly",
+          "status": "passed",
+          "durationMs": 1497.9075000000303,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should store and read back JSON object correctly",
+          "status": "passed",
+          "durationMs": 648.078291999991,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should preserve order of JSON appends with producer",
+          "status": "passed",
+          "durationMs": 1790.132333000016,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations JSON duplicate should not corrupt data",
+          "status": "passed",
+          "durationMs": 1041.553750000021,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject invalid JSON with producer headers",
+          "status": "passed",
+          "durationMs": 373.2188749999623,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject empty JSON array with producer headers",
+          "status": "passed",
+          "durationMs": 351.74520799994934,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should return 404 for non-existent stream",
+          "status": "passed",
+          "durationMs": 104.79158400004962,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should return 409 for content-type mismatch",
+          "status": "passed",
+          "durationMs": 350.00150000001304,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should return 400 for empty body",
+          "status": "passed",
+          "durationMs": 380.68845899996813,
+          "failures": []
+        },
+        {
+          "name": "Idempotent Producer Operations should reject empty Producer-Id",
+          "status": "passed",
+          "durationMs": 220.5755830000271,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Create with Stream-Closed create-closed-stream: PUT with Stream-Closed: true creates closed stream",
+          "status": "passed",
+          "durationMs": 228.0947499999893,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Create with Stream-Closed create-closed-stream-with-body: PUT with body + Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 414.87524999998277,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Create with Stream-Closed create-closed-returns-header: Response includes Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 238.21591600001557,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations close-stream-empty-post: POST with Stream-Closed: true, empty body closes stream",
+          "status": "passed",
+          "durationMs": 400.67883299995447,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations close-with-final-append: POST with body + Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 855.3219159999862,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations close-returns-offset-and-header: Response includes Stream-Next-Offset and Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 449.8470419999794,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations close-idempotent: Closing already-closed stream (empty body) returns 204",
+          "status": "passed",
+          "durationMs": 531.6434169999557,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations close-only-ignores-content-type: Close-only with mismatched Content-Type still succeeds",
+          "status": "passed",
+          "durationMs": 410.6949580000364,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations append-to-closed-stream-409: Append to closed stream returns 409 with Stream-Closed: true header",
+          "status": "passed",
+          "durationMs": 514.8868329999968,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Close Operations append-and-close-to-closed-stream-409: POST with body + Stream-Closed: true to already-closed stream returns 409",
+          "status": "passed",
+          "durationMs": 545.5117079999764,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure HEAD with Stream Closure head-closed-stream: HEAD returns Stream-Closed: true header",
+          "status": "passed",
+          "durationMs": 534.061624999973,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure HEAD with Stream Closure head-open-stream-no-closed-header: HEAD on open stream does NOT have Stream-Closed header",
+          "status": "passed",
+          "durationMs": 351.054792000039,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Read Closed Streams (Catch-up) read-closed-stream-at-tail: Returns Stream-Closed: true at tail of closed stream",
+          "status": "passed",
+          "durationMs": 635.6506659999723,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Read Closed Streams (Catch-up) read-closed-stream-partial-no-closed: Partial read of closed stream does NOT include Stream-Closed",
+          "status": "passed",
+          "durationMs": 839.0921250000247,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Read Closed Streams (Catch-up) read-closed-stream-empty-body-eof: At tail of closed stream: 200 OK, empty body, Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 603.5487079999875,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Long-poll with Stream Closure longpoll-closed-stream-immediate: No wait when closed stream at tail, returns immediately",
+          "status": "passed",
+          "durationMs": 691.936791999964,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Long-poll with Stream Closure longpoll-closed-returns-204-with-header: Returns 204 with Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 907.3877499999944,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure SSE with Stream Closure sse-closed-stream-control-event: Final control event has streamClosed: true",
+          "status": "passed",
+          "durationMs": 789.9514169999748,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure SSE with Stream Closure sse-closed-stream-no-cursor: streamCursor omitted when streamClosed is true",
+          "status": "passed",
+          "durationMs": 667.250875000027,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure SSE with Stream Closure sse-closed-stream-connection-closes: Connection closes after final event",
+          "status": "passed",
+          "durationMs": 751.8225000000093,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure SSE with Stream Closure sse-live-reader-receives-final-append-on-close: live reader at tail receives data appended atomically with the close",
+          "status": "passed",
+          "durationMs": 8416.483500000031,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-with-append: Close with final append using producer headers",
+          "status": "passed",
+          "durationMs": 642.390374999959,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-only-with-producer-headers: Close-only with producer headers updates state",
+          "status": "passed",
+          "durationMs": 731.8025829999824,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-duplicate-returns-204: Duplicate close (same tuple) returns 204",
+          "status": "passed",
+          "durationMs": 623.7835000000196,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-different-tuple-returns-409: Different producer/seq gets 409",
+          "status": "passed",
+          "durationMs": 632.5898750000051,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-different-seq-returns-409: Same producer, different seq gets 409",
+          "status": "passed",
+          "durationMs": 665.9591669999645,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Idempotent Producers with Stream Closure idempotent-close-only-duplicate-returns-204: Duplicate close-only (no body) returns 204",
+          "status": "passed",
+          "durationMs": 574.1002499999595,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases 409-includes-stream-offset: 409 for closed stream includes Stream-Next-Offset header",
+          "status": "passed",
+          "durationMs": 587.0760000000009,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases close-nonexistent-stream-404: POST with Stream-Closed to nonexistent stream returns 404",
+          "status": "passed",
+          "durationMs": 93.30558300000848,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases offset-now-on-closed-stream: offset=now on closed stream returns Stream-Closed: true",
+          "status": "passed",
+          "durationMs": 659.0894170000101,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases producer-state-survives-close: Stale-epoch producer gets 403, not 409 STREAM_CLOSED",
+          "status": "passed",
+          "durationMs": 894.3232500000158,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases close-with-different-body-dedup: Retry close with different body deduplicates to original",
+          "status": "passed",
+          "durationMs": 760.2102919999743,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases empty-post-without-stream-closed-400: POST with empty body but no Stream-Closed returns 400",
+          "status": "passed",
+          "durationMs": 344.1349169999594,
+          "failures": []
+        },
+        {
+          "name": "Stream Closure Edge Cases delete-closed-stream: Deleting a closed stream removes it (returns 404 after)",
+          "status": "passed",
+          "durationMs": 867.6515420000069,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at current head (default)",
+          "status": "passed",
+          "durationMs": 602.5840830000234,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at a specific offset",
+          "status": "passed",
+          "durationMs": 1015.2965839999961,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at zero offset (empty inherited data)",
+          "status": "passed",
+          "durationMs": 744.9912499999627,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at head offset (all source data inherited)",
+          "status": "passed",
+          "durationMs": 1091.2505830000155,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 404 when forking a nonexistent stream",
+          "status": "passed",
+          "durationMs": 179.1660419999971,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when forking at offset beyond stream length",
+          "status": "passed",
+          "durationMs": 475.57091700000456,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 409 when forking to path already in use with different config",
+          "status": "passed",
+          "durationMs": 776.0201669999515,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork a closed stream \u2014 fork starts open",
+          "status": "passed",
+          "durationMs": 1015.5652499999851,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork an empty stream",
+          "status": "passed",
+          "durationMs": 738.1088750000345,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork preserving content-type when specified",
+          "status": "passed",
+          "durationMs": 720.3175829999964,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork inheriting content-type when header omitted",
+          "status": "passed",
+          "durationMs": 931.9982079999754,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at a binary sub-offset within an append",
+          "status": "passed",
+          "durationMs": 1025.5067909999634,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at a JSON sub-offset within a flattened batch",
+          "status": "passed",
+          "durationMs": 1000.5295410000253,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should treat sub-offset 0 as equivalent to absent header",
+          "status": "passed",
+          "durationMs": 813.1465000000317,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when binary sub-offset overshoots message length",
+          "status": "passed",
+          "durationMs": 530.2512920000008,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when JSON sub-offset overshoots message count",
+          "status": "passed",
+          "durationMs": 536.624375000014,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 for malformed sub-offset values",
+          "status": "passed",
+          "durationMs": 519.4380409999867,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should be idempotent when re-creating with matching sub-offset",
+          "status": "passed",
+          "durationMs": 1172.9830000000075,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 409 when re-creating with mismatched sub-offset",
+          "status": "passed",
+          "durationMs": 1143.2037079999573,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should be idempotent when re-creating a JSON fork with matching sub-offset",
+          "status": "passed",
+          "durationMs": 1139.9764999999898,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 409 when re-creating a JSON fork with mismatched sub-offset",
+          "status": "passed",
+          "durationMs": 1209.761541999993,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should support appending to fork after sub-offset boundary",
+          "status": "passed",
+          "durationMs": 1323.0136249999632,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should inherit content-type when sub-offset is supplied without explicit Content-Type",
+          "status": "passed",
+          "durationMs": 930.6961670000455,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should not inherit producer state across sub-offset fork boundary",
+          "status": "passed",
+          "durationMs": 1609.6199589999742,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should not inherit producer state across binary sub-offset fork boundary",
+          "status": "passed",
+          "durationMs": 1633.6056660000468,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should fork at a binary sub-offset anchored mid-stream",
+          "status": "passed",
+          "durationMs": 1318.2756250000093,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when sub-offset > 0 is supplied without Stream-Fork-Offset",
+          "status": "passed",
+          "durationMs": 515.6462499999907,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when Stream-Fork-Sub-Offset is supplied without Stream-Forked-From (even when value is 0)",
+          "status": "passed",
+          "durationMs": 2.715624999953434,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return a Stream-Next-Offset on sub-offset fork creation that is consumable by reads",
+          "status": "passed",
+          "durationMs": 1115.032125000027,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should return 400 when sub-offset is supplied on an empty source stream",
+          "status": "passed",
+          "durationMs": 482.3251249999739,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should accept binary sub-offset equal to message length",
+          "status": "passed",
+          "durationMs": 1077.8535840000259,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should accept JSON sub-offset equal to flattened message count",
+          "status": "passed",
+          "durationMs": 1098.0023330000113,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should append initial body after the materialized sub-offset prefix",
+          "status": "passed",
+          "durationMs": 1125.9117499999702,
+          "failures": []
+        },
+        {
+          "name": "Fork - Creation should allow sub-offset fork creation from a closed source stream",
+          "status": "passed",
+          "durationMs": 1039.787291000015,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should read entire fork (source + fork data)",
+          "status": "passed",
+          "durationMs": 1000.1055829999968,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should read only inherited portion",
+          "status": "passed",
+          "durationMs": 803.3125839999993,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should read only fork's own data (starting past fork offset)",
+          "status": "passed",
+          "durationMs": 1108.1982919999864,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should read across fork boundary",
+          "status": "passed",
+          "durationMs": 1245.1261670000385,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should not show source appends after fork",
+          "status": "passed",
+          "durationMs": 1056.02224999998,
+          "failures": []
+        },
+        {
+          "name": "Fork - Reading should NOT include fork headers on HEAD/GET/PUT responses (forks are transparent)",
+          "status": "passed",
+          "durationMs": 881.8297090000124,
+          "failures": []
+        },
+        {
+          "name": "Fork - Appending should append to a fork",
+          "status": "passed",
+          "durationMs": 1009.0981249999604,
+          "failures": []
+        },
+        {
+          "name": "Fork - Appending should support idempotent producer on fork",
+          "status": "passed",
+          "durationMs": 1186.2816250000033,
+          "failures": []
+        },
+        {
+          "name": "Fork - Appending should close forked stream independently",
+          "status": "passed",
+          "durationMs": 1115.1824170000036,
+          "failures": []
+        },
+        {
+          "name": "Fork - Appending should not affect fork when source is closed",
+          "status": "passed",
+          "durationMs": 1114.773916999984,
+          "failures": []
+        },
+        {
+          "name": "Fork - Appending should append to source after fork \u2014 source independent",
+          "status": "passed",
+          "durationMs": 1114.5371250000317,
+          "failures": []
+        },
+        {
+          "name": "Fork - Recursive should create a three-level fork chain",
+          "status": "passed",
+          "durationMs": 964.8035420000087,
+          "failures": []
+        },
+        {
+          "name": "Fork - Recursive should fork at mid-point of inherited data",
+          "status": "passed",
+          "durationMs": 1640.4382089999854,
+          "failures": []
+        },
+        {
+          "name": "Fork - Recursive should read correctly across three levels",
+          "status": "passed",
+          "durationMs": 1788.984792000032,
+          "failures": []
+        },
+        {
+          "name": "Fork - Recursive should append at each level independently",
+          "status": "passed",
+          "durationMs": 2270.569666000025,
+          "failures": []
+        },
+        {
+          "name": "Fork - Recursive should compose sub-offsets across chained forks",
+          "status": "passed",
+          "durationMs": 2126.8233330000076,
+          "failures": []
+        },
+        {
+          "name": "Fork - Live Modes should return inherited data immediately on long-poll",
+          "status": "passed",
+          "durationMs": 918.7001670000027,
+          "failures": []
+        },
+        {
+          "name": "Fork - Live Modes should wait for fork appends, not source appends, on long-poll at tail",
+          "status": "passed",
+          "durationMs": 2002.3300840000156,
+          "failures": []
+        },
+        {
+          "name": "Fork - Live Modes should stream fork data via SSE",
+          "status": "passed",
+          "durationMs": 1177.7854999999981,
+          "failures": []
+        },
+        {
+          "name": "Fork - Live Modes should handle long-poll handover at fork offset",
+          "status": "passed",
+          "durationMs": 1264.4271249999874,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should delete fork without affecting source",
+          "status": "passed",
+          "durationMs": 1156.9179580000346,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should soft-delete source while fork exists \u2014 fork still reads",
+          "status": "passed",
+          "durationMs": 1087.5087920000078,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should block re-creation of soft-deleted source (PUT returns 409)",
+          "status": "passed",
+          "durationMs": 938.619915999996,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should return 410 for GET on soft-deleted source",
+          "status": "passed",
+          "durationMs": 885.0114170000306,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should return 410 for POST on soft-deleted source",
+          "status": "passed",
+          "durationMs": 873.5434579999419,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should return 410 for DELETE on soft-deleted source",
+          "status": "passed",
+          "durationMs": 901.3357090000063,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should return 409 for fork from soft-deleted source",
+          "status": "passed",
+          "durationMs": 989.2758329999633,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should return 409 for fork with content-type mismatch",
+          "status": "passed",
+          "durationMs": 481.8108329999959,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle rejected fork (content-type mismatch) does not leak a source reference",
+          "status": "passed",
+          "durationMs": 787.5124999999534,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should cascade GC when last fork is deleted",
+          "status": "passed",
+          "durationMs": 3356.1765000000596,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should cascade GC through three levels",
+          "status": "passed",
+          "durationMs": 2865.3269579999615,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should preserve data when deleting middle of chain",
+          "status": "passed",
+          "durationMs": 2071.9298749999143,
+          "failures": []
+        },
+        {
+          "name": "Fork - Deletion and Lifecycle should keep source alive when all forks are deleted",
+          "status": "passed",
+          "durationMs": 1676.138707999955,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should inherit source expiry when none specified",
+          "status": "passed",
+          "durationMs": 809.2842500000261,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should allow fork with shorter TTL",
+          "status": "passed",
+          "durationMs": 722.6149999999907,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should expire fork based on TTL (releases refcount)",
+          "status": "passed",
+          "durationMs": 2189.462959000026,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should expire source with living forks (source goes 410)",
+          "status": "passed",
+          "durationMs": 2542.494834000012,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should inherit source TTL value when none specified",
+          "status": "passed",
+          "durationMs": 810.7066670000786,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should use fork's own TTL when specified",
+          "status": "passed",
+          "durationMs": 786.406457999954,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should allow fork to outlive source via TTL renewal",
+          "status": "passed",
+          "durationMs": 3319.3850409999723,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should allow fork Expires-At beyond source TTL expiry",
+          "status": "passed",
+          "durationMs": 775.6149580000201,
+          "failures": []
+        },
+        {
+          "name": "Fork - TTL and Expiry should allow fork TTL longer than source TTL (no capping)",
+          "status": "passed",
+          "durationMs": 817.206375000067,
+          "failures": []
+        },
+        {
+          "name": "Fork - JSON Mode should fork a JSON stream",
+          "status": "passed",
+          "durationMs": 753.8001249999506,
+          "failures": []
+        },
+        {
+          "name": "Fork - JSON Mode should read forked JSON across boundary",
+          "status": "passed",
+          "durationMs": 1005.1576670000795,
+          "failures": []
+        },
+        {
+          "name": "Fork - Edge Cases should handle fork then immediately delete source",
+          "status": "passed",
+          "durationMs": 949.2573330000741,
+          "failures": []
+        },
+        {
+          "name": "Fork - Edge Cases should handle many forks of same stream (10 forks)",
+          "status": "passed",
+          "durationMs": 7803.872167000081,
+          "failures": []
+        },
+        {
+          "name": "Fork - Edge Cases should fork at every offset position",
+          "status": "passed",
+          "durationMs": 3003.5842499999562,
+          "failures": []
+        },
+        {
+          "name": "Fork - Edge Cases should handle idempotent fork creation (PUT twice)",
+          "status": "passed",
+          "durationMs": 908.7492500001099,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs creates and idempotently re-confirms a webhook subscription",
+          "status": "passed",
+          "durationMs": 1022.5831250000047,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs rejects unsafe webhook URLs",
+          "status": "passed",
+          "durationMs": 0.8243749999674037,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs webhook synchronous done auto-acks the wake snapshot",
+          "status": "passed",
+          "durationMs": 2318.0207919999957,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs webhook callback acks and fences stale wake generations",
+          "status": "passed",
+          "durationMs": 2533.683416999993,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs adds and removes explicit subscription streams",
+          "status": "passed",
+          "durationMs": 1572.6469590000343,
+          "failures": []
+        },
+        {
+          "name": "Reserved subscription APIs pull-wake claim, ack, and release use subscription-scoped leases",
+          "status": "passed",
+          "durationMs": 3762.58991599991,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

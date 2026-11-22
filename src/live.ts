@@ -172,22 +172,31 @@ export class LiveReads {
     let subscription: ReturnType<LiveReads['channel']> | undefined
     let payload: PayloadWindow | undefined
     let released = false
+    const inFlight = new Set<Promise<unknown>>()
+    const track = <T>(work: Promise<T>): Promise<T> => {
+      const pending = work.finally(() => { inFlight.delete(pending) })
+      inFlight.add(pending)
+      return pending
+    }
     const release = () => {
       if (released) return
       released = true
       clearTimeout(expiry)
       clearTimeout(deadlineTimer)
-      if (releaseAdmission) {
-        const work = releaseAdmission().catch((error: unknown) => {
-          if (!(error instanceof StreamError && error.code === 'INSTALLATION_FENCED')) this.report(error)
-        })
-        this.releases.add(work)
-        void work.finally(() => this.releases.delete(work))
-      }
+      // Stop notifications immediately, but retain capacity while an already
+      // issued SQL/object read settles. Cancellation storms must not admit an
+      // unbounded number of detached replay operations.
       request.signal.removeEventListener('abort', canceled)
       payload?.close()
       subscription?.release()
-      this.active.delete(abort)
+      const work = (async () => {
+        await Promise.allSettled([...inFlight])
+        await releaseAdmission?.()
+      })().catch((error: unknown) => {
+        if (!(error instanceof StreamError && error.code === 'INSTALLATION_FENCED')) this.report(error)
+      }).finally(() => { this.active.delete(abort) })
+      this.releases.add(work)
+      void work.finally(() => this.releases.delete(work))
     }
     try {
       assertActive()
@@ -238,12 +247,12 @@ export class LiveReads {
         for (;;) {
           assertActive()
           const revision = channel.revision()
-          const result = await page(at)
+          const result = await track(page(at))
           assertActive()
           if (result.hasData || result.stream.closed || Date.now() >= deadline) return result
           if (!result.upToDate) {
             awaitingPayload ??= performance.now()
-            if (performance.now() - awaitingPayload >= 50) return replay(at)
+            if (performance.now() - awaitingPayload >= 50) return track(replay(at))
           } else awaitingPayload = undefined
           const wait = Math.min(deadline - Date.now(), payload ? this.validationMs : Infinity, Math.max(1, result.validUntil - performance.now()),
             awaitingPayload === undefined ? Infinity : Math.max(1, 50 - (performance.now() - awaitingPayload)))
