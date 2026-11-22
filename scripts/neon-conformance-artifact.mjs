@@ -13,7 +13,7 @@ export async function buildConformanceArtifact() {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'ds-conformance-build-')))
   const run = promisify(execFile)
   const buildEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/SECRET|TOKEN|PASSWORD|KEY|DATABASE|^NEON_|^AWS_|^TEST_|^DURABLE_|^NODE_OPTIONS$/.test(key)))
-  const sourcePaths = ['src', 'migrations', 'test/conformance', 'test/fixtures/postgres-limits.ts', 'vitest.config.ts', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json']
+  const sourcePaths = ['src', 'migrations', 'test/conformance', 'test/fixtures/postgres-limits.ts', 'vitest.config.ts', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'LICENSE', 'NOTICE']
   try {
     for (const path of sourcePaths) { await mkdir(dirname(join(directory, path)), { recursive: true }); await cp(join(root, path), join(directory, path), { recursive: true }) }
     // Reject a different runtime rather than use the build host's native code.

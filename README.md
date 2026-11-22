@@ -1,5 +1,7 @@
 # Durable Streams server library for Neon
 
+Licensed under [Apache-2.0](LICENSE). Copyright 2026 Sam Willis.
+
 Design research dated **22 November 2026** for a production-grade TypeScript library. Users embed the library in their own server, deploy it to their own Neon Function, and operate their own Lakebase Postgres, Object Storage, and Realtime resources.
 
 **Target:** full Durable Streams protocol conformance, durable recovery, safe upgrades, tenant isolation, bounded resource use, and documented operating limits. Production readiness requires evidence from fault testing, deployment tests, restore drills, rolling upgrades, and workload benchmarks, in addition to the conformance suite.

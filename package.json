@@ -2,6 +2,7 @@
   "name": "@samwillis/durable-streams-neon",
   "version": "0.0.1",
   "private": true,
+  "license": "Apache-2.0",
   "description": "An embeddable Durable Streams server for Neon",
   "type": "module",
   "engines": {

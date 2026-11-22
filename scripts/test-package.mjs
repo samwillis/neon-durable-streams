@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -20,6 +20,10 @@ try {
     devDependencies: { '@types/pg': '8.23.1', '@types/node': '24.10.1' },
   }))
   run('pnpm', ['install', '--prefer-offline', '--ignore-scripts'], temporary)
+  const installed = join(temporary, 'node_modules/@samwillis/durable-streams-neon')
+  const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'))
+  if (metadata.license !== 'Apache-2.0' || !(await readFile(join(installed, 'LICENSE'), 'utf8')).includes('Apache License')
+    || !(await readFile(join(installed, 'NOTICE'), 'utf8')).includes('Copyright 2026 Sam Willis')) throw new Error('Packaged license/notice missing')
   await writeFile(join(temporary, 'consumer.ts'), `
 import { createDurableStreams, type Principal } from '@samwillis/durable-streams-neon'
 import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
@@ -47,7 +51,7 @@ await pool.end()
   run(process.execPath, [join(root, 'node_modules/typescript/bin/tsc'), '--strict', '--skipLibCheck', '--target', 'ES2024',
     '--module', 'NodeNext', '--moduleResolution', 'NodeNext', '--noEmit', 'consumer.ts'], temporary)
   run(process.execPath, ['consumer.ts'], temporary)
-  console.log('Packed consumer: install, public declarations, runtime exports, and SQL assets passed.')
+  console.log('Packed consumer: install, public declarations, runtime exports, SQL assets, and licensing passed.')
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

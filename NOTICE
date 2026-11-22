@@ -1,8 +1,9 @@
 Durable Streams server library for Neon
 Copyright 2026 Sam Willis
 
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
 Protocol behavior is implemented with reference to the Durable Streams project:
 https://github.com/durable-streams/durable-streams
 The upstream reference implementations are licensed under Apache-2.0.
 The npm package is not yet published (package.json private=true).
-The project's distribution license will be selected before package publication.

@@ -14,6 +14,7 @@ const buildEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =
 buildEnv.GIT_TERMINAL_PROMPT = '0'
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const sourcePaths = ['src', 'migrations', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'tsconfig.build.json', 'README.md', 'NOTICE']
+const candidatePaths = [...sourcePaths, 'LICENSE']
 const directory = await mkdtemp(join(tmpdir(), 'durable-streams-rolling-'))
 try { await writeFile(stateFile, JSON.stringify({ directory }), { mode: 0o600, flag: 'wx' }) }
 catch (error) { await rm(directory, { recursive: true, force: true }); throw error }
@@ -29,10 +30,10 @@ await command('tar', ['-xf', archive, '-C', prior])
 await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], prior)
 await command('pnpm', ['build'], prior)
 const currentCommit = (await command('git', ['rev-parse', 'HEAD'])).trim()
-const currentDirty = Boolean((await command('git', ['status', '--porcelain', '--untracked-files=all', '--', ...sourcePaths])).trim())
+const currentDirty = Boolean((await command('git', ['status', '--porcelain', '--untracked-files=all', '--', ...candidatePaths])).trim())
 const candidate = join(directory, 'current-source')
 await mkdir(candidate)
-for (const path of sourcePaths) await cp(join(root, path), join(candidate, path), { recursive: true })
+for (const path of candidatePaths) await cp(join(root, path), join(candidate, path), { recursive: true })
 await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], candidate)
 await command('pnpm', ['build'], candidate)
 async function sourceDigest(source) {
@@ -44,7 +45,7 @@ async function sourceDigest(source) {
     if (entries) { for (const child of entries.sort()) await include(join(path, child)); return }
     hash.update(path); hash.update('\0'); hash.update(await readFile(absolute)); hash.update('\0')
   }
-  for (const path of sourcePaths) await include(path)
+  for (const path of source === candidate ? candidatePaths : sourcePaths) await include(path)
   return hash.digest('hex')
 }
 const artifacts = {}
