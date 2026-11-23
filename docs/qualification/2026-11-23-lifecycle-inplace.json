@@ -1,0 +1,87 @@
+{
+  "passed": true,
+  "stages": [
+    "deploy initial Function and cron",
+    "seed binary, JSON, fork, and subscription state",
+    "observe live future bytes before rollback",
+    "stop scheduling, quiesce, and drain the active reader",
+    "restore only the recorded disposable branch at its own WAL position",
+    "verify rollback and reconcile before exposing ingress",
+    "redeploy fresh instances and validate public protocol continuity",
+    "verify restored Realtime before resuming workers",
+    "verify restored token fencing and resumed subscription work",
+    "resume scheduling after public validation"
+  ],
+  "stageTimes": [
+    {
+      "stage": "deploy initial Function and cron",
+      "elapsedMs": 4782
+    },
+    {
+      "stage": "seed binary, JSON, fork, and subscription state",
+      "elapsedMs": 15895
+    },
+    {
+      "stage": "observe live future bytes before rollback",
+      "elapsedMs": 19539
+    },
+    {
+      "stage": "stop scheduling, quiesce, and drain the active reader",
+      "elapsedMs": 22540
+    },
+    {
+      "stage": "restore only the recorded disposable branch at its own WAL position",
+      "elapsedMs": 30370
+    },
+    {
+      "stage": "verify rollback and reconcile before exposing ingress",
+      "elapsedMs": 37344
+    },
+    {
+      "stage": "redeploy fresh instances and validate public protocol continuity",
+      "elapsedMs": 45057
+    },
+    {
+      "stage": "verify restored Realtime before resuming workers",
+      "elapsedMs": 138139
+    },
+    {
+      "stage": "verify restored token fencing and resumed subscription work",
+      "elapsedMs": 141899
+    },
+    {
+      "stage": "resume scheduling after public validation",
+      "elapsedMs": 143397
+    }
+  ],
+  "durationMs": 143852,
+  "verifiedChunks": 3,
+  "generatedAt": "2026-11-23T11:18:43.116Z",
+  "testSha256": "612aac17f48378d06fe871838b76898f4c13dc6b53a1880f20e0d5fc38be8fed",
+  "node": "v24.22.2",
+  "region": "us-east-1",
+  "branchId": "br-noisy-art-bbbayw1c",
+  "preservedBranchId": "br-withered-forest-bbs685mu",
+  "endpointPreserved": true,
+  "originalEpoch": "8dcfb9e0-0a20-4964-af5f-099a9c554253",
+  "recoveryEpoch": "54086aa1-503b-4c27-97aa-69ef76376c41",
+  "hotReplayAcrossSealing": true,
+  "restoredRealtime": true,
+  "restoredRealtimePayloadObserved": true,
+  "restoredRealtimeObservedOffset": "0000000000000000_0000000000008238",
+  "restoredRealtimeReadiness": [
+    {
+      "elapsedMs": 2046,
+      "ready": true
+    }
+  ],
+  "discardedOffsetRejected": true,
+  "unexpiredTokenFenced": true,
+  "cronResumedAfterValidation": true,
+  "sourceCommit": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+  "sourceDirty": "no",
+  "deploymentId": "8adbf107-f9e0-4955-8385-dce90373a2b8",
+  "previousDeploymentId": "15c9b9ea-04ad-4d43-b246-b1aa7d38e109",
+  "memoryMiB": 2048,
+  "deployedBundle": "7eaa7c54b53ca40e3acdef3933eb88efd87569576e150c40f1af6f6c8df34aed"
+}

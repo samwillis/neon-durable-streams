@@ -1,0 +1,138 @@
+{
+  "sourceCommit": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+  "sourceDirty": false,
+  "generatedAt": "2026-11-23T11:46:29.765Z",
+  "execution": "Direct qualification against isolated actual Neon services; GitHub Actions intentionally skipped on push",
+  "services": "Neon Functions, Postgres 18, Realtime, Object Storage",
+  "regions": {
+    "deployedFunctions": "us-east-1",
+    "conformance": "us-east-1",
+    "recovery": "us-east-1",
+    "neonIntegration": "eu-central-1"
+  },
+  "coordinator": {
+    "node": "v24.22.2",
+    "platform": "darwin",
+    "architecture": "arm64"
+  },
+  "checks": {
+    "unit": {
+      "total": 68,
+      "passed": 68,
+      "failed": 0,
+      "skipped": 0
+    },
+    "neon": {
+      "total": 97,
+      "passed": 97,
+      "failed": 0,
+      "skipped": 0
+    },
+    "integration": {
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0
+    },
+    "function": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "hints": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "recovery": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "conformance": {
+    "total": 338,
+    "passed": 338,
+    "failed": 0,
+    "skipped": 0,
+    "subscriptions": true,
+    "collectionEnabled": true
+  },
+  "packedMultiInstanceChecks": 8,
+  "migrations": [
+    {
+      "id": "0001_installation",
+      "checksum": "4821a97fab1f91b4d44ba5d833b62fa8fc4ed99d461a2bde194a662b3a1643c3"
+    },
+    {
+      "id": "0002_streams",
+      "checksum": "07ac100c897b8aef91ee093c1cc5a7ab4f57d7eb4c75ccbc6d9f95982d55fb2f"
+    },
+    {
+      "id": "0003_storage",
+      "checksum": "d353bd76532900075c45786ea168df02eb05478eb989f21760df14df96bf52b5"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "b1d5d55a8119b2f204d8a1b650b718658c7bf9af1b5d837baf4a5a576204a586"
+    }
+  ],
+  "objectFormat": 1,
+  "deploymentProfiles": {
+    "cron": {
+      "TEST_FUNCTION_BUNDLE_SHA": "7eaa7c54b53ca40e3acdef3933eb88efd87569576e150c40f1af6f6c8df34aed",
+      "TEST_FUNCTION_DEPLOYMENT_ID": "dcb8fa3a-aa29-4099-8d1c-d95fce6e7f5d",
+      "TEST_FUNCTION_HAS_CRON": "yes",
+      "TEST_FUNCTION_MAINTENANCE_HINTS": "off",
+      "TEST_FUNCTION_SOURCE_COMMIT": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "TEST_FUNCTION_SOURCE_DIRTY": "no"
+    },
+    "hints": {
+      "TEST_FUNCTION_BUNDLE_SHA": "7eaa7c54b53ca40e3acdef3933eb88efd87569576e150c40f1af6f6c8df34aed",
+      "TEST_FUNCTION_DEPLOYMENT_ID": "0b05ed19-874d-4aaf-86ca-e9ad35b672e4",
+      "TEST_FUNCTION_HAS_CRON": "no",
+      "TEST_FUNCTION_MAINTENANCE_HINTS": "on",
+      "TEST_FUNCTION_SOURCE_COMMIT": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "TEST_FUNCTION_SOURCE_DIRTY": "no"
+    }
+  },
+  "neonCoordinatorDefaultTestBudgetMs": 300000,
+  "firstNeonAttempt": "2026-11-23-lifecycle-first-neon-attempt.json",
+  "design": {
+    "xstateAdopted": false,
+    "lifecycle": "Explicit TypeScript states, resource ownership, pure subscription decisions, transactional durable transitions",
+    "redundantColumnsRemoved": [
+      "stream_changes.processed",
+      "subscription_wakes.pull_published"
+    ],
+    "newOwnershipAndRecoveryConstraints": 7
+  },
+  "generatedCoverage": {
+    "payloadWindow": {
+      "runs": 150,
+      "maxEvents": 80
+    },
+    "actualNeonStreamLifecycle": {
+      "runs": 8,
+      "minCommands": 8,
+      "maxCommands": 18,
+      "seed": 20261123
+    }
+  },
+  "cleanup": {
+    "usQualificationBranch": "deleted",
+    "euRegressionBranch": "deleted",
+    "hintsBranch": "deleted",
+    "recoveryLedgersRemoved": true,
+    "packedFixture": true,
+    "conformanceFixture": true
+  },
+  "limits": [
+    "No new sustained workload/capacity qualification; earlier load reports retain their source scope.",
+    "Recovery drills use retained witness objects and do not qualify provider historical object PITR.",
+    "The earlier independent long-run Realtime diagnostic remains unresolved and recorded in historical reports."
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "passed": true,
+  "scope": "Eight same-candidate multi-instance checks on a fresh four-file baseline; no cross-version compatibility claim",
+  "checks": {
+    "expected": 8,
+    "passed": 8,
+    "names": [
+      "two packed canonical deployments share producer deduplication, ordering, and fencing",
+      "concurrent canonical seal workers publish mutually readable chunks and retain producer sessions",
+      "canonical deployments preserve exact-number JSON and inherited sealed fork ranges",
+      "subscription registration, dispatch, claims, and scoped acks work across canonical deployments",
+      "both deployed Realtime instances deliver final contiguous bytes before EOF",
+      "installation-wide admission bounds both deployments and releases canceled readers",
+      "tenant and generation isolation survive multi-instance deletion and recreation",
+      "recovery fences both canonical deployments and fresh artifacts resume the installation"
+    ]
+  },
+  "cleaned": true,
+  "generatedAt": "2026-11-23T11:40:44.801Z",
+  "testSha256": "1f80d90aefce89cda367e2f1f735ebfc66241c31cc2a2e70ce5fd174556cb232",
+  "node": "v24.22.2",
+  "region": "eu-central-1",
+  "artifacts": {
+    "current": {
+      "commit": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "sourceDirty": false,
+      "sourceSnapshotSha256": "7a46d5ebc46976fefa6e7c3935513c94e6a329072dadc17c57704dacf2b452f4",
+      "tarballSha256": "ae248aa865e4ba7b105977a1c62e6edabdecc924c118030efd20423e9e841e14",
+      "sourceLockSha256": "37a34e7cc49e2767fabdd11bfd4517cf9a9d0c9f1f32539384c3e7246a0edd1d",
+      "consumerLockSha256": "d9d6dad316bf2c60bd4c4e51131a9ec48cc512dbb18705da58a3cb36bea528b8"
+    }
+  },
+  "runtimes": [
+    {
+      "kind": "current",
+      "slug": "dsmixa3886ccf67d76",
+      "revision": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "instance": "4a29f5ee-b159-498a-971e-f0a9b033afce",
+      "bundleSha256": "0e89573bfd63789f1c3164377b82ebb2e3bf13d9e730f322e4487e86538d142c",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "current",
+      "slug": "dsmixb3886ccf67d76",
+      "revision": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "instance": "04185950-1a45-4982-a6c1-b360f0281fe0",
+      "bundleSha256": "0e89573bfd63789f1c3164377b82ebb2e3bf13d9e730f322e4487e86538d142c",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "current",
+      "slug": "dsmixc3886ccf67d76",
+      "revision": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "instance": "19532ad8-5f01-49d9-b087-e32a5c49c18c",
+      "bundleSha256": "0e89573bfd63789f1c3164377b82ebb2e3bf13d9e730f322e4487e86538d142c",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    },
+    {
+      "kind": "current",
+      "slug": "dsmixd3886ccf67d76",
+      "revision": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+      "instance": "0f8db9ab-8acd-42c1-8dc2-7b8b6ae912dc",
+      "bundleSha256": "0e89573bfd63789f1c3164377b82ebb2e3bf13d9e730f322e4487e86538d142c",
+      "memoryMiB": 2048,
+      "runtimeNode": "v24.22.1",
+      "architecture": "arm64"
+    }
+  ],
+  "storageVersion": 1,
+  "migrations": [
+    {
+      "id": "0001_installation",
+      "checksum": "4821a97fab1f91b4d44ba5d833b62fa8fc4ed99d461a2bde194a662b3a1643c3"
+    },
+    {
+      "id": "0002_streams",
+      "checksum": "07ac100c897b8aef91ee093c1cc5a7ab4f57d7eb4c75ccbc6d9f95982d55fb2f"
+    },
+    {
+      "id": "0003_storage",
+      "checksum": "d353bd76532900075c45786ea168df02eb05478eb989f21760df14df96bf52b5"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "b1d5d55a8119b2f204d8a1b650b718658c7bf9af1b5d837baf4a5a576204a586"
+    }
+  ]
+}

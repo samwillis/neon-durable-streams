@@ -1,0 +1,21 @@
+{
+  "sourceCommit": "03ad7b6c4f4e5a7213cff82bed34176dcc2648eb",
+  "region": "us-east-1",
+  "coordinator": "Local macOS/arm64 coordinator in Europe",
+  "outcome": "Interrupted after a 120-second outer test timeout; incomplete run",
+  "exitCode": 130,
+  "passedBeforeInterruption": 23,
+  "failure": {
+    "test": "pending inherited ack validation retains sealed ancestor boundaries after fork deletion",
+    "message": "Test timed out in 120000ms.",
+    "observedDurationMs": 124075
+  },
+  "logSha256": "781e099731e4f99cd1f93e18fa93ce244d80093ca6e4cd2b0c7c3ad571d7fb7e",
+  "retry": {
+    "sourceUnchanged": true,
+    "region": "eu-central-1",
+    "outerDefaultTestBudgetMs": 300000,
+    "explicitRealtimeDeadlinesChanged": false,
+    "assertionsOrSamplesChanged": false
+  }
+}

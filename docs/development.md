@@ -14,16 +14,17 @@ mise exec node@24 -- pnpm test:package
 
 ## Neon tests from a development machine
 
-Copy [.env.example](../.env.example) to `.env.neon.local` and fill in a project-scoped `NEON_API_KEY`, `NEON_PROJECT_ID`, and non-expiring `NEON_PARENT_BRANCH_ID`. Provisioning creates a fresh branch and writes `.env.neon.test`; deployment also writes `.env.neon.function`. These files contain generated credentials and are ignored by Git.
+Copy [.env.example](../.env.example) to `.env.neon.local` and fill in a project-scoped `NEON_API_KEY`, `NEON_PROJECT_ID`, and non-expiring `NEON_PARENT_BRANCH_ID`. Provisioning creates a fresh branch and writes `.env.neon.test`; deployment also writes `.env.neon.function`. These files contain generated credentials and are ignored by Git. The commands below invoke Node entrypoints directly so `--env-file` applies to the process running the task.
 
 ```sh
+mise exec node@24 -- pnpm build
 mise exec node@24 -- pnpm neon:test:create
-mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run neon:test:deploy
-mise exec node@24 -- node --env-file=.env.neon.test --env-file=.env.neon.function --run test:function
-mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:neon
-mise exec node@24 -- node --env-file=.env.neon.test --run test:integration
-mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:recovery
-mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:conformance:neon
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test scripts/neon-test-function.mjs
+mise exec node@24 -- node --env-file=.env.neon.test --env-file=.env.neon.function node_modules/vitest/vitest.mjs run --project function
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test node_modules/vitest/vitest.mjs run --project neon --testTimeout=300000
+mise exec node@24 -- node --env-file=.env.neon.test node_modules/vitest/vitest.mjs run --project integration
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test node_modules/vitest/vitest.mjs run --project recovery
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test scripts/neon-test-conformance.mjs
 mise exec node@24 -- pnpm neon:test:delete
 ```
 
@@ -53,6 +54,6 @@ The packed multi-instance fixture installs the current tarball into an independe
 
 Recovery tests allocate additional recorded branches. The child-branch drill temporarily removes its disposable parent's expiry because Neon forbids children of expiring branches, then restores it after cleanup. The in-place drill stops its Function/cron, drains SSE, restores a recorded WAL point, reconciles HOT/SEALED data, and deploys a fresh instance before checking replay, Realtime payloads, and token fencing. CI retries interrupted cleanup, and the [scheduled janitor](../.github/workflows/test-janitor.yml) removes recognized stale test branches after runner loss. See the [in-place runbook](inplace-restore-v1.md) for diagnostic preservation and cleanup.
 
-Remote coordinator tests allow explicit 120-second transaction/90-second lock budgets; deployed Function tests retain production defaults. Realtime delivery cases keep their shorter deadlines below the SQL fallback interval. The opt-in `test/fixtures/sql-latency.mjs` can delay SQL sends to reproduce distant-coordinator contention against real Neon; it is not shipped or enabled by default.
+Remote coordinator tests allow explicit 120-second transaction/90-second lock budgets; deployed Function tests retain production defaults. The local Neon command gives database-heavy cases a 300-second outer budget for distant coordinators; CI retains its configured default. This changes neither their samples/assertions nor explicit Realtime delivery deadlines. Realtime delivery cases keep their shorter deadlines below the SQL fallback interval. The opt-in `test/fixtures/sql-latency.mjs` can delay SQL sends to reproduce distant-coordinator contention against real Neon; it is not shipped or enabled by default.
 
 [Load qualification](../.github/workflows/load-qualification.yml) is a separate manual workflow. Run it for capacity and sustained delivery evidence. Current test counts, exact source revisions, historical measurements, and unresolved qualification limits belong in the [qualification index](qualification/README.md).

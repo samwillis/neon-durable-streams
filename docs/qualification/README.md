@@ -1,6 +1,21 @@
 # Qualification evidence
 
-The current [four-file baseline](../migrations.md), clean runtime [`e4ab389`](https://github.com/samwillis/neon-durable-streams/actions/runs/45155917699), passed every required job: **57 unit/property, 95 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**, with zero failed/skipped cases. Subscriptions and collection were enabled. Cleanup completed. The obsolete stopped conversion test is removed; four fresh-baseline safety cases replace the four converter tests. The eight packed checks now use two current candidate deployments.
+The lifecycle refactor at clean runtime [`03ad7b6`](https://github.com/samwillis/neon-durable-streams/commit/03ad7b6c4f4e5a7213cff82bed34176dcc2648eb) passed direct qualification against actual Neon: **68 unit/property, 97 Neon regression, 21 transaction/process-loss, nine deployed Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**. The completed qualifying runs have zero failed/skipped cases. Conformance enabled subscriptions and collection. GitHub Actions was intentionally skipped on push; the checks ran directly. All three qualification branches and the recovery/packed fixtures were cleaned up.
+
+The first US regression attempt hit its 120-second outer deadline on inherited acknowledgement retention and was interrupted. The unchanged source passed the complete 97-case rerun against Frankfurt with a 300-second default outer coordinator budget; that retention case completed in 37.25 seconds. Assertions, generated samples, and explicit Realtime deadlines were unchanged. Both the interrupted attempt and the complete rerun are retained; the recheck does not establish a general latency guarantee.
+
+| Lifecycle evidence | Scope |
+| --- | --- |
+| [Qualification summary](2026-11-23-lifecycle.json) | Source, regions, counts, deployment fingerprints, migration checksums, cleanup, and limits |
+| [Neon regression cases](2026-11-23-lifecycle-neon.json) | All 97 cases, including generated stream sequences and database invariant checks |
+| [Full conformance](2026-11-23-lifecycle-conformance.json) | 338/338 on a Neon Function with subscriptions and collection |
+| [Packed multi-instance](2026-11-23-lifecycle-multi-instance.json) | Eight checks through independently installed packed consumers on two Functions |
+| [In-place restore](2026-11-23-lifecycle-inplace.json) | Exact restored replay, token/epoch fencing, and independent Realtime payload observation |
+| [Interrupted first regression attempt](2026-11-23-lifecycle-first-neon-attempt.json) | Preserved outer timeout and explicit recheck scope |
+
+See the [lifecycle design](../lifecycle-design.md) for ownership, pure transition decisions, and the choice to keep plain TypeScript. Historical reports below retain their original source and schema scope.
+
+The earlier [four-file baseline](../migrations.md), clean runtime [`e4ab389`](https://github.com/samwillis/neon-durable-streams/actions/runs/45155917699), passed every required job: **57 unit/property, 95 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**, with zero failed/skipped cases. Subscriptions and collection were enabled. Cleanup completed. The obsolete stopped conversion test is removed; four fresh-baseline safety cases replace the four converter tests. The eight packed checks now use two current candidate deployments.
 
 | Current baseline evidence | Scope |
 | --- | --- |
