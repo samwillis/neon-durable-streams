@@ -16,22 +16,28 @@ export class ReplayPins {
   async acquire(client: PoolClient, frames: readonly StoredFrame[]): Promise<ReplayLease | undefined> {
     const chunks = [...new Set(frames.flatMap((frame) => frame.storage === 'object' ? [frame.manifest.id] : []))].sort()
     if (!chunks.length) return undefined
-    const locked = await client.query<{ id: string; retired_at: Date | null }>(`SELECT id, retired_at FROM ${this.schema}.chunks
-      WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE`, [chunks])
-    if (locked.rows.length !== chunks.length || locked.rows.some((chunk) => chunk.retired_at !== null)) {
+    const lease = { id: randomUUID(), chunks: chunks.length }, installation = await this.guard.snapshot()
+    const pinned = await client.query(`WITH locked AS MATERIALIZED (
+      SELECT id,retired_at FROM ${this.schema}.chunks WHERE id=ANY($4::uuid[]) ORDER BY id FOR SHARE
+    ) INSERT INTO ${this.schema}.replay_pins (id, chunk_id, serving_epoch, expires_at)
+      SELECT $1, id, $2, clock_timestamp() + $3 * interval '1 millisecond' FROM locked
+      WHERE retired_at IS NULL AND (SELECT count(*) FROM locked WHERE retired_at IS NULL)=$5`,
+    [lease.id, installation.serving_epoch, REPLAY_PIN_MS, chunks, chunks.length])
+    if (pinned.rowCount !== chunks.length) {
       throw new StreamError(503, 'REPLAY_RETIRED', 'Replay snapshot retired; retry from the durable checkpoint', { 'Retry-After': '1' })
     }
-    const lease = { id: randomUUID(), chunks: chunks.length }, installation = await this.guard.snapshot()
-    await client.query(`INSERT INTO ${this.schema}.replay_pins (id, chunk_id, serving_epoch, expires_at)
-      SELECT $1, id, $2, clock_timestamp() + $3 * interval '1 millisecond' FROM ${this.schema}.chunks WHERE id=ANY($4::uuid[])`,
-    [lease.id, installation.serving_epoch, REPLAY_PIN_MS, chunks])
     return lease
   }
-  async validate(lease: ReplayLease | undefined): Promise<void> {
+  /** Validate and release in one transaction after the bytes are owned locally. */
+  async complete(lease: ReplayLease | undefined): Promise<void> {
     if (!lease) return
-    const valid = await this.guard.run({ readOnly: true }, (client) => client.query(`SELECT id FROM ${this.schema}.replay_pins WHERE id=$1
-      GROUP BY id HAVING count(*)=$2 AND min(expires_at)>clock_timestamp()`, [lease.id, lease.chunks]))
-    if (!valid.rowCount) throw new StreamError(503, 'REPLAY_EXPIRED', 'Replay lease expired; retry from the durable checkpoint', { 'Retry-After': '1' })
+    await this.guard.run({}, async (client) => {
+      const released = await client.query<{ valid: boolean }>(`DELETE FROM ${this.schema}.replay_pins WHERE id=$1
+        RETURNING expires_at>clock_timestamp() AS valid`, [lease.id])
+      if (released.rows.length !== lease.chunks || released.rows.some((row) => !row.valid)) {
+        throw new StreamError(503, 'REPLAY_EXPIRED', 'Replay lease expired; retry from the durable checkpoint', { 'Retry-After': '1' })
+      }
+    })
   }
   async release(lease: ReplayLease | undefined): Promise<void> {
     if (lease) await this.guard.releaseReplayPins(lease.id)

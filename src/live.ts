@@ -215,7 +215,7 @@ export class LiveReads {
       if (!isSse && (initial.hasData || initial.stream.closed)) {
         headers.set('Stream-Cursor', responseCursor(cursor))
         release()
-        return new Response(initial.hasData ? new Uint8Array(initial.body) : null, { status: initial.hasData ? 200 : 204, headers })
+        return new Response(initial.hasData ? new Uint8Array(initial.body.buffer, initial.body.byteOffset, initial.body.byteLength) : null, { status: initial.hasData ? 200 : 204, headers })
       }
       subscription = this.channel(tenant, id, initial)
       const channel = subscription
@@ -269,7 +269,7 @@ export class LiveReads {
         else headers.delete('Stream-Up-To-Date')
         if (result.stream.closed && result.upToDate) headers.set('Stream-Closed', 'true')
         release()
-        return new Response(result.hasData ? new Uint8Array(result.body) : null, { status: result.hasData ? 200 : 204, headers })
+        return new Response(result.hasData ? new Uint8Array(result.body.buffer, result.body.byteOffset, result.body.byteLength) : null, { status: result.hasData ? 200 : 204, headers })
       }
 
       const binary = !mediaType(initial.stream.content_type).startsWith('text/') && mediaType(initial.stream.content_type) !== 'application/json'

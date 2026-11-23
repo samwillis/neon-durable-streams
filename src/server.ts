@@ -270,7 +270,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
         const matches = request.headers.get('if-none-match')?.split(',').map((v) => v.trim()) ?? []
         if (matches.some((v) => v === '*' || v.replace(/^W\//, '') === etag)) return respond(null, 304, headers)
       }
-      return respond(new Uint8Array(result.body), 200, headers)
+      return respond(new Uint8Array(result.body.buffer, result.body.byteOffset, result.body.byteLength), 200, headers)
     } catch (error) {
       if (error instanceof StreamError) return respond(JSON.stringify({ error: { code: error.code, message: error.message } }), error.status,
         { 'Content-Type': 'application/json', ...error.headers })

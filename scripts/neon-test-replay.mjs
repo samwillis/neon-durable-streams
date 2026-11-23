@@ -46,7 +46,8 @@ const bundled = await build({ entryPoints: ['test/fixtures/replay-function.mjs']
 if (bundled.outputFiles.length !== 1) throw new Error('Expected one replay bundle')
 const code = bundled.outputFiles[0].contents
 const bundleSha256 = createHash('sha256').update(code).digest('hex')
-const slug = 'replaybench'
+const slug = env.REPLAY_FUNCTION_SLUG ?? 'replaybench'
+if (!/^replay[a-z0-9-]{1,24}$/.test(slug)) throw new Error('Invalid replay Function slug')
 const deployed = await neon.functions.deploy({ projectId: state.projectId, branchId: state.branchId, slug, runtime: 'nodejs24',
   zip: new File([zipSync({ 'index.mjs': code })], 'replay.zip', { type: 'application/zip' }),
   environment: JSON.stringify({ DS_SCHEMA: schema, DS_ENVIRONMENT_ID: state.branchId, DS_BUCKET: env.NEON_TEST_BUCKET,

@@ -84,17 +84,19 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
         })
         if (!response.Body) throw new Error('Object storage returned no body')
         const body = response.Body as AsyncIterable<Uint8Array> & { destroy(error?: Error): void }
-        if (response.ContentLength !== undefined && response.ContentLength > maxBytes) { body.destroy(); throw new ChunkIntegrityError('Object exceeds manifest size') }
+        const length = response.ContentLength ?? maxBytes
+        if (!Number.isSafeInteger(length) || length < 0 || length > maxBytes) { body.destroy(); throw new ChunkIntegrityError('Object exceeds manifest size') }
+        const bytes = Buffer.allocUnsafe(length)
         let size = 0
-        const parts: Uint8Array[] = []
         try {
           for await (const part of body) {
+            if (size + part.byteLength > length) throw new ChunkIntegrityError('Object exceeds declared size')
+            bytes.set(part, size)
             size += part.byteLength
-            if (size > maxBytes) throw new ChunkIntegrityError('Object exceeds manifest size')
-            parts.push(part)
           }
         } finally { body.destroy() }
-        return Buffer.concat(parts, size)
+        if (response.ContentLength !== undefined && size !== length) throw new ChunkIntegrityError('Object is shorter than declared size')
+        return size === length ? bytes : Buffer.from(bytes.subarray(0, size))
       })
     },
     delete(key) {

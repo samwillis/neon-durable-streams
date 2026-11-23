@@ -22,6 +22,7 @@ export interface ChunkStorage {
   /** Stable identity of this branch/bucket/namespace, excluding credentials. */
   readonly identity: string
   readonly put: (key: string, bytes: Uint8Array) => Promise<void>
+  /** Transfers ownership of a buffer that the adapter will never mutate or reuse. */
   readonly get: (key: string, maxBytes: number) => Promise<Buffer>
   readonly delete?: (key: string) => Promise<void>
   readonly list?: (prefix: string, cursor: string | null, limit: number) => Promise<ChunkInventoryPage>
@@ -218,14 +219,16 @@ export class ChunkManager {
       const decoded = await this.cache.get(key, async () => {
         const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes)
         if (bytes.length !== manifest.encodedBytes) throw new Error('Sealed object length differs from manifest')
-        return decodeChunk(Buffer.from(bytes), identity, manifest.sha256)
+        return decodeChunk(bytes, identity, manifest.sha256)
       }, manifest.encodedBytes)
       assertReplayDeadline(deadline)
       if (!equalDirectory(boundaryDirectory(manifest.start, decoded.frames), manifest.endDeltas)) throw new Error('Sealed object differs from boundary directory')
       const selected = decoded.frames.slice(frame.firstFrame - 1, frame.lastFrame)
       if (selected.length !== frame.lastFrame - frame.firstFrame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
         || selected.reduce((sum, value) => sum + value.payload.length, 0) !== frame.payload_bytes) throw new Error('Sealed object differs from planned range')
-      for (const found of selected) result.push({ ...found, payload: Buffer.from(found.payload) })
+      // The store copies these private views into its response or fork prefix.
+      // Avoid a temporary payload copy between verification and that boundary.
+      result.push(...selected)
     }
     return result
   }

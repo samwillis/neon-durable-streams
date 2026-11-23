@@ -54,10 +54,19 @@ export function preparePayload(input: Uint8Array, contentType: string, initial =
   return { bytes: Buffer.concat(fragments), messageEnds }
 }
 
-export function formatPayloads(payloads: readonly Uint8Array[], contentType: string): Buffer {
-  const bytes = Buffer.concat(payloads)
-  if (mediaType(contentType) !== 'application/json') return bytes
-  if (!bytes.length) return Buffer.from('[]')
-  if (bytes[bytes.length - 1] !== 44) throw new Error('Invalid stored JSON frame')
-  return Buffer.concat([Buffer.from('['), bytes.subarray(0, -1), Buffer.from(']')])
+export function formatPayloads(payloads: readonly Uint8Array[], contentType: string): Buffer<ArrayBuffer> {
+  if (mediaType(contentType) !== 'application/json') return Buffer.concat(payloads)
+  const length = payloads.reduce((sum, payload) => sum + payload.byteLength, 0)
+  if (!length) return Buffer.from('[]')
+  const last = payloads.findLast((payload) => payload.byteLength > 0)!
+  if (last[last.byteLength - 1] !== 44) throw new Error('Invalid stored JSON frame')
+  const bytes = Buffer.allocUnsafe(length + 1)
+  bytes[0] = 91
+  let position = 1
+  for (const payload of payloads) {
+    bytes.set(payload, position)
+    position += payload.byteLength
+  }
+  bytes[length] = 93
+  return bytes
 }

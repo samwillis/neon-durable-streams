@@ -79,7 +79,7 @@ export interface AppendResult {
 }
 export interface ReadResult {
   readonly stream: StreamMetadata
-  readonly body: Buffer
+  readonly body: Buffer<ArrayBuffer>
   readonly next: string
   readonly upToDate: boolean
   readonly hasData: boolean
@@ -339,15 +339,17 @@ export class PostgresStreamStore {
   private async materialize(plan: PinnedFrames): Promise<readonly ChunkFrame[]> {
     const { frames, deadline, lease } = plan
     let result: readonly ChunkFrame[]
+    let completed = false
     try {
       assertReplayDeadline(deadline)
       result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
         if (frame.storage !== 'postgres') throw new StorageCompatibilityError('Sealed replay requires object storage')
         return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
       })
-      await this.pins.validate(lease)
+      await this.pins.complete(lease)
+      completed = true
       assertReplayDeadline(deadline)
-    } finally { await this.pins.release(lease) }
+    } finally { if (!completed) await this.pins.release(lease) }
     assertReplayDeadline(deadline)
     return result
   }
@@ -556,6 +558,26 @@ export class PostgresStreamStore {
   async read(tenant: string, path: string, offset: string): Promise<ReadResult> {
     const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
+    await this.assertReady()
+    const snapshot = await this.transaction({ repeatableRead: true }, async (client) => {
+      const result = await client.query<LockedStream>(`SELECT s.*, COALESCE(expires_at <= clock_timestamp()
+        OR accessed_at + ttl_seconds * interval '1 second' <= clock_timestamp(), false) AS expired,
+        CASE WHEN expires_at IS NOT NULL THEN EXTRACT(epoch FROM (expires_at-clock_timestamp())) * 1000 END AS valid_for_ms
+        FROM ${this.schema}.paths p JOIN ${this.schema}.streams s ON s.id=p.active_stream_id
+        WHERE p.tenant_id=$1 AND p.path=$2`, [tenant, path])
+      const stream = result.rows[0]
+      if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream is unavailable')
+      // Lifecycle transitions and sliding TTL renewal require the writer path.
+      // Ordinary readers use one MVCC snapshot without locking the stream head.
+      if (stream.ttl_seconds !== null || streamPresence(stream) !== 'available') return undefined
+      return this.planRead(client, stream, offset, observedAt)
+    }).catch((error: unknown) => {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === '40001') {
+        throw new StreamError(503, 'REPLAY_RETRY', 'Replay snapshot changed; retry from the durable checkpoint', { 'Retry-After': '1' })
+      }
+      throw error
+    })
+    if (snapshot) return this.materializeRead(snapshot)
     const plan = await this.withStream(tenant, path, async (client, stream) => {
       if (stream.ttl_seconds !== null) {
         const renewed = await client.query<{ accessed_at: Date; valid_for_ms: string }>(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1

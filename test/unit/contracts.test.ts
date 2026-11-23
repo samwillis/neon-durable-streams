@@ -59,6 +59,14 @@ describe('JSON storage contract', () => {
       expect(formatPayloads([preparePayload(body, 'application/octet-stream').bytes], 'application/octet-stream')).toEqual(Buffer.from(body))
     }))
   })
+  test('multipart JSON formatting owns its bytes and tolerates empty fragments', () => {
+    const first = Buffer.from('9007199254740993,')
+    const second = Buffer.from('"🐘",')
+    const response = formatPayloads([first, Buffer.alloc(0), second, Buffer.alloc(0)], 'application/json')
+    first.fill(0)
+    second.fill(0)
+    expect(response.toString()).toBe('[9007199254740993,"🐘"]')
+  })
 })
 
 describe('mount and path identity', () => {

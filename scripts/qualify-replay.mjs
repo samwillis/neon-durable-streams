@@ -74,6 +74,23 @@ try {
     datasets.push(dataset)
     console.log(`Seeded ${profile}: ${dataset.frames} public API appends`)
   }
+  for (let index = 0; index < 8; index++) {
+    const path = `${run}/quiet-${index}`
+    const created = await request(`v1/stream/${path}`, { method: 'PUT' })
+    assert.equal(created.status, 201)
+    const appended = await request(`v1/stream/${path}`, { method: 'POST', body: replayFrame('tiny', 0), headers: { 'Content-Type': 'application/octet-stream' } })
+    assert.equal(appended.status, 204)
+    datasets.push({ path, profile: 'tiny', frames: 1, offsets: [created.headers.get('Stream-Next-Offset'), appended.headers.get('Stream-Next-Offset')] })
+  }
+  const source = datasets.find((item) => item.profile === 'binary')
+  let parent = source.path
+  for (let depth = 0; depth < 16; depth++) {
+    const path = `${run}/fork-${depth}`
+    const response = await request(`v1/stream/${path}`, { method: 'PUT', headers: { 'Stream-Forked-From': `/v1/stream/${parent}`, 'Stream-Fork-Offset': source.offsets[128] } })
+    assert.equal(response.status, 201)
+    parent = path
+  }
+  const deepFork = { path: parent, profile: 'binary', frames: 128, offsets: source.offsets.slice(0, 129) }
   for (let pass = 0; pass < 12; pass++) {
     const response = await request('_benchmark/maintain', { method: 'POST' })
     assert.equal(response.status, 200)
@@ -105,17 +122,74 @@ try {
     await Promise.all(Array.from({ length: 8 }, () => readPage(dataset, Math.floor(dataset.frames / 2), 'shared', 'fanout')))
     console.log(`Verified replay bytes and checkpoints for ${dataset.profile}`)
   }
+  for (let repetition = 0; repetition < repetitions; repetition++) {
+    await readPage(deepFork, 0, 'cold', 'deep-fork-cold')
+    await readPage(deepFork, 64, 'shared', 'deep-fork-warm')
+  }
+  const binary = datasets.find((item) => item.profile === 'binary')
+  for (let index = 0; index < 8; index++) {
+    const begin = performance.now()
+    const response = await request(`v1/stream/${binary.path}?offset=${encodeURIComponent(binary.offsets[0])}&live=sse`)
+    assert.equal(response.status, 200)
+    const reader = response.body.getReader()
+    assert.equal((await reader.read()).done, false)
+    await reader.cancel()
+    reader.releaseLock()
+    samples.push({ mode: 'canceled-sse', completeMs: performance.now() - begin, metrics: JSON.parse(response.headers.get('x-replay-metrics')) })
+  }
+  const catchup = await request(`v1/stream/${deepFork.path}?offset=${encodeURIComponent(deepFork.offsets[126])}&live=sse`)
+  assert.equal(catchup.status, 200)
+  const liveReader = catchup.body.getReader()
+  const decoder = new TextDecoder()
+  const liveDigest = createHash('sha256')
+  let pending = '', appended = false, eof = false, liveNext
+  const liveStarted = performance.now()
+  try {
+    while (!eof) {
+      const part = await liveReader.read()
+      assert.equal(part.done, false, 'SSE ended before its final checkpoint')
+      pending += decoder.decode(part.value, { stream: true })
+      assert.ok(pending.length < 4 * 1024 * 1024)
+      let end
+      while ((end = pending.indexOf('\n\n')) !== -1) {
+        const event = pending.slice(0, end)
+        pending = pending.slice(end + 2)
+        const data = event.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5)).join('\n')
+        if (event.startsWith('event: data')) liveDigest.update(Buffer.from(data, 'base64'))
+        if (event.startsWith('event: control')) {
+          const control = JSON.parse(data)
+          if (control.upToDate && !appended) {
+            const response = await request(`v1/stream/${deepFork.path}`, { method: 'POST', body: replayFrame('binary', 128),
+              headers: { 'Content-Type': 'application/octet-stream', 'Stream-Closed': 'true' } })
+            assert.equal(response.status, 204)
+            liveNext = response.headers.get('Stream-Next-Offset')
+            appended = true
+          }
+          if (control.streamClosed) { assert.equal(control.streamNextOffset, liveNext); eof = true }
+        }
+      }
+    }
+  } finally { await liveReader.cancel(); liveReader.releaseLock() }
+  assert.equal(liveDigest.digest('hex'), digest(expectedReplay('binary', 126, 129)))
+  samples.push({ mode: 'catchup-to-live', completeMs: performance.now() - liveStarted, metrics: JSON.parse(catchup.headers.get('x-replay-metrics')) })
   // Add write pressure to a sealed stream, then repeat with separate writers.
   for (const sameStream of [true, false]) {
     const dataset = datasets.find((item) => item.profile === 'binary')
     const writePath = sameStream ? dataset.path : `${run}/writer`
-    if (!sameStream) assert.equal((await request(`v1/stream/${writePath}`, { method: 'PUT' })).status, 201)
+    let writeStart = dataset.offsets.at(-1)
+    if (!sameStream) {
+      const created = await request(`v1/stream/${writePath}`, { method: 'PUT' })
+      assert.equal(created.status, 201)
+      writeStart = created.headers.get('Stream-Next-Offset')
+    }
+    let writeEnd
     const writer = (async () => {
       for (let index = 0; index < 24; index++) {
         const begin = performance.now()
         const response = await request(`v1/stream/${writePath}`, { method: 'POST', body: replayFrame('binary', dataset.frames + index), headers: { 'Content-Type': 'application/octet-stream' } })
         await response.arrayBuffer()
         assert.equal(response.status, 204)
+        writeEnd = response.headers.get('Stream-Next-Offset')
         samples.push({ mode: sameStream ? 'writer-shared-stream' : 'writer-separate-stream', completeMs: performance.now() - begin,
           metrics: JSON.parse(response.headers.get('x-replay-metrics')) })
       }
@@ -123,6 +197,10 @@ try {
     await Promise.all([writer, ...Array.from({ length: 4 }, async () => {
       for (let index = 0; index < 8; index++) await readPage(dataset, 0, 'shared', sameStream ? 'reader-shared-stream' : 'reader-separate-stream')
     })])
+    const replayed = await request(`v1/stream/${writePath}?offset=${encodeURIComponent(writeStart)}`)
+    assert.equal(replayed.status, 200)
+    assert.equal(replayed.headers.get('Stream-Next-Offset'), writeEnd)
+    assert.deepEqual(Buffer.from(await replayed.arrayBuffer()), expectedReplay('binary', dataset.frames, dataset.frames + 24))
   }
   storageAfter = await (await request('_benchmark/storage')).json()
 } catch (error) {

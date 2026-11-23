@@ -1,8 +1,8 @@
 import type { Chunk } from './chunk-codec.js'
 import { StreamError } from './errors.js'
 
-/** Per-server bounded LRU of verified immutable objects. Response pages copy
- * their frames; cache hits never substitute for replay pins or authorization. */
+/** Per-server bounded LRU of verified immutable objects. The store copies
+ * private views at the response boundary. Hits still require replay protection. */
 export class VerifiedChunkCache {
   private readonly entries = new Map<string, { chunk: Chunk; charge: number }>()
   private readonly pending = new Map<string, Promise<Chunk>>()
