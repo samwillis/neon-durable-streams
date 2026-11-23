@@ -19,7 +19,7 @@ const schemas = [], samples = []
 const appends = 1048576, payloadBytes = 32
 let cleanupComplete = false
 try {
-  for (const [kind, framesPerChunk] of [['byte-control', 1024], ['ordinal', 1024], ['ordinal', 131072]]) {
+  for (const [kind, framesPerChunk] of [['byte-control', 1024], ['ordinal', 1024], ['ordinal', 8192], ['ordinal', 32768], ['ordinal', 131072]]) {
     const schema = `ds_test_${randomUUID().replaceAll('-', '')}`, sql = `"${schema}"`
     schemas.push(schema)
     if (kind === 'ordinal') await migrate(pool, { schema, storageIdentity: 'metadata-only', environmentId: state.branchId })
