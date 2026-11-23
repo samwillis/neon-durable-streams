@@ -24,7 +24,7 @@ Detaching an edge updates only the direct parent's reference count while the chi
 
 Expiring streams have an indexed durable deadline row maintained in the same transaction as creation, TTL renewal, or retirement. Successful GET renews TTL at request start. Maintenance selects a bounded set of due deadlines and retired zero-reference streams, then rechecks lifecycle state under the normal path/stream locks. It does not scan every retained generation on each recovery tick. Absolute deadlines never move. Fork reads do not renew their source's TTL.
 
-Physical object/frame deletion remains disabled. Completed SQL replay plans therefore stay valid even after logical cleanup and path recreation. Destructive GC must add read/reference pins, a publication/retirement barrier, and explicit recovery-history retention before it can use these logical reference counts to reclaim data.
+Physical object/frame deletion is disabled by default. Schema-0006 adds sealed replay pins, exact upload intents, publication/retirement barriers, and explicit recovery-history retention before collection can be enabled. A live descendant retains its parent generation, including the ability to seal that deleted parent’s HOT bytes. See the [reclamation contract](reclamation-v1.md) for bounded plan lifetimes and collection eligibility.
 
 ## Evidence
 

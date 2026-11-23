@@ -1,9 +1,13 @@
 # Qualification evidence
 
-Current reclamation qualification (23 November) is scoped as follows. Required CI on the final hardening revision is pending; the last fully green collector revision is [`b9b0de5`](https://github.com/samwillis/neon-durable-streams/actions/runs/45082700958). The package remains unpublished. The independent Realtime diagnostic failure below prevents claiming a fully passing 45-minute latency/availability profile.
+The final hardening revision [`ee0b181`](https://github.com/samwillis/neon-durable-streams/actions/runs/45089891876) passed every required CI job on 23 November: **53 unit/property, 86 Neon, 21 transaction/process-loss, two recovery, nine public Function/webhook, two hints-only, and 338/338 full protocol tests**, with no failed or skipped test cases. The eight packed rolling checks and separate stopped schema upgrade are included in the 86. Conformance explicitly enables subscriptions and collection, with real fifteen-minute holds and no deadline bypasses. Cleanup completed. The package remains unpublished. The independent Realtime diagnostic failure below prevents claiming a fully passing 45-minute latency/availability profile.
 
 | Evidence | Result and scope |
 | --- | --- |
+| [Final hardening CI](2026-11-23-ci-hardening.json) | Clean `ee0b181`: every required job passed; counts, exact conformance provenance, and cleanup recorded. |
+| [Final full conformance](2026-11-23-conformance-hardening.json) | 338/338, zero failures/skips, 125.82 seconds; subscriptions and collection enabled on actual Neon. |
+| [Final packed upgrades](2026-11-23-packed-upgrade-hardening.json) | Clean final artifact; eight rolling cases and the separate stopped schema upgrade passed, cleanup complete. |
+| [Final in-place restore](2026-11-23-inplace-hardening.json) | Fresh deployment/epoch; exact replay and independently observed raw Realtime payload/end offset passed alongside public SSE. |
 | [Committed collector CI](2026-11-22-ci-reclamation.json) | Clean `b9b0de5`: all required jobs passed; 338/338 protocol cases, no skips. Collection policy disabled in this original suite run. |
 | [Collection-enabled conformance](2026-11-22-conformance-reclamation-enabled.json) | Local 338/338, no skips; policy enabled before serving, real fifteen-minute holds. Predates final hardening. |
 | [Packed stopped upgrade](2026-11-22-packed-stopped-upgrade.json) | Eight schema-0005 overlap cases plus separate actual stopped 0005 → 0006 upgrade passed. |
@@ -22,7 +26,7 @@ The first complete protocol run passed **338/338**, with no failures or skips, a
 
 Historical load profiles with four writers, eight streams, and 16 readers assign each writer to one fixed stream: eight readers receive data and eight are idle connections. Their byte/digest checks include the expected empty histories. They qualify those workloads, not 16 readers receiving every append. New reports expose the writing-stream and active/idle-reader counts, and the manual workflow defaults to four streams so all 16 readers receive writes. Compare this mapping as well as connection count when comparing runs.
 
-Current focused evidence includes 49 unit/property tests, 75 integration/Neon cases, nine actually deployed Function cases (including three public HTTPS webhook tests), two cron-free deployed hint cases, and a real WAL-LSN child-branch recovery drill. See [development](../development.md) and [operations](../operations-v1.md) for their scope.
+Earlier focused evidence included 49 unit/property tests, 75 integration/Neon cases, nine actually deployed Function cases (including three public HTTPS webhook tests), two cron-free deployed hint cases, and a real WAL-LSN child-branch recovery drill. See [development](../development.md) and [operations](../operations-v1.md) for their scope.
 
 `2026-11-22-load-smoke.json` records a **20-second probe**, using a Node.js client in London against a deployed Function in `aws-eu-central-1`, Postgres compute configured for 0.25–1 CU, pool maximum five, four writers, sixteen live readers, eight binary streams, and 1 KiB records. It acknowledged and then replayed 1,009 unique records after sealing, with no observed errors. Append p50/p95 were 69.87/81.10 ms; observed live p50/p95 were 86.30/99.25 ms. The report includes the exact deployed bundle hash. Other qualification Functions shared the account.
 

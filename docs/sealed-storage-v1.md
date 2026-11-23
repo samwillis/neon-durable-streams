@@ -37,9 +37,9 @@ Readers verify downloaded size, digest, identities, and frame boundaries before 
 
 ## Retention
 
-Physical object deletion is unavailable in the adapter contract and disabled in the library. Objects, manifests, and generation indexes survive stream deletion. This preserves snapshot replay plans, fork references, and recoverable database history while reference pins, publication/retirement barriers, and recovery retention are unfinished. Operators must size and monitor retained data. Listing unreferenced objects is not permission to delete them after a database restore.
+Physical object deletion is disabled by default. Schema-0006 can collect unreachable objects and metadata only under an explicitly configured recovery policy. It protects replay plans with pins, records upload intents, and synchronizes publication and retirement with references. The S3 adapter supplies idempotent exact-key deletion and bounded listing; custom adapters must provide those capabilities before collection can be enabled. Operators must size and monitor retained data. Listing unreferenced objects alone is insufficient evidence to delete them after a database restore.
 
-A future reclamation migration must establish the pin and retirement barriers before enabling deletion. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md), with a real point-in-time branch drill. Destructive GC and in-place restore cutover remain unqualified.
+Read the [reclamation contract](reclamation-v1.md) before stopped policy configuration. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md). The [qualification index](qualification/README.md) records physical-collection child and in-place restore evidence, exact source revisions, and the unresolved independent Realtime diagnostic.
 
 ## Evidence
 
