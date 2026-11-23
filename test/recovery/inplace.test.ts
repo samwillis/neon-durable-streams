@@ -6,6 +6,8 @@ import { createNeonClient, raw } from '@neon/sdk'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { beginRecovery, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
+import { createNeonRealtimeNotifier } from '../../src/neon.js'
+import type { RealtimeAppend } from '../../src/neon.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { parseSubscriptionKeyring } from '../../src/subscriptions.js'
 
@@ -23,6 +25,7 @@ const run = promisify(execFile)
 let ownsFixture = false, branchId = '', schema = ''
 let data: Record<string, string> = {}, deployed: Record<string, string> = {}
 let pool: pg.Pool | undefined, objects: ReturnType<typeof createS3ChunkStorage> | undefined
+let realtimeObserver: ReturnType<typeof createNeonRealtimeNotifier> | undefined
 const liveAbort = new AbortController()
 let liveReader: ReadableStreamDefaultReader<Uint8Array> | undefined
 const stages: string[] = []
@@ -101,6 +104,7 @@ beforeAll(async () => {
 }, 300_000)
 
 afterAll(async () => {
+  realtimeObserver?.close()
   liveAbort.abort(); await liveReader?.cancel().catch(() => {})
   await pool?.end(); objects?.close()
   if (ownsFixture && !(env.GITHUB_ACTIONS !== 'true' && env.NEON_TEST_KEEP_INPLACE === '1')) await script('scripts/neon-test-inplace-cleanup.mjs')
@@ -227,18 +231,35 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
   expect((await request(`${stream('data/binary')}?offset=${discardedOffset}`)).status).toBe(400)
   expect((await request(stream('data/binary'), 'POST', 'must deduplicate', tuple)).status).toBe(204)
   stage('verify restored Realtime before resuming workers')
-  // Realtime has its own post-restore startup. Stay below the fixture's
-  // 60-second SQL fallback/validation intervals so only actual Realtime can
-  // satisfy delivery; retain a bounded deadline with useful failure context.
+  // An SSE setup catch-up can deliver an append even before periodic SQL
+  // fallback. Independently observe its committed payload through Realtime,
+  // with the raw subscription ready before the public append is issued.
+  const currentStream = (await pool!.query<{ id: string; tenant_id: string; tail_offset: string }>(
+    `SELECT id,tenant_id,tail_offset FROM "${schema}".streams WHERE path='data/binary' AND deleted_at IS NULL`)).rows[0]!
+  realtimeObserver = createNeonRealtimeNotifier({ url: data.NEON_REALTIME_URL!, secret: data.NEON_REALTIME_SECRET!,
+    database: new URL(data.TEST_DATABASE_URL_UNPOOLED!).pathname.slice(1), readyTimeoutMs: 30_000 })
+  let observedAppend: RealtimeAppend | undefined
+  const restoredPayload = Buffer.from(' new timeline')
+  const appendWatch = realtimeObserver.watchAppends!({ schema, tenantId: currentStream.tenant_id, streamId: currentStream.id,
+    after: currentStream.tail_offset, installation: activated }, (update) => {
+    if (update.type === 'invalidate') return
+    observedAppend ??= update.rows.find((row) => row.streamId === currentStream.id && row.start === currentStream.tail_offset
+      && row.payload !== null && Buffer.from(row.payload).equals(restoredPayload))
+  })
+  await appendWatch.ready
   const resumed = await request(`${stream('data/binary')}?offset=now&live=sse`, 'GET', undefined, {}, AbortSignal.any([liveAbort.signal, AbortSignal.timeout(45_000)]))
   expect(resumed.status).toBe(200); liveReader = resumed.body!.getReader(); liveText = ''
   while (!liveText.includes('event: control')) liveText += decoder.decode((await liveReader.read()).value)
-  expect((await request(stream('data/binary'), 'POST', ' new timeline', { ...tuple, 'Producer-Seq': '1' })).status).toBe(200)
+  const restoredAppend = await request(stream('data/binary'), 'POST', restoredPayload, { ...tuple, 'Producer-Seq': '1' })
+  expect(restoredAppend.status).toBe(200)
+  await expect.poll(() => observedAppend?.end, { timeout: 30_000, interval: 50,
+    message: 'The restored branch must independently emit the committed raw Realtime payload' }).toBe(restoredAppend.headers.get('Stream-Next-Offset'))
   while (!liveText.includes(Buffer.from(' new timeline').toString('base64'))) {
     const part = await liveReader.read(); if (part.done) throw new Error('Restored Realtime session ended before new bytes')
     liveText += decoder.decode(part.value)
   }
   await liveReader.cancel(); liveReader.releaseLock(); liveReader = undefined
+  appendWatch.close(); realtimeObserver.close(); realtimeObserver = undefined
   stage('verify restored token fencing and resumed subscription work')
   const oldAck = await request(stream('__ds/subscriptions/restore/ack'), 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true }),
     { Authorization: `Bearer ${claim.token}`, 'Content-Type': 'application/json' })
@@ -256,7 +277,9 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
   await writeFile('qualification-results/inplace-restore.json', JSON.stringify({ passed: true, stages, stageTimes, durationMs: Math.round(performance.now() - startedAt), verifiedChunks, generatedAt: new Date().toISOString(),
     testSha256, node: process.version, region: data.AWS_REGION,
     branchId, preservedBranchId: preserved!.id, endpointPreserved: true, originalEpoch: original.serving_epoch,
-    recoveryEpoch: recovery.servingEpoch, hotReplayAcrossSealing: true, restoredRealtime: true, discardedOffsetRejected: true, unexpiredTokenFenced: true, cronResumedAfterValidation: true,
+    recoveryEpoch: recovery.servingEpoch, hotReplayAcrossSealing: true, restoredRealtime: true,
+    restoredRealtimePayloadObserved: true, restoredRealtimeObservedOffset: observedAppend!.end,
+    discardedOffsetRejected: true, unexpiredTokenFenced: true, cronResumedAfterValidation: true,
     sourceCommit: deployed.TEST_FUNCTION_SOURCE_COMMIT, sourceDirty: deployed.TEST_FUNCTION_SOURCE_DIRTY,
     deploymentId: deployed.TEST_FUNCTION_DEPLOYMENT_ID, previousDeploymentId: initialDeploymentId,
     memoryMiB: fn.active_deployment?.memory_mib, deployedBundle: deployed.TEST_FUNCTION_BUNDLE_SHA }, null, 2) + '\n')

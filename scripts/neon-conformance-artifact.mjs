@@ -82,6 +82,7 @@ export async function buildConformanceArtifact() {
     return { payload, nativeFiles, manifest: { target: 'linux/arm64/glibc', testCompiler: 'rolldown-wasi', nativeFiles: Object.keys(nativeFiles), sourceCommit: commit.trim(), sourceDirty: Boolean(dirty.trim()), sourceSnapshotSha256: sourceHash.digest('hex'),
       payloadSha256: sha256(payload), payloadBytes: payload.length, expandedBytes: Object.values(files).reduce((sum, bytes) => sum + bytes.length, 0),
       lockSha256: sha256(files['pnpm-lock.yaml']), fixtureSha256: sha256(files['test/conformance/server.test.ts']),
-      upstreamVersion: '0.3.7', upstreamSha256: sha256(upstream), subscriptions: true, expectedTests: 338 } }
+      upstreamVersion: '0.3.7', upstreamSha256: sha256(upstream), subscriptions: true,
+      reclamation: { enabled: true, recoveryWindowMs: 0, safetyMarginMs: 900_000, deadlineBypasses: false }, expectedTests: 338 } }
   } finally { await rm(directory, { recursive: true, force: true }) }
 }

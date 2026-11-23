@@ -301,16 +301,18 @@ export class PostgresStreamStore {
 
   private async materialize(plan: PinnedFrames): Promise<readonly ChunkFrame[]> {
     const { frames, deadline, lease } = plan
+    let result: readonly ChunkFrame[]
     try {
       assertReplayDeadline(deadline)
-      const result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
+      result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
         if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
         return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
       })
       await this.pins.validate(lease)
       assertReplayDeadline(deadline)
-      return result
     } finally { await this.pins.release(lease) }
+    assertReplayDeadline(deadline)
+    return result
   }
 
   async createFork(tenant: string, path: string, options: ForkOptions): Promise<{ stream: StreamMetadata; created: boolean }> {
@@ -544,7 +546,9 @@ export class PostgresStreamStore {
   private async materializeRead(plan: ReplayPlan): Promise<ReadResult> {
     const frames = await this.materialize(plan)
     if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
-    return { stream: plan.stream, body: formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type), next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
+    const body = formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type)
+    assertReplayDeadline(plan.deadline)
+    return { stream: plan.stream, body, next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
       validatedAt: plan.validatedAt, validUntil: plan.validUntil }
   }
 

@@ -134,6 +134,31 @@ test('a live descendant retains its deleted parent and exact inherited bytes unt
   expect((await sql('SELECT retired_at FROM ds.chunks WHERE id=$1', [chunk.id])).rows[0].retired_at).not.toBe(null)
 })
 
+test('a deleted HOT parent retained by a live fork can still archive before its last reference detaches', async () => {
+  await enable()
+  const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: 'collection-test' },
+    storage: { objects, targetChunkBytes: 1024 * 1024 }, auth: { authenticate: () => ({ tenantId: 'collection', subject: 'test' }), authorize: () => true } })
+  servers.push(value)
+  const body = 'retained HOT parent bytes'
+  expect((await request(value, 'hot-parent', 'PUT', body)).status).toBe(201)
+  expect((await request(value, 'hot-child', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/hot-parent' })).status).toBe(201)
+  expect((await sql('SELECT * FROM ds.chunks')).rows).toHaveLength(0)
+  expect((await request(value, 'hot-parent', 'DELETE')).status).toBe(204)
+  expect((await phase(0)).reclaimedChunks).toBe(0)
+  const maintained = await value.maintain()
+  expect(maintained.frozen).toBe(1); expect(maintained.sealed).toBe(1)
+  const chunk = (await sql('SELECT * FROM ds.chunks')).rows[0]
+  expect(chunk).toMatchObject({ state: 'sealed', retired_at: null })
+  expect((await sql('SELECT payload FROM ds.appends')).rows[0].payload).toBe(null)
+  expect(await (await request(value, 'hot-child')).text()).toBe(body)
+  expect((await request(value, 'hot-parent')).status).toBe(410)
+  expect((await request(value, 'hot-child', 'DELETE')).status).toBe(204)
+  await value.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+  await phase(0); await elapse()
+  expect((await phase(1)).deletedObjects).toBe(1)
+  await expect(objects.get(chunk.object_key, chunk.encoded_bytes)).rejects.toThrow('not found')
+})
+
 test('an ambiguous successful delete preserves its retry identity and retries the same key idempotently', async () => {
   await enable()
   const { value, chunk } = await sealed()
@@ -205,7 +230,8 @@ test('fair durable phase rotation and dependency-ordered pruning remove dead gen
     await new ReclamationManager(`"${schema}"`, new InstallationGuard(pool, schema, 'collection-test'), objects).maintain()
   }
   expect(phases).toEqual([0,1,2,3,4,5])
-  for (let i = 0; i < 24; i++) {
+  // One complete metadata rotation covers every class after the initial phase.
+  for (let i = 0; i < 8; i++) {
     await phase(2)
     await phase(5)
   }
@@ -254,7 +280,7 @@ test('pruned signed and legacy wakes still fence authentic tokens, and recreated
   await sql("UPDATE ds.subscription_wakes SET created_at=clock_timestamp()-interval '1 day'")
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=0'); await phase(5)
   expect((await request(value, `${name}/ack`, 'POST', next.body, { ...json, Authorization: `Bearer ${next.token}` })).status).toBe(409)
-})
+}, 120_000)
 
 test('recovery ignores collected unreachable manifests, requires every reachable object, and renews collection holds', async () => {
   await enable()
@@ -329,6 +355,25 @@ test('expired delete claims cannot finalize a replacement claim or lose the exac
     release(); expect((await first).deletedObjects).toBe(0)
     expect((await sql('SELECT collected_at,claim_epoch FROM ds.chunk_objects WHERE object_key=$1', [chunk.object_key])).rows[0]).toEqual(committed)
   } finally { release(); await first }
+})
+
+test('retired chunk cleanup drains expired replay pins in bounded batches before deleting their parent', async () => {
+  await enable()
+  const { value, chunk } = await sealed()
+  await request(value, 'source', 'DELETE'); await phase(0); await elapse()
+  const installation = await inspectInstallation(direct, { schema })
+  await sql(`INSERT INTO ds.replay_pins (id,chunk_id,serving_epoch,expires_at)
+    SELECT gen_random_uuid(),$1,$2,clock_timestamp()-interval '1 minute' FROM generate_series(1,300)`, [chunk.id, installation.serving_epoch])
+  expect((await phase(1)).deletedObjects).toBe(1)
+  await sql('UPDATE ds.reclamation_policy SET metadata_phase=2'); await phase(5)
+  await phase(2)
+  expect(Number((await sql('SELECT count(*) FROM ds.replay_pins')).rows[0].count)).toBe(172)
+  expect((await sql('SELECT id FROM ds.chunks WHERE id=$1', [chunk.id])).rows).toHaveLength(1)
+  await phase(2)
+  expect(Number((await sql('SELECT count(*) FROM ds.replay_pins')).rows[0].count)).toBe(44)
+  await phase(2)
+  expect((await sql('SELECT id FROM ds.replay_pins')).rows).toHaveLength(0)
+  expect((await sql('SELECT id FROM ds.chunks WHERE id=$1', [chunk.id])).rows).toHaveLength(0)
 })
 
 test('inventory preserves live chunks, quarantines corrupt objects, and handles a listed object disappearing', async () => {

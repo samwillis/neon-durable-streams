@@ -14,7 +14,7 @@ const state = JSON.parse(await readFile(stateFile, 'utf8'))
 if (!env.NEON_API_KEY || !env.TEST_DATABASE_URL_UNPOOLED || state.projectId !== env.NEON_PROJECT_ID || state.branchId !== env.NEON_TEST_BRANCH_ID || !state.name.startsWith('ds-test-')) throw new Error('Recorded isolated Neon environment required')
 const neon = createNeonClient({ apiKey: env.NEON_API_KEY, throwOnError: true })
 const branch = await neon.branches.get({ projectId: state.projectId, branchId: state.branchId })
-if (branch.default || branch.protected || branch.name !== state.name || (await neon.functions.list({ projectId: state.projectId, branchId: state.branchId })).length
+if (branch.default || branch.protected || branch.name !== state.name || (await neon.functions.list({ projectId: state.projectId, branchId: state.branchId }).all()).length
   || (await neon.triggers.list({ projectId: state.projectId, branchId: state.branchId })).length) throw new Error('Reclamation test setup requires a fresh stopped branch without Functions or triggers')
 const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const handle = await open(functionFile, 'wx', 0o600)

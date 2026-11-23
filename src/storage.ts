@@ -109,7 +109,7 @@ export class ChunkManager {
     let frozen = 0, sealed = 0
     for (let i = 0; i < maximum; i++) {
       const rotated = input.freezeHot === false ? false : await this.guard.run({}, async (client) => {
-        const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 AND deleted_at IS NULL ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
+        const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 AND (deleted_at IS NULL OR ref_count > 0) ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
       if (rotated) frozen++

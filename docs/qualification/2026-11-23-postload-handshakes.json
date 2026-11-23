@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-11-23T00:19:17.231Z",
+  "subprotocol": "neon.realtime.v2",
+  "results": [
+    {
+      "label": "reclamation",
+      "event": "http",
+      "status": 502,
+      "elapsedMs": 2671.7516659999997
+    },
+    {
+      "label": "smoke",
+      "event": "open",
+      "elapsedMs": 261.124
+    }
+  ]
+}

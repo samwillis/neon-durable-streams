@@ -40,6 +40,7 @@ const runtimes: Runtime[] = []
 const liveSessions = new Set<{ close(): Promise<void> }>()
 const passed: string[] = []
 let expected = 0
+let stoppedUpgrade: { passed: boolean; migrations?: readonly { id: string; checksum: string }[] } = { passed: false }
 function qualify(name: string, work: () => Promise<void>, timeout = 60_000) {
   expected++
   test(name, async () => { await work(); passed.push(name) }, timeout)
@@ -165,12 +166,13 @@ afterAll(async () => {
     cleaned = true
   } finally {
     await mkdir('qualification-results', { recursive: true })
-    await writeFile('qualification-results/rolling-upgrade.json', JSON.stringify({ passed: cleaned && passed.length === expected && expected === 8,
+    await writeFile('qualification-results/rolling-upgrade.json', JSON.stringify({ passed: cleaned && passed.length === expected && expected === 8 && stoppedUpgrade.passed,
       checks: { expected, passed: passed.length, names: passed }, cleaned, generatedAt: new Date().toISOString(), testSha256,
       baselineSourceArchiveSha256: prepared?.baselineSourceArchiveSha256, node: process.version, region: env.AWS_REGION,
       artifacts: prepared ? Object.fromEntries(Object.entries(prepared.artifacts).map(([key, { packageRoot: _root, consumer: _consumer, ...artifact }]) => [key, artifact])) : {},
       runtimes: runtimes.map(({ url: _url, ...runtime }) => runtime), storageVersion: 1,
       migrations: (await migrationPlan(schema)).slice(0, 5).map(({ id, checksum }) => ({ id, checksum })),
+      stoppedUpgrade,
     }, null, 2) + '\n')
   }
 }, 180_000)
@@ -297,4 +299,50 @@ qualify('recovery fences both running binaries and fresh old/current artifacts c
   expect((await request(freshCurrent, 'producer', 'POST', 'after recovery;', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(200)
   expect((await request(freshOld, 'producer', 'POST', 'duplicate', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(204)
   expect(await read(freshOld, 'producer')).toBe('seed;old;new;race;epoch;after recovery;')
+}, 480_000)
+
+test('a stopped upgrade to schema 0006 preserves packed-consumer state and issues signed fenced wakes', async () => {
+  const before = runtimes.at(-2)!
+  expect(before.kind).toBe('current')
+  const json = { 'Content-Type': 'application/json' }, sub = '__ds/subscriptions/stopped-upgrade'
+  expect((await request(before, sub, 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['watched'], wake_stream: 'wake', lease_ttl_ms: 600_000 }), json)).status).toBe(201)
+  const appended = await request(before, 'watched', 'POST', 'upgrade-pending;')
+  expect(appended.status).toBe(204)
+  await maintain(before)
+  const oldClaim = await (await request(before, `${sub}/claim`, 'POST', '{"worker":"before-upgrade"}', json)).json() as { token: string; wake_id: string; generation: number }
+  mask(oldClaim.token); expect(oldClaim.token).toMatch(/^dsw\.[0-9a-f-]{36}\./)
+  // Stop every actual packed deployment and its possible cold starts before DDL.
+  for (const slug of slugs) await neon.functions.delete({ projectId, branchId, slug: slug! })
+  await new Promise((resolve) => setTimeout(resolve, 6000))
+  expect(await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity })).toEqual(['0006_reclamation'])
+  // Complete explicit recovery while stopped, fencing old subscription leases
+  // as well as runtime epochs before reopening ingress.
+  const identity = await inspectInstallation(pool, { schema })
+  const recovery = await beginRecovery(pool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
+    expectedServingEpoch: identity.serving_epoch, environmentId: branchId, storageIdentity: objects.identity })
+  while (!(await verifyRecovery(pool, { schema, token: recovery.token, objects, keyring, maxChunks: 16 })).complete) {}
+  await finishRecovery(pool, { schema, token: recovery.token })
+  const upgraded = await deploy('current', 0)
+  expect(await read(upgraded, 'producer')).toBe('seed;old;new;race;epoch;after recovery;')
+  expect((await request(upgraded, 'producer', 'POST', 'duplicate', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(204)
+  expect(await read(upgraded, 'json-grandchild')).toBe('[9007199254740993,1e400,-0]')
+  const oldBody = JSON.stringify({ wake_id: oldClaim.wake_id, generation: oldClaim.generation, done: true })
+  expect((await request(upgraded, `${sub}/ack`, 'POST', oldBody, { ...json, Authorization: `Bearer ${oldClaim.token}` })).status).toBe(409)
+  await maintain(upgraded)
+  const response = await request(upgraded, `${sub}/claim`, 'POST', '{"worker":"after-upgrade"}', json)
+  expect(response.status).toBe(200)
+  const claim = await response.json() as { token: string; wake_id: string; generation: number }; mask(claim.token)
+  expect(claim.token).toMatch(/^dsw\.2\./); expect(claim.generation).toBeGreaterThan(oldClaim.generation)
+  expect((await request(upgraded, `${sub}/ack`, 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true,
+    acks: [{ stream: 'watched', offset: appended.headers.get('Stream-Next-Offset') }] }), { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
+  expect((await pool.query(`SELECT enabled FROM "${schema}".reclamation_policy`)).rows[0].enabled).toBe(false)
+  await request(upgraded, 'upgraded-live', 'PUT')
+  const live = await open(upgraded, 'upgraded-live')
+  try {
+    expect((await request(upgraded, 'upgraded-live', 'POST', 'final-after-upgrade;', { 'Stream-Closed': 'true' })).status).toBe(204)
+    const content = await live.until('"streamClosed":true')
+    expect(content).toContain('data:final-after-upgrade;')
+    expect(content.indexOf('final-after-upgrade;')).toBeLessThan(content.indexOf('"streamClosed":true'))
+  } finally { await live.close() }
+  stoppedUpgrade = { passed: true, migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })) }
 }, 480_000)

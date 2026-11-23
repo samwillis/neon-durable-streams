@@ -12,7 +12,9 @@ export default defineConfig({
         // is intentionally sequential; network round trips dominate these properties.
         fileParallelism: false, testTimeout: 600_000, hookTimeout: 60_000 } },
       { test: { name: 'neon', include: ['test/neon/**/*.test.ts'],
-        fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
+        // These fixtures send many sequential SQL operations from the hosted
+        // runner. Explicit shorter Realtime/expiry deadlines remain in cases.
+        fileParallelism: false, testTimeout: 120_000, hookTimeout: 60_000 } },
       { test: { name: 'function', include: ['test/function/**/*.test.ts'],
         fileParallelism: false, testTimeout: 60_000, hookTimeout: 60_000 } },
       { test: { name: 'hints', include: ['test/hints/**/*.test.ts'],

@@ -184,10 +184,16 @@ export class ReclamationManager {
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.chunk_objects o WHERE o.chunk_id=c.id AND o.collected_at IS NULL)
         ORDER BY c.retired_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED`)).rows[0]
       if (!chunk) return 0
+      // Keep ON DELETE CASCADE from turning one chunk into an unbounded pin
+      // deletion after a period of failed reader cleanup. Valid pins already
+      // exclude the candidate; locked/remaining expired pins defer its removal.
+      const pins = await client.query(`WITH batch AS (SELECT id,chunk_id FROM ${this.schema}.replay_pins WHERE chunk_id=$1 AND expires_at<=clock_timestamp()
+        ORDER BY expires_at,id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED) DELETE FROM ${this.schema}.replay_pins p USING batch b WHERE p.id=b.id AND p.chunk_id=b.chunk_id`, [chunk.id])
       const frames = await client.query(`WITH batch AS (SELECT stream_id,end_offset FROM ${this.schema}.appends WHERE chunk_id=$1 ORDER BY end_offset LIMIT ${BATCH})
         DELETE FROM ${this.schema}.appends a USING batch b WHERE a.stream_id=b.stream_id AND a.end_offset=b.end_offset`, [chunk.id])
-      const removed = await client.query(`DELETE FROM ${this.schema}.chunks c WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.chunk_id=c.id)`, [chunk.id])
-      return (frames.rowCount ?? 0) + (removed.rowCount ?? 0)
+      const removed = await client.query(`DELETE FROM ${this.schema}.chunks c WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.chunk_id=c.id)
+        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.replay_pins p WHERE p.chunk_id=c.id)`, [chunk.id])
+      return (pins.rowCount ?? 0) + (frames.rowCount ?? 0) + (removed.rowCount ?? 0)
     })
   }
   private async pruneMetadata(): Promise<number> {

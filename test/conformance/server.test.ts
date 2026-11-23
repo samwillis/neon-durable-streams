@@ -11,6 +11,7 @@ import { migrate } from '../../src/migrations.js'
 import { createNeonRealtimeNotifier } from '../../src/neon.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../../src/subscriptions.js'
+import { beginRecovery, configureReclamation, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
 
 if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to disposable Postgres 18')
 if (!process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET) throw new Error('Full conformance requires real Neon Realtime credentials')
@@ -25,7 +26,8 @@ const schema = `ds_test_${randomUUID().replaceAll('-', '')}`
 const notifier = createNeonRealtimeNotifier({ url: process.env.NEON_REALTIME_URL, secret: process.env.NEON_REALTIME_SECRET,
   database: new URL(process.env.TEST_DATABASE_URL).pathname.slice(1) })
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
-const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema },
+const environmentId = 'conformance-fixture'
+const handler = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId },
   live: { notifier, longPollTimeoutMs: 5000 },
   storage: { objects, targetChunkBytes: 4096, maxChunkFrames: 16 },
   subscriptions: { keyring, allowLocalhostWebhooks: true },
@@ -78,7 +80,15 @@ const http = createServer(async (incoming, outgoing) => {
 })
 
 beforeAll(async () => {
-  await migrate(migrationPool, { schema, storageIdentity: objects.identity })
+  await migrate(migrationPool, { schema, storageIdentity: objects.identity, environmentId })
+  // Exercise the production collector alongside the unchanged upstream suite.
+  // Configuration happens before serving; real retention deadlines stay intact.
+  const identity = await inspectInstallation(migrationPool, { schema })
+  const recovery = await beginRecovery(migrationPool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
+    expectedServingEpoch: identity.serving_epoch, environmentId, storageIdentity: objects.identity })
+  await configureReclamation(migrationPool, { schema, token: recovery.token, enabled: true, recoveryWindowMs: 0, safetyMarginMs: 900_000 })
+  await verifyRecovery(migrationPool, { schema, token: recovery.token, objects })
+  await finishRecovery(migrationPool, { schema, token: recovery.token })
   await initializeSubscriptions(migrationPool, { schema, keyring })
   http.listen(0, '127.0.0.1')
   await once(http, 'listening')

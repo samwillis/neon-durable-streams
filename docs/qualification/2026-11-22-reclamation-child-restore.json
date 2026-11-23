@@ -1,0 +1,35 @@
+{
+  "passed": true,
+  "checkpointAgeAtRestoreStartMs": 127256,
+  "restoreStartedAt": "2026-11-22T23:43:51.324Z",
+  "completedAt": "2026-11-22T23:46:33.381Z",
+  "verifiedReachableChunks": 1922,
+  "retiredManifestPresent": true,
+  "retiredObjectMissingOnParent": true,
+  "retiredObjectMissingOnChild": true,
+  "witnessBinarySha256": "93c89165ce4ff35d2cb509dcbf4b01f1ea9f5f6e8815f2aea6035072b23f816b",
+  "witnessJsonSha256": "cf8ba5a002440138193e3d6a4a520542400de6d3767806906636c904fdba08a7",
+  "producerRetryDeduplicated": true,
+  "sourceCommit": "b9b0de52a3786090ffc6f6810d080694433bca02",
+  "bundleSha256": "5a21500d55f3a9eb9879295be812013598abb96328f4fcd39b03d48e78811cef",
+  "checkpoint": {
+    "lsn": "0/2FBB5458",
+    "recordedAt": "2026-11-22T23:41:44.009Z",
+    "schema": "ds_test_bd4632c9c7da4fbea931341486a01838",
+    "installationId": "e8963ceb-185b-454b-9d96-2036d3695e0d",
+    "retiredChunk": {
+      "sequence": 0,
+      "path": "reclaim-bc35d7d2-29b5-41d5-b5bc-1f738b566c10/0",
+      "streamId": "a93a7dcc-0903-41f7-b136-992792741cf6",
+      "chunkId": "c939176c-c0c3-4b7e-b23e-1e576e294e87",
+      "objectKey": "v1/e8963ceb-185b-454b-9d96-2036d3695e0d/a93a7dcc-0903-41f7-b136-992792741cf6/c939176c-c0c3-4b7e-b23e-1e576e294e87/40bf70819c0ac0b253fb57ec2f5b6c858f86bb68e73d5184e6745be5ec49c015.ndsc",
+      "encodedBytes": 65670,
+      "retiredAt": "2026-11-22T23:22:42.100Z",
+      "collectAfter": "2026-11-22T23:42:42.100Z"
+    },
+    "projectId": "weathered-base-83674772",
+    "branchId": "br-jolly-cell-bgi81o41",
+    "branchName": "ds-test-1795389510567-reclamation"
+  },
+  "cleanupComplete": true
+}

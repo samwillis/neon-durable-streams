@@ -6,7 +6,7 @@ import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
 import { execFileSync } from 'node:child_process'
 import { deployTestWebhook } from './neon-test-webhook.mjs'
-import { migrate } from '../dist/migrations.js'
+import { migrate, MIGRATION_IDS } from '../dist/migrations.js'
 import { createS3ChunkStorage } from '../dist/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../dist/subscriptions.js'
 
@@ -43,7 +43,17 @@ if (!['on', 'off'].includes(hintMode)) throw new Error('Invalid test maintenance
 if (process.env.GITHUB_ACTIONS === 'true') for (const value of [userKey, otherKey, maintenanceKey]) console.log(`::add-mask::${value}`)
 const objects = createS3ChunkStorage({ endpoint: process.env.AWS_ENDPOINT_URL_S3, region: process.env.AWS_REGION, bucket: process.env.NEON_TEST_BUCKET })
 const direct = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED, max: 1 })
-try { await migrate(direct, { schema, storageIdentity: objects.identity, environmentId: branchId }); await initializeSubscriptions(direct, { schema, keyring: parseSubscriptionKeyring(process.env.DURABLE_STREAMS_KEYRING) }) }
+try {
+  const installed = await direct.query('SELECT to_regclass($1) AS relation', [`${schema}.migrations`])
+  if (installed.rows[0].relation) {
+    const history = await direct.query(`SELECT id FROM "${schema}".migrations ORDER BY id`)
+    if (history.rows.length < MIGRATION_IDS.length && (await neon.functions.list({ projectId, branchId }).all()).length) {
+      throw new Error('A stopped schema upgrade is required: stop the recorded branch Functions and workers before deploying across migrations')
+    }
+  }
+  await migrate(direct, { schema, storageIdentity: objects.identity, environmentId: branchId })
+  await initializeSubscriptions(direct, { schema, keyring: parseSubscriptionKeyring(process.env.DURABLE_STREAMS_KEYRING) })
+}
 finally { await direct.end(); objects.close() }
 const bundle = await build({ entryPoints: ['examples/neon-function/index.ts'], bundle: true, platform: 'node', target: 'node24', format: 'esm', write: false,
   external: ['pg-native', 'bufferutil', 'utf-8-validate'],

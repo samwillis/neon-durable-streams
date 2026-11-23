@@ -200,7 +200,7 @@ test('a paused reader survives payload overflow and sealing before final closure
       if (i) expect(content.indexOf(parts[i - 1]!)).toBeLessThan(content.indexOf(parts[i]!))
     }
   } finally { await live.close() }
-}, 30_000)
+}, 45_000) // Includes remote SQL setup/sealing; remains below the 60s fallback.
 
 test.each(['ttl', 'absolute'])('%s expiry stops an idle payload session without extending its lifetime', async (mode) => {
   const handler = server()

@@ -30,9 +30,9 @@ import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
 import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
 import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
 import { parseSubscriptionKeyring } from '@samwillis/durable-streams-neon/subscriptions'
-import { inspectInstallation, beginRecovery, verifyRecovery, finishRecovery } from '@samwillis/durable-streams-neon/operations'
+import { inspectInstallation, beginRecovery, verifyRecovery, finishRecovery, inspectReclamation, configureReclamation } from '@samwillis/durable-streams-neon/operations'
 import pg from 'pg'
-if ([inspectInstallation, beginRecovery, verifyRecovery, finishRecovery].some((fn) => typeof fn !== 'function')) throw new Error('Operations entrypoint missing')
+if ([inspectInstallation, beginRecovery, verifyRecovery, finishRecovery, inspectReclamation, configureReclamation].some((fn) => typeof fn !== 'function')) throw new Error('Operations entrypoint missing')
 if (typeof createNeonRealtimeNotifier !== 'function') throw new Error('Realtime entrypoint missing')
 const storage = createS3ChunkStorage({ endpoint: 'https://storage.example.test', region: 'eu-central-1', bucket: 'consumer-tests' })
 storage.close()

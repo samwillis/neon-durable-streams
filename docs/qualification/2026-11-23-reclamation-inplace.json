@@ -1,0 +1,39 @@
+{
+  "passed": true,
+  "generatedAt": "2026-11-23T00:29:42.537Z",
+  "harnessSha256": "ffe464cf35ba868279c3c360b7025c4f4333a47352272a1cc9535e90bec60b50",
+  "checkpoint": {
+    "id": "f5334649-86db-4839-9c9f-9f2f57202ac1",
+    "object_key": "v1/e8963ceb-185b-454b-9d96-2036d3695e0d/3cad4912-7962-4fa6-adb7-68f85dcb7509/f5334649-86db-4839-9c9f-9f2f57202ac1/005212d87c8cc337526fe2463a05b51f098f24f32db74f070285ecbec62a6d44.ndsc",
+    "encoded_bytes": 65670,
+    "retired_at": "2026-11-23T00:03:18.016Z",
+    "collect_after": "2026-11-23T00:23:18.020Z",
+    "lsn": "0/7792E208",
+    "recordedAt": "2026-11-23T00:23:06.363Z"
+  },
+  "checkpointAgeAtRestoreRequestMs": 26873,
+  "verifiedReachableChunks": 4103,
+  "retiredManifestPresent": true,
+  "collectedObjectMissing": true,
+  "publicExactBinaryJsonForkReplay": true,
+  "producerRetryDeduplicated": true,
+  "newRealtimeAppendAndEof": true,
+  "originalBundleSha256": "5a21500d55f3a9eb9879295be812013598abb96328f4fcd39b03d48e78811cef",
+  "restoredBundleSha256": "5a21500d55f3a9eb9879295be812013598abb96328f4fcd39b03d48e78811cef",
+  "originalDeploymentId": "1550857c-0baa-40ca-ad2b-9c7b15f78108",
+  "restoredDeploymentId": "358f0052-e11c-4561-973a-86aa5f3dad91",
+  "loadReport": "qualify-13cacd8b-4802-40af-87e3-14900bb8e69c.json",
+  "loadBenchmarkPassed": false,
+  "loadDataSafetyPassed": true,
+  "loadDiagnosticErrors": [
+    {
+      "phase": "head-probe",
+      "message": "Head coverage incomplete at drain deadline",
+      "count": 16830
+    }
+  ],
+  "independentRecoveryAfterHeadProbeFailure": true,
+  "collectionReport": "reclaim-bc35d7d2-29b5-41d5-b5bc-1f738b566c10.json",
+  "childRecoveryReport": "reclamation-recovery.json",
+  "cleanupComplete": true
+}

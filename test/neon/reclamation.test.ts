@@ -23,8 +23,8 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
 const request = (server: DurableStreamsServer, path: string, method = 'GET', body?: string, headers?: Record<string, string>) => server.fetch(new Request(`https://fixture.test/v1/stream/${path}`, {
   method, headers: { 'Content-Type': 'text/plain', ...headers }, ...(body === undefined ? {} : { body }),
 }))
-function server(storage: ChunkStorage = objects) {
-  const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: 'reclamation-test' }, storage: { objects: storage, targetChunkBytes: 4 },
+function server(storage: ChunkStorage = objects, clientPool = pool) {
+  const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool: clientPool, schema, environmentId: 'reclamation-test' }, storage: { objects: storage, targetChunkBytes: 4 },
     auth: { authenticate: () => ({ tenantId: 'reclamation', subject: 'fixture' }), authorize: () => true } })
   servers.push(value); return value
 }
@@ -113,6 +113,36 @@ test('partial fork preparation pins sealed bytes but cannot publish an edge onto
     expect(await pins()).toBe(0)
     expect((await request(parent, 'partial-child')).status).toBe(404)
   } finally { block.release.resolve(); await response }
+})
+
+test.each(['pin release', 'final validation'] as const)('a replay cannot return after %s exhausts its deadline', async (stage) => {
+  const path = stage === 'pin release' ? 'release-deadline' : 'validation-deadline'
+  await sealed(path)
+  let now = performance.now(), released = false, delayed = false
+  vi.spyOn(performance, 'now').mockImplementation(() => now)
+  const delayedPool = {
+    async query(text: string, parameters?: unknown[]) {
+      const result = await pool.query(text, parameters)
+      if (stage === 'final validation' && released && !delayed && text.includes('.installation')) { now += 60_001; delayed = true }
+      return result
+    },
+    async connect() {
+      const client = await pool.connect()
+      return { release: client.release.bind(client), async query(text: string, parameters?: unknown[]) {
+        const result = await client.query(text, parameters)
+        if (text.includes('.replay_pins WHERE id = $1')) {
+          released = true
+          if (stage === 'pin release') { now += 60_001; delayed = true }
+        }
+        return result
+      } }
+    },
+  } as unknown as pg.Pool
+  const reader = server(objects, delayedPool), response = await request(reader, path)
+  expect(delayed).toBe(true)
+  expect(response.status).toBe(503)
+  expect((await response.json() as { error: { code: string } }).error.code).toBe('REPLAY_DEADLINE')
+  expect(await pins()).toBe(0)
 })
 
 test('Neon Object Storage provides bounded prefix inventory and idempotent exact-key deletion', async () => {

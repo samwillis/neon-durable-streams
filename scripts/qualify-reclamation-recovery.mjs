@@ -12,12 +12,19 @@ import { parseSubscriptionKeyring } from '../dist/subscriptions.js'
 const env = process.env, state = JSON.parse(await readFile(env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json','utf8'))
 if (!env.NEON_API_KEY || state.projectId!==env.NEON_PROJECT_ID || state.branchId!==env.NEON_TEST_BRANCH_ID || state.branchId!==env.TEST_FUNCTION_BRANCH_ID
   || !state.name.startsWith('ds-test-') || !/^ds_test_[a-f0-9]{32}$/.test(env.TEST_FUNCTION_SCHEMA??'')) throw new Error('Recorded isolated parent required')
-const projectId=state.projectId, parentId=state.branchId, schema=env.TEST_FUNCTION_SCHEMA, id=randomUUID(), prefix=`gc-recovery-${id}`
+const projectId=state.projectId, parentId=state.branchId, schema=env.TEST_FUNCTION_SCHEMA, id=randomUUID()
+let prefix=`gc-recovery-${id}`
 const cleanupFile='.neon-test-state-reclamation-recovery.json', checkpointFile='.neon-test-state-reclamation-checkpoint.json'
 const neon=createNeonClient({ apiKey:env.NEON_API_KEY,throwOnError:true,waitForReadiness:true,wait:{ timeoutMs:180_000 } })
 const parentPool=new pg.Pool({ connectionString:env.TEST_DATABASE_URL_UNPOOLED,max:2,connectionTimeoutMillis:20_000,query_timeout:30_000 })
 parentPool.on('error',()=>{})
 const parentObjects=createS3ChunkStorage({ endpoint:env.AWS_ENDPOINT_URL_S3,region:env.AWS_REGION,bucket:env.NEON_TEST_BUCKET })
+const reuseWitness=env.DS_RECLAMATION_RECOVERY_REUSE_WITNESS==='1'
+if(reuseWitness){
+  const existing=(await parentPool.query(`SELECT path FROM "${schema}".streams WHERE tenant_id='function-a' AND path LIKE 'gc-recovery-%/binary' AND deleted_at IS NULL`)).rows
+  if(existing.length!==1)throw new Error('Witness reuse requires exactly one existing fixture')
+  prefix=existing[0].path.slice(0,-'/binary'.length)
+}
 const payload=Buffer.alloc(65536,0x52); payload.write(prefix)
 const digest=(bytes)=>createHash('sha256').update(bytes).digest('hex')
 const tuple={ 'Producer-Id':prefix,'Producer-Epoch':'0','Producer-Seq':'0' }
@@ -32,10 +39,12 @@ try {
   cleanup={projectId,parentId,parentName:state.name,parentExpiry:branch.expires_at??null,childName:`ds-test-gcrecovery-${id}`,schema,operationId:randomUUID()}
   await writeFile(cleanupFile,JSON.stringify(cleanup),{mode:0o600,flag:'wx'})
   ownsCleanup=true
-  await (await expectStatus(await request('binary','PUT'),201)).arrayBuffer()
-  await (await expectStatus(await request('binary','POST',payload,tuple),200)).arrayBuffer()
-  await (await expectStatus(await request('fork','PUT',undefined,{'Stream-Forked-From':`/v1/stream/${prefix}/binary`}),201)).arrayBuffer()
-  await (await expectStatus(await request('json','PUT',`[{"marker":"${prefix}","n":9007199254740993}]`,{'Content-Type':'application/json'}),201)).arrayBuffer()
+  if(!reuseWitness){
+    await (await expectStatus(await request('binary','PUT'),201)).arrayBuffer()
+    await (await expectStatus(await request('binary','POST',payload,tuple),200)).arrayBuffer()
+    await (await expectStatus(await request('fork','PUT',undefined,{'Stream-Forked-From':`/v1/stream/${prefix}/binary`}),201)).arrayBuffer()
+    await (await expectStatus(await request('json','PUT',`[{"marker":"${prefix}","n":9007199254740993}]`,{'Content-Type':'application/json'}),201)).arrayBuffer()
+  }
   const maintenance=await fetch(new URL('_maintenance',env.TEST_FUNCTION_URL),{method:'POST',headers:{'x-ds-maintenance-key':env.TEST_FUNCTION_MAINTENANCE_KEY},signal:AbortSignal.timeout(30_000)})
   if(!maintenance.ok)throw new Error(`Witness maintenance HTTP ${maintenance.status}`)
   await maintenance.arrayBuffer()
@@ -67,7 +76,7 @@ try {
   await writeFile(cleanupFile,JSON.stringify(cleanup),{mode:0o600})
   // No serving or scheduled worker participates in the child's adoption.
   for(const trigger of await neon.triggers.list({projectId,branchId:childId}))await neon.triggers.delete({projectId,branchId:childId,triggerId:trigger.trigger_id})
-  for(const fn of await neon.functions.list({projectId,branchId:childId}))await neon.functions.delete({projectId,branchId:childId,slug:fn.slug})
+  for(const fn of await neon.functions.list({projectId,branchId:childId}).all())await neon.functions.delete({projectId,branchId:childId,slug:fn.slug})
   const [connection,storage,credential]=await Promise.all([
     neon.postgres.connectionString({projectId,branchId:childId,pooled:false}),neon.storage.get({projectId,branchId:childId}),
     neon.credentials.create({projectId,branchId:childId,name:'gc-recovery',principal_type:'user',scopes:['storage:read','storage:write'],expires_at:new Date(Date.now()+3600_000).toISOString()}),
