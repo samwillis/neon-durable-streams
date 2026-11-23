@@ -30,3 +30,6 @@ The fixture rejects unrecorded targets and never restores its parent or the coor
 
 
 Post-restore Function HTTP readiness and Realtime query readiness are separate checks. The fixture allows at most 180 seconds for initial Realtime readiness, closing timed-out observers and retrying fresh subscriptions. It retries only initial snapshot timeouts; identity, authorization, and SQL failures remain immediate failures. Once the raw observer is ready, it issues the append and independently requires the committed payload within 30 seconds; public SSE still has its separate 45-second bound. Readiness attempt durations are recorded as `restoredRealtimeReadiness`. These startup bounds are qualification budgets, not an availability or recovery-time guarantee.
+
+
+The [current required CI](https://github.com/samwillis/neon-durable-streams/actions/runs/45131209454) passed on clean `59c3b85`, including a recorded initial snapshot timeout followed by readiness at 31.79 seconds and successful independent append observation. The [report](qualification/2026-11-23-provider-inplace-ci.json) retains every readiness attempt. Both earlier failed attempts remain in the qualification index; startup readiness is distinct from the measured payload delivery bound.

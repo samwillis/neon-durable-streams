@@ -46,5 +46,50 @@
   "notes": [
     "Same post-restore raw Realtime startup-row timeout before the new append.",
     "The subsequent fixture change bounds startup readiness separately, retries only initial snapshot timeouts with fresh clients, and retains independent 30-second payload and 45-second public SSE delivery bounds."
-  ]
+  ],
+  "conformance": {
+    "target": "linux/arm64/glibc",
+    "testCompiler": "rolldown-wasi",
+    "nativeFiles": [
+      "native/630753f910bd6235aad7d702a984c109aa723563342b8057b88f34306702b626.node",
+      "native/90bd269553d258e80b19e3ccab4f98f0831f87442a2f056510ce24fd1b425fc2.bin"
+    ],
+    "sourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+    "sourceDirty": false,
+    "sourceSnapshotSha256": "73e3f681334caa4a610f1ba5b0d73219d7b42ecd6c383bc3ad1a878d47a18728",
+    "payloadSha256": "29f56c709eb9b9bcebad7805f49e07e8a7fa3bd5acf459ca4caf88af316a5e72",
+    "payloadBytes": 13122493,
+    "expandedBytes": 43206691,
+    "lockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+    "fixtureSha256": "31c1f939a8724653223c98b0bcc2cefa07ac53f9b45c43435ed6529cc1f7cc84",
+    "upstreamVersion": "0.3.7",
+    "upstreamSha256": "947661c1ed02be223f7f85c7a5f9babdfe859095717a7e368d926ad14b63b3d7",
+    "subscriptions": true,
+    "reclamation": {
+      "enabled": true,
+      "recovery": "provider-owned"
+    },
+    "expectedTests": 338,
+    "launcherSha256": "06539cb740e6da234efb53417532e023d81e69d3a323c4a3dc6d9dc0e0ca14be",
+    "deploymentZipSha256": "83af6315463af7cbca4fa9f4d85b8ec624a9559beae723b43a2f6cb6407ad84b",
+    "deploymentZipBytes": 8092301,
+    "generatedAt": "2026-11-23T07:24:48.478Z",
+    "passed": true,
+    "runtime": {
+      "ready": true,
+      "payloadSha256": "29f56c709eb9b9bcebad7805f49e07e8a7fa3bd5acf459ca4caf88af316a5e72",
+      "node": "v24.22.1",
+      "arch": "arm64",
+      "platform": "linux",
+      "glibc": "2.39"
+    },
+    "exitCode": 0,
+    "signal": null,
+    "durationMs": 120598,
+    "total": 338,
+    "passedTests": 338,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "cleanupComplete": true
+  }
 }

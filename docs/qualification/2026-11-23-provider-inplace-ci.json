@@ -1,0 +1,92 @@
+{
+  "passed": true,
+  "stages": [
+    "deploy initial Function and cron",
+    "seed binary, JSON, fork, and subscription state",
+    "observe live future bytes before rollback",
+    "stop scheduling, quiesce, and drain the active reader",
+    "restore only the recorded disposable branch at its own WAL position",
+    "verify rollback and reconcile before exposing ingress",
+    "redeploy fresh instances and validate public protocol continuity",
+    "verify restored Realtime before resuming workers",
+    "verify restored token fencing and resumed subscription work",
+    "resume scheduling after public validation"
+  ],
+  "stageTimes": [
+    {
+      "stage": "deploy initial Function and cron",
+      "elapsedMs": 3676
+    },
+    {
+      "stage": "seed binary, JSON, fork, and subscription state",
+      "elapsedMs": 12703
+    },
+    {
+      "stage": "observe live future bytes before rollback",
+      "elapsedMs": 15611
+    },
+    {
+      "stage": "stop scheduling, quiesce, and drain the active reader",
+      "elapsedMs": 19116
+    },
+    {
+      "stage": "restore only the recorded disposable branch at its own WAL position",
+      "elapsedMs": 26330
+    },
+    {
+      "stage": "verify rollback and reconcile before exposing ingress",
+      "elapsedMs": 32166
+    },
+    {
+      "stage": "redeploy fresh instances and validate public protocol continuity",
+      "elapsedMs": 36695
+    },
+    {
+      "stage": "verify restored Realtime before resuming workers",
+      "elapsedMs": 132603
+    },
+    {
+      "stage": "verify restored token fencing and resumed subscription work",
+      "elapsedMs": 165979
+    },
+    {
+      "stage": "resume scheduling after public validation",
+      "elapsedMs": 167249
+    }
+  ],
+  "durationMs": 167574,
+  "verifiedChunks": 3,
+  "generatedAt": "2026-11-23T07:46:49.725Z",
+  "testSha256": "612aac17f48378d06fe871838b76898f4c13dc6b53a1880f20e0d5fc38be8fed",
+  "node": "v24.22.2",
+  "region": "us-east-1",
+  "branchId": "br-nameless-mountain-bbsf4850",
+  "preservedBranchId": "br-rapid-glitter-bb48o5nt",
+  "endpointPreserved": true,
+  "originalEpoch": "34e1b3b5-7e39-4dff-bfc9-2b3e9d89b315",
+  "recoveryEpoch": "e423d522-dbb8-4fdd-8d34-e57df25765c7",
+  "hotReplayAcrossSealing": true,
+  "restoredRealtime": true,
+  "restoredRealtimePayloadObserved": true,
+  "restoredRealtimeObservedOffset": "0000000000000000_0000000000008238",
+  "restoredRealtimeReadiness": [
+    {
+      "elapsedMs": 30028,
+      "ready": false,
+      "reason": "Timed out waiting for live-query rows"
+    },
+    {
+      "elapsedMs": 31791,
+      "ready": true
+    }
+  ],
+  "discardedOffsetRejected": true,
+  "unexpiredTokenFenced": true,
+  "cronResumedAfterValidation": true,
+  "sourceCommit": "59c3b858ca7464b3d2d2ce0871d97d94e59e441e",
+  "sourceDirty": "no",
+  "deploymentId": "6d935ba7-00d2-42f2-89e7-cfc4241b4273",
+  "previousDeploymentId": "078712be-bd99-4b59-bdd2-84e7530fc33c",
+  "memoryMiB": 2048,
+  "deployedBundle": "d8a1f1ff6603ac76139847b6e877398632475a5d385cd20b64b3b5d32966e9e2"
+}
