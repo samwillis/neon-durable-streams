@@ -4,6 +4,21 @@
 
 Development installations can be cleared and recreated. At adoption, install the selected schema, offset grammar and object format as one fresh baseline. Drop superseded codecs and fixtures from the shipping package. Use separate fresh installations for comparisons. Checkpoints issued within the selected design must survive sealing, restarts, forks and recovery of their history.
 
+## Execution record
+
+Work started on 2026-11-23. All six milestones remain in scope. The baseline and first read-path candidate have separately deployed Functions and fresh schemas on the recorded replay test branch.
+
+| Milestone | Evidence and remaining work |
+| --- | --- |
+| 1 | The initial baseline at `1e2d986` verified 310 samples across five datasets. Typical warmed sealed replay used 17 SQL calls per page. The driver now also covers quiet streams, sixteen fork levels, cancellation, catch-up into live delivery and replay of concurrent writes. Expanded baseline and matched candidate measurements are pending. |
+| 2 | Candidate `66cc94f` removes stream-head locking for non-TTL snapshots, combines pin statements/transactions and reduces buffer copies. Six actual-Neon cases pass for append/seal/delete/retirement races, TTL renewal and expired pins. Broader regressions and the deployed comparison remain in progress. |
+| 3 | The adapter supports bounded cancellable HTTP Range GETs with strict response validation. Actual Neon returned 3,074 selected bytes from a 4,224,034-byte sealed object in three exact ranges. Serving replay still requires the verifiable block codec, directory, cache and read integration. |
+| 4 | Response pipelining, byte-oriented pages, shared cancellation and conditional GET optimization are pending. |
+| 5 | Offset prototypes, restore-collision checks and the measured choice are pending. |
+| 6 | Fresh-baseline adoption and complete final qualification are pending. |
+
+Initial reports are in ignored `qualification-results/replay-*.json`. An interrupted baseline attempt records a driver error when reading a body from a 304 response. The corrected initial run passed. Some exploratory baseline requests overlapped isolated-schema regression activity on the same branch. Run the matched performance comparisons without that overlap before attributing latency differences. The final report will retain source, bundle and harness identities and distinguish header-stage metrics from response-body lifetime measurements.
+
 ## 1. Establish the baseline on a deployed Function
 
 Extend the existing load and compact-storage harnesses with a historical replay profile. Start with a clean package on a disposable Neon branch in the Function's region. Record the commit, bundle, compute size, pool and concurrency settings, storage layout and random seed. Reuse the generated stream contents and request schedule across candidates. Check bytes and checkpoints against an independent expected history for every reader.
