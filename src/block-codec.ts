@@ -120,10 +120,15 @@ export function encodeBlockObject(chunk: Chunk, targetBlockBytes = 65536): Block
 }
 
 export function packBlockDirectory(directory: readonly ChunkBlock[]): Buffer {
+  if (!directory.length || directory.length > MAX_FRAMES) throw new ChunkIntegrityError('Invalid block directory count')
   const length = directory.reduce((sum, block) => sum + DIRECTORY_FIXED_BYTES + block.start.length + block.end.length, 0)
+  if (length > MAX_CHUNK_BYTES) throw new ChunkIntegrityError('Block directory exceeds size limit')
   const bytes = Buffer.allocUnsafe(length)
   let position = 0
   for (const block of directory) {
+    validateOffset(block.start)
+    validateOffset(block.end)
+    if (![block.firstFrame, block.frameCount, block.payloadBytes, block.byteStart, block.byteLength].every((value) => Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff)) throw new ChunkIntegrityError('Invalid block directory integer')
     if (!/^[0-9a-f]{64}$/.test(block.sha256)) throw new ChunkIntegrityError('Invalid block checksum')
     if (block.start.length > MAX_OFFSET_BYTES || block.end.length > MAX_OFFSET_BYTES) throw new ChunkIntegrityError('Block offset exceeds encoding limit')
     for (const value of [block.firstFrame, block.frameCount, block.payloadBytes, block.byteStart, block.byteLength]) {
