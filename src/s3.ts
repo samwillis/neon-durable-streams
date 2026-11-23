@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import type { GetObjectCommandOutput } from '@aws-sdk/client-s3'
 import { ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-codec.js'
 import { StreamError } from './errors.js'
 import type { ChunkStorage } from './storage.js'
@@ -8,6 +9,26 @@ import { ChunkNotFoundError } from './storage.js'
 const UUID_KEY = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 const IMMUTABLE_KEY = new RegExp(`^v1/${UUID_KEY}/${UUID_KEY}/${UUID_KEY}/[0-9a-f]{64}\\.ndsc$`)
 const INVENTORY_PREFIX = new RegExp(`^v1/${UUID_KEY}/$`)
+
+async function readObjectBody(response: GetObjectCommandOutput, maximum: number, exactLength?: number): Promise<Buffer> {
+  if (!response.Body) throw new ChunkIntegrityError('Object storage returned no body')
+  const body = response.Body as AsyncIterable<Uint8Array> & { destroy(error?: Error): void }
+  try {
+    const length = response.ContentLength ?? exactLength ?? maximum
+    if (!Number.isSafeInteger(length) || length < 0 || length > maximum || (exactLength !== undefined && length !== exactLength)) {
+      throw new ChunkIntegrityError('Object length differs from the requested bound')
+    }
+    const bytes = Buffer.allocUnsafe(length)
+    let size = 0
+    for await (const part of body) {
+      if (size + part.byteLength > length) throw new ChunkIntegrityError('Object exceeds declared size')
+      bytes.set(part, size)
+      size += part.byteLength
+    }
+    if ((response.ContentLength !== undefined || exactLength !== undefined) && size !== length) throw new ChunkIntegrityError('Object is shorter than declared size')
+    return size === length ? bytes : Buffer.from(bytes.subarray(0, size))
+  } finally { body.destroy() }
+}
 
 export interface S3StorageOptions {
   readonly endpoint: string
@@ -41,27 +62,41 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
   let active = 0, closed = false
   const waiters = new Set<{ grant(): void; reject(error: unknown): void }>()
   const controllers = new Set<AbortController>()
-  async function run<T>(work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  async function run<T>(work: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (closed) throw new Error('Object storage adapter is closed')
+    signal?.throwIfAborted()
     if (active >= maximum) {
       if (waiters.size >= queued) throw new StreamError(503, 'STORAGE_BUSY', 'Object storage capacity reached', { 'Retry-After': '1' })
       await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => { waiters.delete(waiter); reject(new StreamError(503, 'STORAGE_BUSY', 'Object storage queue deadline exceeded', { 'Retry-After': '1' })) }, Math.min(timeout, 5000))
-        const waiter = { grant() { clearTimeout(timer); active++; resolve() }, reject(error: unknown) { clearTimeout(timer); reject(error) } }
+        const timer = setTimeout(() => { waiters.delete(waiter); waiter.reject(new StreamError(503, 'STORAGE_BUSY', 'Object storage queue deadline exceeded', { 'Retry-After': '1' })) }, Math.min(timeout, 5000))
+        const cleanup = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort) }
+        const abort = () => { waiters.delete(waiter); waiter.reject(signal!.reason) }
+        const waiter = {
+          grant() { cleanup(); active++; resolve() },
+          reject(error: unknown) { cleanup(); reject(error) },
+        }
         waiters.add(waiter)
+        signal?.addEventListener('abort', abort, { once: true })
       })
     } else active++
     const controller = new AbortController()
     controllers.add(controller)
+    const abort = () => controller.abort(signal!.reason)
+    if (signal?.aborted) abort()
+    else signal?.addEventListener('abort', abort, { once: true })
     const timer = setTimeout(() => controller.abort(new Error('Object storage operation deadline exceeded')), timeout)
     try {
       // A waiter may be granted immediately before close(), then resume after it.
       if (closed) throw new Error('Object storage adapter is closed')
-      return await work(controller.signal)
+      controller.signal.throwIfAborted()
+      const result = await work(controller.signal)
+      controller.signal.throwIfAborted()
+      return result
     }
     finally {
       clearTimeout(timer)
       controllers.delete(controller)
+      signal?.removeEventListener('abort', abort)
       active--
       const next = waiters.values().next().value
       if (next) { waiters.delete(next); next.grant() }
@@ -75,29 +110,32 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
         await client.send(new PutObjectCommand({ Bucket: options.bucket, Key: key, Body: bytes, ContentType: 'application/octet-stream', ContentLength: bytes.byteLength }), { abortSignal })
       })
     },
-    get(key, maxBytes) {
+    get(key, maxBytes, signal) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_CHUNK_BYTES) throw new RangeError('Invalid encoded chunk limit')
       return run(async (abortSignal) => {
         const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key }), { abortSignal }).catch((error: unknown) => {
           if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
           throw error
         })
-        if (!response.Body) throw new Error('Object storage returned no body')
-        const body = response.Body as AsyncIterable<Uint8Array> & { destroy(error?: Error): void }
-        const length = response.ContentLength ?? maxBytes
-        if (!Number.isSafeInteger(length) || length < 0 || length > maxBytes) { body.destroy(); throw new ChunkIntegrityError('Object exceeds manifest size') }
-        const bytes = Buffer.allocUnsafe(length)
-        let size = 0
-        try {
-          for await (const part of body) {
-            if (size + part.byteLength > length) throw new ChunkIntegrityError('Object exceeds declared size')
-            bytes.set(part, size)
-            size += part.byteLength
-          }
-        } finally { body.destroy() }
-        if (response.ContentLength !== undefined && size !== length) throw new ChunkIntegrityError('Object is shorter than declared size')
-        return size === length ? bytes : Buffer.from(bytes.subarray(0, size))
-      })
+        return readObjectBody(response, maxBytes)
+      }, signal)
+    },
+    getRange(key, range, signal) {
+      const { start, end, totalBytes } = range
+      if (![start, end, totalBytes].every(Number.isSafeInteger) || start < 0 || start >= end || end > totalBytes || totalBytes > MAX_CHUNK_BYTES) {
+        throw new RangeError('Invalid immutable object range')
+      }
+      return run(async (abortSignal) => {
+        const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key, Range: `bytes=${start}-${end - 1}` }), { abortSignal }).catch((error: unknown) => {
+          if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
+          throw error
+        })
+        if (response.$metadata.httpStatusCode !== 206 || response.ContentRange !== `bytes ${start}-${end - 1}/${totalBytes}`) {
+          ;(response.Body as { destroy?(): void } | undefined)?.destroy?.()
+          throw new ChunkIntegrityError('Object storage returned a different range')
+        }
+        return readObjectBody(response, end - start, end - start)
+      }, signal)
     },
     delete(key) {
       if (!IMMUTABLE_KEY.test(key)) throw new TypeError('Collection requires an exact immutable chunk key')

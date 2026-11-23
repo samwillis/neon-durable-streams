@@ -125,6 +125,20 @@ test('checksum corruption fails closed before returning any stored bytes', async
   expect(expected).toHaveLength(1)
 })
 
+test('actual Neon Object Storage serves exact bounded HTTP ranges from sealed objects', async () => {
+  const handler = server()
+  expect((await request(handler, 'range-object', 'PUT', 'range-verified-'.repeat(10000))).status).toBe(201)
+  await handler.maintain({ maxChunks: 16 })
+  const manifest = (await pool.query<{ object_key: string; encoded_bytes: number }>(`SELECT c.object_key,c.encoded_bytes
+    FROM "${schema}".chunks c JOIN "${schema}".streams s ON s.id=c.stream_id WHERE s.path='range-object' AND c.state='sealed'`)).rows[0]!
+  const whole = await objects.get(manifest.object_key, manifest.encoded_bytes)
+  for (const [start, end] of [[0, 1], [1024, 4096], [whole.length - 1, whole.length]]) {
+    const part = await objects.getRange(manifest.object_key, { start: start!, end: end!, totalBytes: whole.length })
+    expect(part).toEqual(whole.subarray(start, end))
+    expect(part.byteLength).toBe(end! - start!)
+  }
+})
+
 test('a different bucket or branch identity requires explicit recovery', async () => {
   await expect(migrate(direct, { schema, storageIdentity: 'another-branch' })).rejects.toThrow('explicit branch adoption')
   expect((await pool.query(`SELECT storage_identity FROM "${schema}".installation`)).rows[0].storage_identity).toBe(objects.identity)

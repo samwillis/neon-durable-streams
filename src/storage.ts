@@ -16,6 +16,12 @@ export interface ChunkInventoryPage {
   readonly cursor: string | null
 }
 export class ChunkNotFoundError extends Error { override readonly name = 'ChunkNotFoundError' }
+/** Half-open physical interval in one immutable object of the stated size. */
+export interface ChunkByteRange {
+  readonly start: number
+  readonly end: number
+  readonly totalBytes: number
+}
 
 /** Immutable-key storage. Collection capabilities are used only by enabled policy. */
 export interface ChunkStorage {
@@ -23,7 +29,8 @@ export interface ChunkStorage {
   readonly identity: string
   readonly put: (key: string, bytes: Uint8Array) => Promise<void>
   /** Transfers ownership of a buffer that the adapter will never mutate or reuse. */
-  readonly get: (key: string, maxBytes: number) => Promise<Buffer>
+  readonly get: (key: string, maxBytes: number, signal?: AbortSignal) => Promise<Buffer>
+  readonly getRange: (key: string, range: ChunkByteRange, signal?: AbortSignal) => Promise<Buffer>
   readonly delete?: (key: string) => Promise<void>
   readonly list?: (prefix: string, cursor: string | null, limit: number) => Promise<ChunkInventoryPage>
 }

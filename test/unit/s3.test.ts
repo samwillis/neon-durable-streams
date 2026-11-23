@@ -6,8 +6,25 @@ import { createS3ChunkStorage } from '../../src/s3.js'
 import { ChunkIntegrityError } from '../../src/chunk-codec.js'
 
 const payload = Buffer.alloc(128 * 1024, 123)
+let stalled!: () => void
 const origin = createServer((request, response) => {
-  if (request.url?.endsWith('/missing-length')) {
+  const path = new URL(request.url!, 'http://fixture.test').pathname
+  if (path.endsWith('/stall')) {
+    response.setHeader('Content-Length', payload.length)
+    response.write(payload.subarray(0, 1024))
+    stalled()
+    return
+  }
+  if (path.endsWith('/range') || path.endsWith('/wrong-range')) {
+    const range = /^bytes=(\d+)-(\d+)$/.exec(request.headers.range ?? '')
+    if (!range) { response.writeHead(400); response.end(); return }
+    const start = Number(range[1]), end = Number(range[2])
+    response.writeHead(206, { 'Content-Length': end - start + 1,
+      'Content-Range': `bytes ${start}-${end}/${path.endsWith('/wrong-range') ? payload.length + 1 : payload.length}` })
+    response.end(payload.subarray(start, end + 1))
+    return
+  }
+  if (path.endsWith('/missing-length')) {
     response.write(payload.subarray(0, 1024))
     response.end(payload.subarray(1024))
     return
@@ -45,4 +62,39 @@ test('chunked S3 downloads without Content-Length return an exact bounded buffer
 test('S3 downloads reject oversized declared and chunked bodies', async () => {
   await expect(storage.get('object', 1024)).rejects.toBeInstanceOf(ChunkIntegrityError)
   await expect(storage.get('missing-length', 1024)).rejects.toBeInstanceOf(ChunkIntegrityError)
+})
+
+test('half-open range requests return exactly the requested bytes, including the last byte', async () => {
+  for (const [start, end] of [[0, 1], [1023, 4096], [payload.length - 1, payload.length]]) {
+    expect(await storage.getRange('range', { start: start!, end: end!, totalBytes: payload.length })).toEqual(payload.subarray(start, end))
+  }
+})
+
+test('range reads reject a server ignoring Range or reporting a different object size', async () => {
+  const range = { start: 1024, end: 2048, totalBytes: payload.length }
+  await expect(storage.getRange('object', range)).rejects.toBeInstanceOf(ChunkIntegrityError)
+  await expect(storage.getRange('wrong-range', range)).rejects.toBeInstanceOf(ChunkIntegrityError)
+  expect(() => storage.getRange('range', { ...range, start: -1 })).toThrow(RangeError)
+  expect(() => storage.getRange('range', { ...range, end: payload.length + 1 })).toThrow(RangeError)
+})
+
+test('canceling queued and active downloads frees capacity for another reader', async () => {
+  const bounded = createS3ChunkStorage({ endpoint: `http://127.0.0.1:${(origin.address() as AddressInfo).port}`, allowHttp: true,
+    region: 'fixture', bucket: 'fixture', credentials: { accessKeyId: 'fixture', secretAccessKey: 'fixture' },
+    timeoutMs: 2000, maxConcurrentRequests: 1, maxQueuedRequests: 1 })
+  const active = new AbortController(), queued = new AbortController()
+  const entered = new Promise<void>((resolve) => { stalled = resolve })
+  const first = bounded.get('stall', payload.length, active.signal).then(
+    () => ({ rejected: false }), (error: unknown) => ({ rejected: true, error }))
+  try {
+    await entered
+    const waiting = bounded.get('object', payload.length, queued.signal)
+    const waitingRejected = expect(waiting).rejects.toThrow('canceled queued reader')
+    queued.abort(new Error('canceled queued reader'))
+    await waitingRejected
+    const replacement = bounded.get('object', payload.length)
+    active.abort(new Error('canceled active reader'))
+    expect(await first).toMatchObject({ rejected: true })
+    expect(await replacement).toEqual(payload)
+  } finally { bounded.close() }
 })
