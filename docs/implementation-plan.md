@@ -1,5 +1,7 @@
 # Implementation plan
 
+Proposed next storage work: the [Postgres efficiency and simplification review](postgres-efficiency-v2.md) measures retained metadata and recommends compact per-chunk boundary arrays, sealed-row deletion, and a revised chunk policy. That redesign is not implemented or covered by the current conformance result.
+
 Current simplification: schema 0007 removes application PITR windows, safety margins, and collection holds. Neon or matching backups own historical object recovery; the library retains stream/fork/reference/pin/publication safety. Old stream offsets remain available. A stopped migration disables existing collection before the changed contract can be opted into. Clean revision `59c3b85` passed every [required CI job](https://github.com/samwillis/neon-durable-streams/actions/runs/45131209454), including all 88 Neon and 338 protocol cases, both recovery drills, and real deployed Function checks. Recovery startup is now bounded and recorded separately from the unchanged raw-payload/public-SSE delivery bounds. Earlier schema-0006 and failed Realtime-startup results below remain scoped to their recorded revisions.
 
 Updated **2026-11-23**, following the [plan review](plan-review.md). Target: a production-grade library implementing the full pinned Durable Streams protocol on consumers' Neon resources. Every milestone contributes to the same library; completion of the production release gates defines the releasable result.

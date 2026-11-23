@@ -1,0 +1,130 @@
+{
+  "generatedAt": "2026-11-23T08:25:32.412Z",
+  "sourceCommit": "1ba871b2495ceb0a988676c314886384446506a2",
+  "harnessSha256": "4fa6c6e1559143bc2881e88a84828ec91b8642cae2c5a5c8c1519e29c959213c",
+  "node": "v24.22.2",
+  "region": "eu-central-1",
+  "storage": "Synthetic steady-state metadata in current schema on actual Neon Postgres 18",
+  "objectUploads": 0,
+  "cleanupComplete": true,
+  "samples": [
+    {
+      "framesPerChunk": 128,
+      "sealedAppendRows": 65536,
+      "chunks": 512,
+      "payloadBytes": 32,
+      "relations": [
+        {
+          "relation": "appends",
+          "rows": 65536,
+          "tupleBytes": 8388605,
+          "heapBytes": 8806400,
+          "indexBytes": 13623296,
+          "totalBytes": 22462464
+        },
+        {
+          "relation": "chunks",
+          "rows": 512,
+          "tupleBytes": 225280,
+          "heapBytes": 237568,
+          "indexBytes": 172032,
+          "totalBytes": 442368
+        },
+        {
+          "relation": "chunk_objects",
+          "rows": 512,
+          "tupleBytes": 180224,
+          "heapBytes": 196608,
+          "indexBytes": 229376,
+          "totalBytes": 458752
+        },
+        {
+          "relation": "directories",
+          "rows": 512,
+          "tupleBytes": 294912,
+          "heapBytes": 303104,
+          "indexBytes": 40960,
+          "totalBytes": 376832
+        },
+        {
+          "relation": "packed_chunks",
+          "rows": 512,
+          "tupleBytes": 499712,
+          "heapBytes": 524288,
+          "indexBytes": 172032,
+          "totalBytes": 729088
+        }
+      ],
+      "currentMetadataBytes": 23363584,
+      "manifestsAndLedgerBytes": 901120,
+      "manifestsLedgerAndSeparateDirectoriesBytes": 1277952,
+      "packedManifestsAndLedgerBytes": 1187840,
+      "idealPackedBoundaryBytes": 262144,
+      "excludes": [
+        "payload bytes in Object Storage",
+        "other fixed/producer/subscription tables",
+        "prior MVCC versions, vacuum overhead, WAL and provider history",
+        "new-reader or write-throughput benchmark"
+      ]
+    },
+    {
+      "framesPerChunk": 1024,
+      "sealedAppendRows": 65536,
+      "chunks": 64,
+      "payloadBytes": 32,
+      "relations": [
+        {
+          "relation": "appends",
+          "rows": 65536,
+          "tupleBytes": 8388605,
+          "heapBytes": 8806400,
+          "indexBytes": 13934592,
+          "totalBytes": 22773760
+        },
+        {
+          "relation": "chunks",
+          "rows": 64,
+          "tupleBytes": 28160,
+          "heapBytes": 32768,
+          "indexBytes": 65536,
+          "totalBytes": 131072
+        },
+        {
+          "relation": "chunk_objects",
+          "rows": 64,
+          "tupleBytes": 22528,
+          "heapBytes": 24576,
+          "indexBytes": 73728,
+          "totalBytes": 131072
+        },
+        {
+          "relation": "directories",
+          "rows": 64,
+          "tupleBytes": 266240,
+          "heapBytes": 8192,
+          "indexBytes": 16384,
+          "totalBytes": 417792
+        },
+        {
+          "relation": "packed_chunks",
+          "rows": 64,
+          "tupleBytes": 291840,
+          "heapBytes": 32768,
+          "indexBytes": 65536,
+          "totalBytes": 516096
+        }
+      ],
+      "currentMetadataBytes": 23035904,
+      "manifestsAndLedgerBytes": 262144,
+      "manifestsLedgerAndSeparateDirectoriesBytes": 679936,
+      "packedManifestsAndLedgerBytes": 647168,
+      "idealPackedBoundaryBytes": 262144,
+      "excludes": [
+        "payload bytes in Object Storage",
+        "other fixed/producer/subscription tables",
+        "prior MVCC versions, vacuum overhead, WAL and provider history",
+        "new-reader or write-throughput benchmark"
+      ]
+    }
+  ]
+}
