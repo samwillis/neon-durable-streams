@@ -6,7 +6,11 @@ import { createNeonClient } from '@neon/sdk'
 import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { buildConformanceArtifact } from './neon-conformance-artifact.mjs'
 
-const env = process.env, slug = 'dsconformance'
+const env = process.env, profile = env.NEON_QUALIFICATION_PROFILE ?? 'conformance'
+if (!['conformance', 'neon', 'integration'].includes(profile)) throw new Error('Unknown colocated qualification profile')
+const slug = { conformance: 'dsconformance', neon: 'dsregression', integration: 'dstransactions' }[profile]
+const resultFile = profile === 'conformance' ? 'conformance-results.json' : `qualification-results/colocated-${profile}-results.json`
+const evidenceFile = profile === 'conformance' ? 'qualification-results/colocated-conformance.json' : `qualification-results/colocated-${profile}.json`
 const projectId = env.NEON_PROJECT_ID, branchId = env.NEON_TEST_BRANCH_ID
 if (!projectId || !branchId || !env.NEON_API_KEY) throw new Error('Recorded isolated Neon environment required')
 const state = JSON.parse(await readFile(env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json', 'utf8'))
@@ -20,10 +24,10 @@ for (const name of ['TEST_DATABASE_URL', 'TEST_DATABASE_URL_UNPOOLED', 'NEON_REA
   runtimeEnv[name] = env[name]
 }
 // No management API key or caller-controlled script enters the Function.
-await rm('conformance-results.json', { force: true })
+await rm(resultFile, { force: true })
 const key = randomBytes(32).toString('hex')
 if (env.GITHUB_ACTIONS === 'true') console.log(`::add-mask::${key}`)
-const { payload, nativeFiles, manifest } = await buildConformanceArtifact()
+const { payload, nativeFiles, manifest } = await buildConformanceArtifact(profile)
 console.log(`Built unchanged suite artifact (${manifest.payloadBytes} compressed bytes).`)
 const bundle = await build({ entryPoints: ['test/fixtures/conformance-function.mjs'], bundle: true, platform: 'node', target: 'node24', format: 'esm', write: false,
   banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' } })
@@ -50,7 +54,8 @@ try {
   const deployment = await neon.functions.deploy({ projectId, branchId, slug, runtime: 'nodejs24',
     zip: new File([deploymentZip], 'conformance.zip', { type: 'application/zip' }),
     environment: JSON.stringify({ ...runtimeEnv, DS_CONFORMANCE_KEY: key, DS_CONFORMANCE_PAYLOAD_SHA: manifest.payloadSha256,
-      DS_CONFORMANCE_PAYLOAD_KEY: artifactKey, DS_CONFORMANCE_PAYLOAD_BYTES: String(payload.length) }),
+      DS_CONFORMANCE_PAYLOAD_KEY: artifactKey, DS_CONFORMANCE_PAYLOAD_BYTES: String(payload.length),
+      DS_QUALIFICATION_PROFILE: profile, DS_QUALIFICATION_FILES: JSON.stringify(manifest.expectedFiles) }),
   })
   const deadline = Date.now() + 180_000
   let url, runtime
@@ -63,7 +68,7 @@ try {
     if (fn.active_deployment?.id === deployment.id && fn.invocation_url) {
       try {
         const response = await fetch(fn.invocation_url, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10_000) })
-        if (response.ok) { const health = await response.json(); if (health.ready === true && health.payloadSha256 === manifest.payloadSha256) { url = fn.invocation_url; runtime = health; break } }
+        if (response.ok) { const health = await response.json(); if (health.ready === true && health.payloadSha256 === manifest.payloadSha256 && health.profile === profile) { url = fn.invocation_url; runtime = health; break } }
         else await response.arrayBuffer()
       } catch { /* Deployment and cold start readiness are distinct. */ }
     }
@@ -72,7 +77,7 @@ try {
   if (!url) throw new Error('Conformance Function did not become ready')
   evidence.runtime = runtime
   if (`${runtime.platform}/${runtime.arch}/${runtime.glibc ? 'glibc' : 'musl'}` !== manifest.target) throw new Error('Conformance artifact does not support this Function architecture')
-  console.log(`Running all 338 upstream cases on Neon ${runtime.platform}/${runtime.arch}, ${runtime.node}.`)
+  console.log(`Running ${profile === 'conformance' ? 'all 338 upstream cases' : `all ${manifest.expectedFiles.length} ${profile} data fixtures`} on Neon ${runtime.platform}/${runtime.arch}, ${runtime.node}.`)
   const response = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(25 * 60_000) })
   if (!response.ok || !response.body) throw new Error(`Conformance coordinator returned HTTP ${response.status}`)
   let pending = '', result
@@ -93,15 +98,15 @@ try {
         if (result) throw new Error('Duplicate conformance result')
         result = event
         // Retain all upstream results even if later stream/cleanup fails.
-        await writeFile('conformance-results.json', JSON.stringify(result.report) + '\n')
+        await writeFile(resultFile, JSON.stringify(result.report) + '\n')
       }
     }
   }
   if (pending.trim() || !result) throw new Error('Conformance stream ended without a complete result')
   Object.assign(evidence, { passed: result.passed === true, exitCode: result.code, signal: result.signal, durationMs: result.durationMs,
     total: result.report.numTotalTests, passedTests: result.report.numPassedTests, failedTests: result.report.numFailedTests, skippedTests: result.report.numPendingTests })
-  if (!evidence.passed) throw new Error(`Full Neon conformance failed: ${evidence.passedTests}/${evidence.total}`)
-  console.log(`Full Neon conformance passed: ${evidence.passedTests}/${evidence.total}, no failures or skips.`)
+  if (!evidence.passed) throw new Error(`Colocated ${profile} failed: ${evidence.passedTests}/${evidence.total}`)
+  console.log(`Colocated ${profile} passed: ${evidence.passedTests}/${evidence.total}, no failures or skips.`)
 } finally {
   // Save a failed report on interrupted/ambiguous runs; successful cleanup is
   // part of qualification, as with the multi-instance suite.
@@ -113,5 +118,5 @@ try {
     await s3.send(new DeleteObjectCommand({ Bucket: env.NEON_TEST_BUCKET, Key: artifactKey }), { abortSignal: AbortSignal.timeout(30_000) })
     evidence.cleanupComplete = true
   } catch (error) { evidence.passed = false; throw error }
-  finally { s3.destroy(); await writeFile('qualification-results/colocated-conformance.json', JSON.stringify(evidence, null, 2) + '\n') }
+  finally { s3.destroy(); await writeFile(evidenceFile, JSON.stringify(evidence, null, 2) + '\n') }
 }

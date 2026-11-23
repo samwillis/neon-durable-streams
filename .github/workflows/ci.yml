@@ -49,8 +49,12 @@ jobs:
         run: pnpm neon:test:deploy
       - name: Actual Function ingress, HTTPS webhooks, SSE, sealed replay, and cron recovery
         run: pnpm test:function
-      - name: Real Neon Realtime and Object Storage integration
-        run: pnpm test:neon --reporter=default --reporter=json --outputFile=neon-results.json
+      - name: Real Neon data regressions colocated with Postgres, Realtime, and Object Storage
+        env:
+          NEON_QUALIFICATION_PROFILE: neon
+        run: node scripts/neon-test-conformance.mjs
+      - name: Independently packed multi-instance consumers and recovery fencing
+        run: pnpm exec vitest run --project neon test/neon/rolling.test.ts
       - name: Preserve packed multi-instance Function evidence
         if: ${{ always() && hashFiles('qualification-results/rolling-upgrade.json') != '' }}
         uses: actions/upload-artifact@v4
@@ -58,8 +62,8 @@ jobs:
           name: rolling-upgrade-${{ github.run_id }}-${{ github.run_attempt }}
           path: qualification-results/rolling-upgrade.json
       - name: Summarize real-service test results immediately
-        if: ${{ always() && hashFiles('neon-results.json') != '' }}
-        run: node scripts/summarize-test-results.mjs neon-results.json neon-test-summary.json
+        if: ${{ always() && hashFiles('qualification-results/colocated-neon-results.json') != '' }}
+        run: node scripts/summarize-test-results.mjs qualification-results/colocated-neon-results.json neon-test-summary.json
       - uses: actions/upload-artifact@v4
         if: ${{ always() && hashFiles('neon-test-summary.json') != '' }}
         with:
@@ -67,10 +71,12 @@ jobs:
           path: neon-test-summary.json
       - name: Postgres integration and process-loss tests on Neon
         if: ${{ !cancelled() && env.NEON_TEST_BRANCH_ID != '' }}
-        run: pnpm test:integration --reporter=default --reporter=json --outputFile=integration-results.json
+        env:
+          NEON_QUALIFICATION_PROFILE: integration
+        run: node scripts/neon-test-conformance.mjs
       - name: Summarize transaction test results immediately
-        if: ${{ always() && hashFiles('integration-results.json') != '' }}
-        run: node scripts/summarize-test-results.mjs integration-results.json integration-test-summary.json
+        if: ${{ always() && hashFiles('qualification-results/colocated-integration-results.json') != '' }}
+        run: node scripts/summarize-test-results.mjs qualification-results/colocated-integration-results.json integration-test-summary.json
       - uses: actions/upload-artifact@v4
         if: ${{ always() && hashFiles('integration-test-summary.json') != '' }}
         with:
@@ -114,6 +120,12 @@ jobs:
         with:
           name: full-conformance-${{ github.run_id }}-${{ github.run_attempt }}
           path: conformance-results.json
+      - name: Preserve colocated regression and transaction provenance
+        if: ${{ always() && hashFiles('qualification-results/colocated-*.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: colocated-data-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification-results/colocated-*.json
       - name: Delete any interrupted recovery drill branch
         if: ${{ always() && hashFiles('.neon-test-state-recovery.json') != '' }}
         env:

@@ -334,12 +334,15 @@ export class PostgresStreamStore {
         SELECT * FROM ${this.schema}.chunks WHERE stream_id=l.id AND state='sealed'
           AND end_offset>$2 AND start_offset<l.cap ORDER BY end_offset LIMIT $4
       ) c WHERE l.cap>$2
+    ), sealed_ranges AS (
+      SELECT *,LEAST(left(end_offset,16)::bigint,left(cap,16)::bigint)
+        - GREATEST(left(start_offset,16)::bigint,left($2,16)::bigint) AS contributing_frames FROM sealed_sources
     ), sealed_budget AS (
-      SELECT *,sum(payload_bytes) OVER (ORDER BY end_offset)-payload_bytes AS preceding_bytes FROM sealed_sources
+      SELECT *,sum(contributing_frames) OVER (ORDER BY end_offset)-contributing_frames AS preceding_frames FROM sealed_ranges
     ), candidates AS (
       SELECT stream_id,start_offset,end_offset,payload_bytes,cap,NULL::uuid AS chunk_id FROM local_budget WHERE preceding_bytes<$3
       UNION ALL
-      SELECT stream_id,start_offset,end_offset,payload_bytes::integer,cap,id AS chunk_id FROM sealed_budget WHERE preceding_bytes<$3+134217728
+      SELECT stream_id,start_offset,end_offset,payload_bytes::integer,cap,id AS chunk_id FROM sealed_budget WHERE preceding_frames<$4
       ORDER BY start_offset LIMIT $4
     ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.frame_count,c.block_directory,
         c.start_offset AS chunk_start,c.end_offset AS chunk_end,CASE WHEN c.id IS NOT NULL THEN 1 END AS first_frame,c.frame_count AS last_frame

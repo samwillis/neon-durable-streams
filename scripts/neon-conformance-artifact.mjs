@@ -8,12 +8,15 @@ import { zipSync } from 'fflate'
 
 // Build without management or data credentials. Ship the actual unchanged
 // Vitest fixture, upstream package, and frozen dependency graph to Node 24.
-export async function buildConformanceArtifact() {
+export async function buildConformanceArtifact(profile = 'conformance') {
+  if (!['conformance', 'neon', 'integration'].includes(profile)) throw new Error('Unknown colocated qualification profile')
   const root = resolve(import.meta.dirname, '..')
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'ds-conformance-build-')))
   const run = promisify(execFile)
   const buildEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/SECRET|TOKEN|PASSWORD|KEY|DATABASE|^NEON_|^AWS_|^TEST_|^DURABLE_|^NODE_OPTIONS$/.test(key)))
-  const sourcePaths = ['src', 'migrations', 'test/conformance', 'test/fixtures/postgres-limits.ts', 'vitest.config.ts', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'LICENSE', 'NOTICE']
+  const sourcePaths = ['src', 'migrations', 'test/fixtures/postgres-limits.ts', 'vitest.config.ts', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'LICENSE', 'NOTICE',
+    ...(profile === 'conformance' ? ['test/conformance'] : [`test/${profile}`, 'test/fixtures', 'dist'])]
+  if (profile !== 'conformance') await run('pnpm', ['build'], { cwd: root, env: buildEnv, timeout: 120_000, maxBuffer: 8 * 1024 * 1024 })
   try {
     for (const path of sourcePaths) { await mkdir(dirname(join(directory, path)), { recursive: true }); await cp(join(root, path), join(directory, path), { recursive: true }) }
     // Reject a different runtime rather than use the build host's native code.
@@ -60,7 +63,7 @@ export async function buildConformanceArtifact() {
       if (!optional) throw new Error(`Missing frozen dependency ${name}`)
     }
     for (const path of sourcePaths) await include(path)
-    for (const name of ['vitest', 'pg', '@durable-streams/server-conformance-tests', '@aws-sdk/client-s3', '@neon/realtime', 'ws', 'ipaddr.js']) await dependency(name, directory)
+    for (const name of ['vitest', 'pg', '@durable-streams/server-conformance-tests', '@aws-sdk/client-s3', '@neon/realtime', 'ws', 'ipaddr.js', ...(profile !== 'conformance' ? ['fast-check'] : [])]) await dependency(name, directory)
     if (![...included].some((path) => path.endsWith('/@rolldown/binding-wasm32-wasi'))) throw new Error('Frozen WASI test compiler missing')
     const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
     const native = {}, nativeFiles = {}
@@ -81,8 +84,10 @@ export async function buildConformanceArtifact() {
     const upstream = await readFile(join(directory, 'node_modules/@durable-streams/server-conformance-tests/dist/index.js'))
     return { payload, nativeFiles, manifest: { target: 'linux/arm64/glibc', testCompiler: 'rolldown-wasi', nativeFiles: Object.keys(nativeFiles), sourceCommit: commit.trim(), sourceDirty: Boolean(dirty.trim()), sourceSnapshotSha256: sourceHash.digest('hex'),
       payloadSha256: sha256(payload), payloadBytes: payload.length, expandedBytes: Object.values(files).reduce((sum, bytes) => sum + bytes.length, 0),
-      lockSha256: sha256(files['pnpm-lock.yaml']), fixtureSha256: sha256(files['test/conformance/server.test.ts']),
+      lockSha256: sha256(files['pnpm-lock.yaml']), fixtureSha256: profile === 'conformance' ? sha256(files['test/conformance/server.test.ts']) : undefined,
       upstreamVersion: '0.3.7', upstreamSha256: sha256(upstream), subscriptions: true,
-      reclamation: { enabled: true, recovery: 'provider-owned' }, expectedTests: 338 } }
+      reclamation: { enabled: true, recovery: 'provider-owned' }, profile, expectedTests: profile === 'conformance' ? 338 : undefined,
+      expectedFiles: Object.keys(files).filter((path) => path.startsWith(`test/${profile}/`) && path.endsWith('.test.ts') && (profile !== 'neon' || path !== 'test/neon/rolling.test.ts')).sort(),
+      separatelyQualified: profile === 'neon' ? ['test/neon/rolling.test.ts'] : [] } }
   } finally { await rm(directory, { recursive: true, force: true }) }
 }

@@ -48,6 +48,10 @@ The loopback HTTP adapter and webhook receivers are active test fixtures. They r
 
 [Required CI](../.github/workflows/ci.yml) has separate build/unit/package, Neon qualification, and append-hint jobs. Provisioning supplies generated credentials to later steps. Missing required credentials fail qualification. Fork PRs need review and a trusted maintainer run; the workflow does not execute fork code with secrets through `pull_request_target`.
 
+The Neon data and transaction CI profiles execute their unchanged Vitest fixtures in an authenticated temporary Neon Function. This removes coordinator SQL latency from test timing. The source manifest checks that every expected file ran with no failed or skipped tests. The Neon data profile runs every `test/neon` file except `rolling.test.ts`; CI executes that control-plane fixture separately through independently packed consumer Functions. No management credentials are sent to the data-test coordinator. The complete conformance profile still runs all 338 upstream cases without filters.
+
+For these colocated profiles, set `NEON_QUALIFICATION_PROFILE=neon` or `integration` when invoking `scripts/neon-test-conformance.mjs` with the recorded test environment. An unset profile runs full conformance. The local `test:neon` and `test:integration` commands remain useful for focused debugging.
+
 The ordinary Function profile disables append hints and tests scheduled recovery. The separate hints job uses a fresh branch with hints enabled and no cron: `test:hints` verifies Realtime pull wakes, full-chunk sealing, and smaller tails remaining in Postgres. It requires that profile's Function environment.
 
 The packed multi-instance fixture installs the current tarball into an independent consumer and deploys two Functions on a dedicated schema. It records four reserved Function slugs, including fresh deployments after recovery, before allocation. All eight checks and cleanup must pass. This tests coordination between instances; it does not establish cross-version compatibility. See the [compatibility contract](upgrade-compatibility-v1.md).

@@ -10,6 +10,9 @@ import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 
 const key = process.env.DS_CONFORMANCE_KEY
 const digest = process.env.DS_CONFORMANCE_PAYLOAD_SHA
+const profile = process.env.DS_QUALIFICATION_PROFILE ?? 'conformance'
+if (!['conformance', 'neon', 'integration'].includes(profile)) throw new Error('Unknown qualification profile')
+const expectedFiles = JSON.parse(process.env.DS_QUALIFICATION_FILES ?? '["test/conformance/server.test.ts"]')
 if (!key || !digest) throw new Error('Isolated conformance credentials required')
 const sensitive = Object.entries(process.env).filter(([name, value]) => /SECRET|TOKEN|KEY|PASSWORD|DATABASE_URL/.test(name) && value?.length >= 8).map(([, value]) => value)
 if (process.env.DURABLE_STREAMS_KEYRING) sensitive.push(...Object.values(JSON.parse(process.env.DURABLE_STREAMS_KEYRING).keys))
@@ -37,7 +40,7 @@ process.once('SIGINT', stop)
 export default {
   async fetch(request) {
     if (!authorized(request)) return new Response(null, { status: 401 })
-    if (request.method === 'GET') return Response.json({ ready: true, payloadSha256: digest, node: process.version, arch: process.arch, platform: process.platform,
+    if (request.method === 'GET') return Response.json({ ready: true, payloadSha256: digest, profile, node: process.version, arch: process.arch, platform: process.platform,
       glibc: process.report.getReport().header.glibcVersionRuntime ?? null })
     if (request.method !== 'POST') return new Response(null, { status: 405 })
     if (busy) return new Response(null, { status: 409 })
@@ -85,8 +88,13 @@ export default {
             }
             if (disconnected) return
             const started = performance.now()
-            // No patterns, exclusions, retries, clock mocking, or upstream edits.
-            const child = spawn(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', '--project', 'conformance', '--reporter=default', '--reporter=json', '--outputFile=conformance-results.json'], {
+            // Conformance remains the full unfiltered pinned suite. The Neon
+            // data profile runs every real-service fixture except the control-
+            // plane packed consumer fixture, which is qualified separately.
+            // No management credentials enter this deployed coordinator.
+            const args = ['node_modules/vitest/vitest.mjs', 'run', '--project', profile, '--reporter=default', '--reporter=json', '--outputFile=conformance-results.json']
+            if (profile === 'neon') args.push('--exclude=test/neon/rolling.test.ts')
+            const child = spawn(process.execPath, args, {
               cwd: directory, env: { ...process.env, NODE_OPTIONS: '', CI: 'true', NO_COLOR: '1', NAPI_RS_FORCE_WASI: 'error' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true,
             })
             active = child
@@ -111,7 +119,11 @@ export default {
             const sanitize = (value) => typeof value === 'string' ? redact(value) : Array.isArray(value) ? value.map(sanitize)
               : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).map(([name, field]) => [name, sanitize(field)])) : value
             const report = sanitize(JSON.parse(raw))
-            const passed = result.code === 0 && report.success === true && report.numTotalTests === 338 && report.numPassedTests === 338 && report.numFailedTests === 0 && report.numPendingTests === 0 && report.numTodoTests === 0
+            const actualFiles = report.testResults.map((item) => item.name.slice(directory.length + 1)).sort()
+            const passed = result.code === 0 && report.success === true && report.numTotalTests > 0
+              && report.numPassedTests === report.numTotalTests && report.numFailedTests === 0 && report.numPendingTests === 0 && report.numTodoTests === 0
+              && JSON.stringify(actualFiles) === JSON.stringify(expectedFiles)
+              && (profile !== 'conformance' || report.numTotalTests === 338)
             emit({ type: 'result', passed, ...result, durationMs: Math.round(performance.now() - started), report })
           } catch (error) { emit({ type: 'error', message: redact(error?.stack ?? error) }) }
           finally {
