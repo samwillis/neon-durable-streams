@@ -1,0 +1,186 @@
+{
+  "passed": true,
+  "count": 8192,
+  "stagingFootprint": [
+    {
+      "name": "appends",
+      "heap_bytes": 1564672,
+      "index_bytes": 802816,
+      "total_bytes": 2400256
+    },
+    {
+      "name": "chunks",
+      "heap_bytes": 0,
+      "index_bytes": 40960,
+      "total_bytes": 49152
+    },
+    {
+      "name": "chunk_objects",
+      "heap_bytes": 0,
+      "index_bytes": 32768,
+      "total_bytes": 40960
+    }
+  ],
+  "sealedFootprint": [
+    {
+      "name": "appends",
+      "heap_bytes": 1564672,
+      "index_bytes": 802816,
+      "total_bytes": 2400256
+    },
+    {
+      "name": "chunks",
+      "heap_bytes": 8192,
+      "index_bytes": 73728,
+      "total_bytes": 90112
+    },
+    {
+      "name": "chunk_objects",
+      "heap_bytes": 8192,
+      "index_bytes": 49152,
+      "total_bytes": 65536
+    }
+  ],
+  "vacuumedFootprint": [
+    {
+      "name": "appends",
+      "heap_bytes": 0,
+      "index_bytes": 802816,
+      "total_bytes": 827392
+    },
+    {
+      "name": "chunks",
+      "heap_bytes": 8192,
+      "index_bytes": 73728,
+      "total_bytes": 122880
+    },
+    {
+      "name": "chunk_objects",
+      "heap_bytes": 8192,
+      "index_bytes": 49152,
+      "total_bytes": 98304
+    }
+  ],
+  "seedMs": 667.220041,
+  "appendMs": 264.7567079999999,
+  "freezeMetrics": {
+    "sqlCalls": 13,
+    "transactions": 1,
+    "pinInsertCalls": 0,
+    "pinDeleteCalls": 0,
+    "sqlMs": 59.19191699940711,
+    "objectGets": 0,
+    "objectRangeGets": 0,
+    "objectBytes": 0,
+    "objectMs": 0,
+    "handlerMs": 152.51851600012742,
+    "instanceId": "40b543a1-836b-4d83-a460-a745ea2c6896",
+    "cache": "shared",
+    "memoryBefore": {
+      "rss": 88846336,
+      "heapTotal": 32440320,
+      "heapUsed": 22142184,
+      "external": 10996559,
+      "arrayBuffers": 295757
+    },
+    "memoryAfter": {
+      "rss": 108224512,
+      "heapTotal": 35848192,
+      "heapUsed": 21316184,
+      "external": 11033500,
+      "arrayBuffers": 353463
+    },
+    "pool": {
+      "total": 1,
+      "idle": 1,
+      "waiting": 0
+    }
+  },
+  "sealMs": 848.5238330000002,
+  "maintenance": {
+    "frozen": 0,
+    "sealed": 1,
+    "retired": 0,
+    "changes": 2,
+    "deliveries": 0,
+    "links": 0,
+    "reclaimedChunks": 0,
+    "deletedObjects": 0,
+    "prunedRows": 0,
+    "inventoriedObjects": 0,
+    "benchmark": {
+      "instanceId": "40b543a1-836b-4d83-a460-a745ea2c6896",
+      "memoryBefore": {
+        "rss": 108224512,
+        "heapTotal": 35848192,
+        "heapUsed": 21397216,
+        "external": 11033532,
+        "arrayBuffers": 353495
+      },
+      "memoryAfter": {
+        "rss": 124178432,
+        "heapTotal": 47906816,
+        "heapUsed": 28690120,
+        "external": 12206567,
+        "arrayBuffers": 1520917
+      },
+      "lifetimeMaxRssKiB": 121268,
+      "durationMs": 748.4433069999795
+    }
+  },
+  "manifests": [
+    {
+      "frame_count": 8192,
+      "payload_bytes": "262144",
+      "encoded_bytes": 279350,
+      "directory_bytes": 754
+    }
+  ],
+  "replayMs": 641.9756249999991,
+  "deliveredBytes": 262144,
+  "samples": [
+    {
+      "bytes": 262144,
+      "durationMs": 555.2753330000005,
+      "metrics": {
+        "sqlCalls": 11,
+        "transactions": 2,
+        "pinInsertCalls": 1,
+        "pinDeleteCalls": 1,
+        "sqlMs": 23.97257300023921,
+        "objectGets": 1,
+        "objectRangeGets": 0,
+        "objectBytes": 279350,
+        "objectMs": 39.93626500014216,
+        "handlerMs": 81.82349300011992,
+        "instanceId": "40b543a1-836b-4d83-a460-a745ea2c6896",
+        "cache": "shared",
+        "memoryBefore": {
+          "rss": 124178432,
+          "heapTotal": 47906816,
+          "heapUsed": 28999952,
+          "external": 12209170,
+          "arrayBuffers": 1523464
+        },
+        "memoryAfter": {
+          "rss": 124448768,
+          "heapTotal": 48168960,
+          "heapUsed": 26820024,
+          "external": 12198987,
+          "arrayBuffers": 1519286
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      }
+    }
+  ],
+  "observedBranchWalBytes": 4196856,
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "bundleSha256": "05eeea63d00c896427a9e3ab110a960ddf62c10e143f7aaca626ceca5b1b436e",
+  "branchId": "br-restless-brook-bb70ytrf",
+  "harnessSha256": "4c303b02d7d85448420de0c176cc58d5f4ef07f3ecb91f15982a52f31a20baaa",
+  "scope": "Actual configured-full-chunk qualification. Bulk seed count-1 constrained hot rows; final ordinary public append triggers freeze, deployed maintenance uploads/read-back-verifies/deletes staging, and default public pages verify exact bytes and final checkpoint. This is not append throughput. Lifetime RSS is the reached sealer process high-water, not fleet memory; branch WAL includes setup and background work."
+}

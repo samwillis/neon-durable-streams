@@ -1,0 +1,24 @@
+{
+  "rawReportSha256": "d6ce25e9767c9517f3e9af9ab91c7a6ce1a108f3330d34371ed2f30d77ccf131",
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "durationMs": 11397.71484375,
+  "cases": [
+    {
+      "name": "an append hint publishes a pull wake through actual Realtime with no cron or manual worker",
+      "status": "passed",
+      "durationMs": 3740.83525
+    },
+    {
+      "name": "hints seal a full chunk while small hot tails remain local, without a scheduled worker",
+      "status": "passed",
+      "durationMs": 7656.714792000001
+    }
+  ],
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "bundleSha256": "9866f0071e17ae5d8a2db9a54dcb0921b55e585e34130c5c573c1be8afb84c1c",
+  "region": "us-east-1"
+}

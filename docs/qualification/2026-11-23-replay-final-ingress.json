@@ -1,0 +1,59 @@
+{
+  "rawReportSha256": "26e8266c40a8f83c4b2d5bc87c93ade443683c5b09415631c06190efcf03ee79",
+  "total": 9,
+  "passed": 9,
+  "failed": 0,
+  "skipped": 0,
+  "durationMs": 39148.19189453125,
+  "cases": [
+    {
+      "name": "authenticated health identifies the deployed bundle and unauthorized calls fail before application work",
+      "status": "passed",
+      "durationMs": 838.2915409999999
+    },
+    {
+      "name": "a caller cannot impersonate a Neon Function Trigger using forged platform headers",
+      "status": "passed",
+      "durationMs": 108.41562499999998
+    },
+    {
+      "name": "the same path is isolated between independently authenticated tenants at real Function ingress",
+      "status": "passed",
+      "durationMs": 559.6875829999999
+    },
+    {
+      "name": "SSE flushes its initial checkpoint and delivers a live final append before EOF through Neon ingress",
+      "status": "passed",
+      "durationMs": 1081.762084
+    },
+    {
+      "name": "authenticated maintenance publishes to Neon Object Storage and the Function replays sealed data",
+      "status": "passed",
+      "durationMs": 2359.0621670000005
+    },
+    {
+      "name": "a real Neon schedule trigger seals idle data without an application maintenance call",
+      "status": "passed",
+      "durationMs": 26800.887292
+    },
+    {
+      "name": "deployed Function signs real public HTTPS wakes and synchronous done acknowledges their snapshot",
+      "status": "passed",
+      "durationMs": 2673.976708
+    },
+    {
+      "name": "public HTTPS asynchronous callback uses its scoped token and fences duplicate completion",
+      "status": "passed",
+      "durationMs": 1714.8603749999997
+    },
+    {
+      "name": "public HTTPS 500 responses persist retry state and retry the same wake",
+      "status": "passed",
+      "durationMs": 2899.191917
+    }
+  ],
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "bundleSha256": "9866f0071e17ae5d8a2db9a54dcb0921b55e585e34130c5c573c1be8afb84c1c",
+  "region": "us-east-1"
+}

@@ -1,0 +1,1229 @@
+{
+  "decision": "Default to 8192 frames per hot batch; larger caps up to 131072 remain configurable. Retained manifests alone hide reusable staging index allocation. Compare freeze latency, sealer memory and all measured relations.",
+  "variants": [
+    {
+      "passed": true,
+      "count": 8192,
+      "stagingFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 1564672,
+          "index_bytes": 802816,
+          "total_bytes": 2400256
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 0,
+          "index_bytes": 40960,
+          "total_bytes": 49152
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 0,
+          "index_bytes": 32768,
+          "total_bytes": 40960
+        }
+      ],
+      "sealedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 1564672,
+          "index_bytes": 802816,
+          "total_bytes": 2400256
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 90112
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 65536
+        }
+      ],
+      "vacuumedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 0,
+          "index_bytes": 802816,
+          "total_bytes": 827392
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 122880
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 98304
+        }
+      ],
+      "seedMs": 657.7095830000001,
+      "appendMs": 340.71333300000015,
+      "freezeMetrics": {
+        "sqlCalls": 13,
+        "transactions": 1,
+        "pinInsertCalls": 0,
+        "pinDeleteCalls": 0,
+        "sqlMs": 127.8860639994964,
+        "objectGets": 0,
+        "objectRangeGets": 0,
+        "objectBytes": 0,
+        "objectMs": 0,
+        "handlerMs": 229.70560200000182,
+        "instanceId": "110df87f-6edb-4d3a-9855-df008b1d5cbe",
+        "cache": "shared",
+        "memoryBefore": {
+          "rss": 84267008,
+          "heapTotal": 21692416,
+          "heapUsed": 19616424,
+          "external": 10968858,
+          "arrayBuffers": 289097
+        },
+        "memoryAfter": {
+          "rss": 98480128,
+          "heapTotal": 29818880,
+          "heapUsed": 23754432,
+          "external": 11295000,
+          "arrayBuffers": 484167
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      },
+      "sealMs": 862.7379170000004,
+      "maintenance": {
+        "frozen": 0,
+        "sealed": 1,
+        "retired": 0,
+        "changes": 2,
+        "deliveries": 0,
+        "links": 0,
+        "reclaimedChunks": 0,
+        "deletedObjects": 0,
+        "prunedRows": 0,
+        "inventoriedObjects": 0,
+        "benchmark": {
+          "instanceId": "110df87f-6edb-4d3a-9855-df008b1d5cbe",
+          "memoryBefore": {
+            "rss": 98480128,
+            "heapTotal": 30081024,
+            "heapUsed": 23514544,
+            "external": 11163960,
+            "arrayBuffers": 484199
+          },
+          "memoryAfter": {
+            "rss": 114667520,
+            "heapTotal": 40828928,
+            "heapUsed": 22697640,
+            "external": 11656862,
+            "arrayBuffers": 977213
+          },
+          "lifetimeMaxRssKiB": 111980,
+          "durationMs": 758.6283489998896
+        }
+      },
+      "manifests": [
+        {
+          "frame_count": 8192,
+          "payload_bytes": "262144",
+          "encoded_bytes": 279350,
+          "directory_bytes": 754
+        }
+      ],
+      "replayMs": 960.7187920000006,
+      "deliveredBytes": 262144,
+      "samples": [
+        {
+          "bytes": 262144,
+          "durationMs": 873.7384999999995,
+          "metrics": {
+            "sqlCalls": 20,
+            "transactions": 3,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 167.342402999755,
+            "objectGets": 1,
+            "objectRangeGets": 0,
+            "objectBytes": 279350,
+            "objectMs": 79.98032200010493,
+            "handlerMs": 400.5196889999788,
+            "instanceId": "cc963493-7aba-4db6-8209-6196af941e4e",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 81735680,
+              "heapTotal": 19095552,
+              "heapUsed": 16087720,
+              "external": 10786034,
+              "arrayBuffers": 156357
+            },
+            "memoryAfter": {
+              "rss": 98021376,
+              "heapTotal": 28794880,
+              "heapUsed": 21734608,
+              "external": 11428260,
+              "arrayBuffers": 763387
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        }
+      ],
+      "observedBranchWalBytes": 4243640,
+      "sourceCommit": "bdc43deb3773deb03bf60824f88d878c0c5d2aeb",
+      "bundleSha256": "fbd89ac6f0cf25687e3f6c11a7f2d35110a2b22c98659cbc6423eb7e3221cb91",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "harnessSha256": "4c303b02d7d85448420de0c176cc58d5f4ef07f3ecb91f15982a52f31a20baaa",
+      "scope": "Actual configured-full-chunk qualification. Bulk seed count-1 constrained hot rows; final ordinary public append triggers freeze, deployed maintenance uploads/read-back-verifies/deletes staging, and default public pages verify exact bytes and final checkpoint. This is not append throughput. Lifetime RSS is the reached sealer process high-water, not fleet memory; branch WAL includes setup and background work."
+    },
+    {
+      "passed": true,
+      "count": 32768,
+      "stagingFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 6250496,
+          "index_bytes": 3186688,
+          "total_bytes": 9469952
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 0,
+          "index_bytes": 40960,
+          "total_bytes": 49152
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 0,
+          "index_bytes": 32768,
+          "total_bytes": 40960
+        }
+      ],
+      "sealedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 6250496,
+          "index_bytes": 3186688,
+          "total_bytes": 9469952
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 90112
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 65536
+        }
+      ],
+      "vacuumedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 0,
+          "index_bytes": 3186688,
+          "total_bytes": 3211264
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 122880
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 98304
+        }
+      ],
+      "seedMs": 1082.9740410000002,
+      "appendMs": 824.6520420000002,
+      "freezeMetrics": {
+        "sqlCalls": 13,
+        "transactions": 1,
+        "pinInsertCalls": 0,
+        "pinDeleteCalls": 0,
+        "sqlMs": 510.20101200044155,
+        "objectGets": 0,
+        "objectRangeGets": 0,
+        "objectBytes": 0,
+        "objectMs": 0,
+        "handlerMs": 716.455362000037,
+        "instanceId": "bd4055fa-568a-47bf-ba76-8ec71b567f4b",
+        "cache": "shared",
+        "memoryBefore": {
+          "rss": 86798336,
+          "heapTotal": 21430272,
+          "heapUsed": 19749136,
+          "external": 11043436,
+          "arrayBuffers": 355986
+        },
+        "memoryAfter": {
+          "rss": 119746560,
+          "heapTotal": 44785664,
+          "heapUsed": 27763216,
+          "external": 12277778,
+          "arrayBuffers": 1598129
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      },
+      "sealMs": 1739.8744579999998,
+      "maintenance": {
+        "frozen": 0,
+        "sealed": 1,
+        "retired": 0,
+        "changes": 2,
+        "deliveries": 0,
+        "links": 0,
+        "reclaimedChunks": 0,
+        "deletedObjects": 0,
+        "prunedRows": 0,
+        "inventoriedObjects": 0,
+        "benchmark": {
+          "instanceId": "bd4055fa-568a-47bf-ba76-8ec71b567f4b",
+          "memoryBefore": {
+            "rss": 119746560,
+            "heapTotal": 44785664,
+            "heapUsed": 27881272,
+            "external": 12277810,
+            "arrayBuffers": 1598161
+          },
+          "memoryAfter": {
+            "rss": 152616960,
+            "heapTotal": 94502912,
+            "heapUsed": 42870328,
+            "external": 15486947,
+            "arrayBuffers": 4807298
+          },
+          "lifetimeMaxRssKiB": 149040,
+          "durationMs": 1633.8272989999969
+        }
+      },
+      "manifests": [
+        {
+          "frame_count": 32768,
+          "payload_bytes": "1048576",
+          "encoded_bytes": 1116782,
+          "directory_bytes": 2602
+        }
+      ],
+      "replayMs": 3763.360083999999,
+      "deliveredBytes": 1048576,
+      "samples": [
+        {
+          "bytes": 262144,
+          "durationMs": 847.5949999999993,
+          "metrics": {
+            "sqlCalls": 20,
+            "transactions": 3,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 141.30945000005886,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 169.14096200000495,
+            "handlerMs": 371.42353100003675,
+            "instanceId": "d6b65370-a27b-454d-9260-46f77d34e3a7",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 81260544,
+              "heapTotal": 17784832,
+              "heapUsed": 16625144,
+              "external": 10786034,
+              "arrayBuffers": 156357
+            },
+            "memoryAfter": {
+              "rss": 102461440,
+              "heapTotal": 28532736,
+              "heapUsed": 22755824,
+              "external": 11826668,
+              "arrayBuffers": 1161795
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 1670.4748749999999,
+          "metrics": {
+            "sqlCalls": 21,
+            "transactions": 3,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 195.69873399892822,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 180.73738900013268,
+            "handlerMs": 492.2662550001405,
+            "instanceId": "4444bf89-9ea9-48b2-a85c-bedfbf0ab409",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 86614016,
+              "heapTotal": 31940608,
+              "heapUsed": 17502104,
+              "external": 10786034,
+              "arrayBuffers": 156357
+            },
+            "memoryAfter": {
+              "rss": 107667456,
+              "heapTotal": 34299904,
+              "heapUsed": 22330720,
+              "external": 11542206,
+              "arrayBuffers": 877333
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 629.7364170000001,
+          "metrics": {
+            "sqlCalls": 21,
+            "transactions": 3,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 63.48663999978453,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 184.73202400002629,
+            "handlerMs": 391.6785679999739,
+            "instanceId": "5bf0a2b4-4f48-40ca-ae55-df5b197a1e30",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 85630976,
+              "heapTotal": 31154176,
+              "heapUsed": 17495384,
+              "external": 10786034,
+              "arrayBuffers": 156357
+            },
+            "memoryAfter": {
+              "rss": 108441600,
+              "heapTotal": 32989184,
+              "heapUsed": 22126512,
+              "external": 11553362,
+              "arrayBuffers": 888489
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 515.0867500000004,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 164.65114999888465,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327488,
+            "objectMs": 56.897667000070214,
+            "handlerMs": 227.56000400008634,
+            "instanceId": "4444bf89-9ea9-48b2-a85c-bedfbf0ab409",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 108621824,
+              "heapTotal": 34824192,
+              "heapUsed": 23611288,
+              "external": 11814074,
+              "arrayBuffers": 1141288
+            },
+            "memoryAfter": {
+              "rss": 113213440,
+              "heapTotal": 49766400,
+              "heapUsed": 23998296,
+              "external": 11871512,
+              "arrayBuffers": 1204833
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        }
+      ],
+      "observedBranchWalBytes": 16721584,
+      "sourceCommit": "bdc43deb3773deb03bf60824f88d878c0c5d2aeb",
+      "bundleSha256": "fbd89ac6f0cf25687e3f6c11a7f2d35110a2b22c98659cbc6423eb7e3221cb91",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "harnessSha256": "4c303b02d7d85448420de0c176cc58d5f4ef07f3ecb91f15982a52f31a20baaa",
+      "scope": "Actual configured-full-chunk qualification. Bulk seed count-1 constrained hot rows; final ordinary public append triggers freeze, deployed maintenance uploads/read-back-verifies/deletes staging, and default public pages verify exact bytes and final checkpoint. This is not append throughput. Lifetime RSS is the reached sealer process high-water, not fleet memory; branch WAL includes setup and background work."
+    },
+    {
+      "passed": true,
+      "count": 131072,
+      "stagingFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 24977408,
+          "index_bytes": 12681216,
+          "total_bytes": 37691392
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 0,
+          "index_bytes": 40960,
+          "total_bytes": 49152
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 0,
+          "index_bytes": 32768,
+          "total_bytes": 40960
+        }
+      ],
+      "sealedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 24977408,
+          "index_bytes": 12681216,
+          "total_bytes": 37691392
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 106496
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 65536
+        }
+      ],
+      "vacuumedFootprint": [
+        {
+          "name": "appends",
+          "heap_bytes": 0,
+          "index_bytes": 12681216,
+          "total_bytes": 12705792
+        },
+        {
+          "name": "chunks",
+          "heap_bytes": 8192,
+          "index_bytes": 73728,
+          "total_bytes": 172032
+        },
+        {
+          "name": "chunk_objects",
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 98304
+        }
+      ],
+      "seedMs": 2955.1886250000002,
+      "appendMs": 2495.51725,
+      "freezeMetrics": {
+        "sqlCalls": 13,
+        "transactions": 1,
+        "pinInsertCalls": 0,
+        "pinDeleteCalls": 0,
+        "sqlMs": 1414.656883000047,
+        "objectGets": 0,
+        "objectRangeGets": 0,
+        "objectBytes": 0,
+        "objectMs": 0,
+        "handlerMs": 2015.1657079999568,
+        "instanceId": "2adac978-45b7-4fe8-b808-313ea6afad88",
+        "cache": "shared",
+        "memoryBefore": {
+          "rss": 87179264,
+          "heapTotal": 21954560,
+          "heapUsed": 19298624,
+          "external": 11034188,
+          "arrayBuffers": 353867
+        },
+        "memoryAfter": {
+          "rss": 191389696,
+          "heapTotal": 114819072,
+          "heapUsed": 43217104,
+          "external": 13260818,
+          "arrayBuffers": 352945
+        },
+        "pool": {
+          "total": 1,
+          "idle": 1,
+          "waiting": 0
+        }
+      },
+      "sealMs": 4501.085667,
+      "maintenance": {
+        "frozen": 0,
+        "sealed": 1,
+        "retired": 0,
+        "changes": 2,
+        "deliveries": 0,
+        "links": 0,
+        "reclaimedChunks": 0,
+        "deletedObjects": 0,
+        "prunedRows": 0,
+        "inventoriedObjects": 0,
+        "benchmark": {
+          "instanceId": "2adac978-45b7-4fe8-b808-313ea6afad88",
+          "memoryBefore": {
+            "rss": 191389696,
+            "heapTotal": 114819072,
+            "heapUsed": 43348992,
+            "external": 11032626,
+            "arrayBuffers": 352977
+          },
+          "memoryAfter": {
+            "rss": 236527616,
+            "heapTotal": 97976320,
+            "heapUsed": 17619432,
+            "external": 20403149,
+            "arrayBuffers": 4819949
+          },
+          "lifetimeMaxRssKiB": 234128,
+          "durationMs": 4208.61576299998
+        }
+      },
+      "manifests": [
+        {
+          "frame_count": 131072,
+          "payload_bytes": "4194304",
+          "encoded_bytes": 4466972,
+          "directory_bytes": 10456
+        }
+      ],
+      "replayMs": 5476.804583000001,
+      "deliveredBytes": 4194304,
+      "samples": [
+        {
+          "bytes": 262144,
+          "durationMs": 1132.8453750000008,
+          "metrics": {
+            "sqlCalls": 20,
+            "transactions": 3,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 250.6063379989937,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 151.3048580000177,
+            "handlerMs": 481.19566399999894,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 80908288,
+              "heapTotal": 17522688,
+              "heapUsed": 16271344,
+              "external": 10786034,
+              "arrayBuffers": 156357
+            },
+            "memoryAfter": {
+              "rss": 100519936,
+              "heapTotal": 29843456,
+              "heapUsed": 20088568,
+              "external": 11542206,
+              "arrayBuffers": 877333
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 803.1640000000007,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 100.98485899996012,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 54.49016599985771,
+            "handlerMs": 160.98471400002018,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 101093376,
+              "heapTotal": 29843456,
+              "heapUsed": 21204920,
+              "external": 11813377,
+              "arrayBuffers": 1140647
+            },
+            "memoryAfter": {
+              "rss": 105529344,
+              "heapTotal": 39542784,
+              "heapUsed": 24976288,
+              "external": 12145174,
+              "arrayBuffers": 1478439
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 366.7493749999994,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 142.39441700000316,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 44.150082000065595,
+            "handlerMs": 243.37901200004853,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 106074112,
+              "heapTotal": 39804928,
+              "heapUsed": 25329880,
+              "external": 12408443,
+              "arrayBuffers": 1741652
+            },
+            "memoryAfter": {
+              "rss": 114720768,
+              "heapTotal": 42688512,
+              "heapUsed": 25818120,
+              "external": 12134542,
+              "arrayBuffers": 1467863
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 213.57795799999985,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 39.24547700001858,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 53.02882899995893,
+            "handlerMs": 96.92136000003666,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 114720768,
+              "heapTotal": 42688512,
+              "heapUsed": 26007928,
+              "external": 12396849,
+              "arrayBuffers": 1730114
+            },
+            "memoryAfter": {
+              "rss": 114991104,
+              "heapTotal": 42950656,
+              "heapUsed": 28664840,
+              "external": 12791089,
+              "arrayBuffers": 2124354
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 381.66541700000016,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 171.68858500011265,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 84.62263200012967,
+            "handlerMs": 259.3083559998777,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 114991104,
+              "heapTotal": 42950656,
+              "heapUsed": 28780840,
+              "external": 13053265,
+              "arrayBuffers": 2386530
+            },
+            "memoryAfter": {
+              "rss": 124084224,
+              "heapTotal": 63397888,
+              "heapUsed": 27862536,
+              "external": 12723944,
+              "arrayBuffers": 2057265
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 278.0642919999991,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 38.49034699960612,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 49.52874600002542,
+            "handlerMs": 90.94107499998063,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 124084224,
+              "heapTotal": 63397888,
+              "heapUsed": 27981424,
+              "external": 12986120,
+              "arrayBuffers": 2319441
+            },
+            "memoryAfter": {
+              "rss": 126513152,
+              "heapTotal": 63397888,
+              "heapUsed": 37089760,
+              "external": 14199272,
+              "arrayBuffers": 3532593
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 243.59870799999953,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 54.46074200049043,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 47.553659999975935,
+            "handlerMs": 104.67263599997386,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 126513152,
+              "heapTotal": 63397888,
+              "heapUsed": 37190392,
+              "external": 14461448,
+              "arrayBuffers": 3794769
+            },
+            "memoryAfter": {
+              "rss": 135974912,
+              "heapTotal": 64184320,
+              "heapUsed": 32737616,
+              "external": 13719087,
+              "arrayBuffers": 3052352
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 207.79200000000128,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 40.61130000068806,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 39.65351300011389,
+            "handlerMs": 82.60710899997503,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 135974912,
+              "heapTotal": 64184320,
+              "heapUsed": 33037832,
+              "external": 13981263,
+              "arrayBuffers": 3314528
+            },
+            "memoryAfter": {
+              "rss": 141651968,
+              "heapTotal": 64446464,
+              "heapUsed": 41586832,
+              "external": 15128879,
+              "arrayBuffers": 4462144
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 216.63320799999929,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 34.33554799982812,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 393312,
+            "objectMs": 47.94960400008131,
+            "handlerMs": 90.3701749999309,
+            "instanceId": "2adac978-45b7-4fe8-b808-313ea6afad88",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 236527616,
+              "heapTotal": 97976320,
+              "heapUsed": 18018296,
+              "external": 15495699,
+              "arrayBuffers": 4822751
+            },
+            "memoryAfter": {
+              "rss": 236527616,
+              "heapTotal": 98238464,
+              "heapUsed": 30358144,
+              "external": 17102131,
+              "arrayBuffers": 6429183
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 196.7612909999989,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 26.71507199993357,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 46.15302399999928,
+            "handlerMs": 76.64548399997875,
+            "instanceId": "2adac978-45b7-4fe8-b808-313ea6afad88",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 236527616,
+              "heapTotal": 98238464,
+              "heapUsed": 30517904,
+              "external": 17364307,
+              "arrayBuffers": 6691359
+            },
+            "memoryAfter": {
+              "rss": 236797952,
+              "heapTotal": 98500608,
+              "heapUsed": 39272272,
+              "external": 18544179,
+              "arrayBuffers": 7871231
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 282.687208000003,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 40.80515999975614,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 44.49573999992572,
+            "handlerMs": 89.12172699999064,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 141922304,
+              "heapTotal": 64446464,
+              "heapUsed": 41860120,
+              "external": 15391055,
+              "arrayBuffers": 4724320
+            },
+            "memoryAfter": {
+              "rss": 146788352,
+              "heapTotal": 68378624,
+              "heapUsed": 43574104,
+              "external": 15083723,
+              "arrayBuffers": 4416988
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 229.74979200000234,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 39.75563500006683,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 46.72787999990396,
+            "handlerMs": 88.54058099980466,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 147058688,
+              "heapTotal": 68378624,
+              "heapUsed": 43846112,
+              "external": 15347376,
+              "arrayBuffers": 4680585
+            },
+            "memoryAfter": {
+              "rss": 149491712,
+              "heapTotal": 70737920,
+              "heapUsed": 40517952,
+              "external": 14703390,
+              "arrayBuffers": 4036599
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 206.63874999999825,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 28.257179000065662,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 393312,
+            "objectMs": 53.69989100005478,
+            "handlerMs": 85.16758000000846,
+            "instanceId": "2adac978-45b7-4fe8-b808-313ea6afad88",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 237064192,
+              "heapTotal": 98500608,
+              "heapUsed": 39418552,
+              "external": 18806355,
+              "arrayBuffers": 8133407
+            },
+            "memoryAfter": {
+              "rss": 237334528,
+              "heapTotal": 98500608,
+              "heapUsed": 26472728,
+              "external": 17001136,
+              "arrayBuffers": 6328188
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 224.28991699999824,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 65.66298399982043,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 327760,
+            "objectMs": 43.00152000016533,
+            "handlerMs": 111.11844000010751,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 149491712,
+              "heapTotal": 70737920,
+              "heapUsed": 40597880,
+              "external": 14965566,
+              "arrayBuffers": 4298775
+            },
+            "memoryAfter": {
+              "rss": 154628096,
+              "heapTotal": 107700224,
+              "heapUsed": 41490944,
+              "external": 15083918,
+              "arrayBuffers": 4417127
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 211.91470800000025,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 38.97540899948217,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 262208,
+            "objectMs": 60.38045099982992,
+            "handlerMs": 102.03391700005159,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 154140672,
+              "heapTotal": 106127360,
+              "heapUsed": 31591096,
+              "external": 13438171,
+              "arrayBuffers": 2778305
+            },
+            "memoryAfter": {
+              "rss": 154140672,
+              "heapTotal": 106127360,
+              "heapUsed": 40286696,
+              "external": 14585787,
+              "arrayBuffers": 3925921
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        },
+        {
+          "bytes": 262144,
+          "durationMs": 189.5952090000028,
+          "metrics": {
+            "sqlCalls": 12,
+            "transactions": 2,
+            "pinInsertCalls": 1,
+            "pinDeleteCalls": 1,
+            "sqlMs": 38.26730700023472,
+            "objectGets": 1,
+            "objectRangeGets": 1,
+            "objectBytes": 261120,
+            "objectMs": 40.93711999990046,
+            "handlerMs": 81.69277899991721,
+            "instanceId": "ef4cc3c9-fc9f-4b73-9a21-e75fa90d9fdd",
+            "cache": "shared",
+            "memoryBefore": {
+              "rss": 154140672,
+              "heapTotal": 106127360,
+              "heapUsed": 40362296,
+              "external": 14847963,
+              "arrayBuffers": 4188097
+            },
+            "memoryAfter": {
+              "rss": 156299264,
+              "heapTotal": 106127360,
+              "heapUsed": 48866992,
+              "external": 16025659,
+              "arrayBuffers": 5365793
+            },
+            "pool": {
+              "total": 1,
+              "idle": 1,
+              "waiting": 0
+            }
+          }
+        }
+      ],
+      "observedBranchWalBytes": 66814760,
+      "sourceCommit": "196a9a8e9ae53434fcc6b9d2d68feb0c1278780d",
+      "bundleSha256": "fbd89ac6f0cf25687e3f6c11a7f2d35110a2b22c98659cbc6423eb7e3221cb91",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "harnessSha256": "4c303b02d7d85448420de0c176cc58d5f4ef07f3ecb91f15982a52f31a20baaa",
+      "scope": "Actual configured-full-chunk qualification. Bulk seed count-1 constrained hot rows; final ordinary public append triggers freeze, deployed maintenance uploads/read-back-verifies/deletes staging, and default public pages verify exact bytes and final checkpoint. This is not append throughput. Lifetime RSS is the reached sealer process high-water, not fleet memory; branch WAL includes setup and background work."
+    }
+  ]
+}

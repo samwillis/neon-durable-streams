@@ -1,0 +1,562 @@
+{
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "generatedAt": "2026-11-23T15:11:07.969285+00:00",
+  "execution": "Direct qualification; all pushes use [skip ci] as requested. Package private/unpublished.",
+  "milestonesCompleted": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6
+  ],
+  "services": [
+    "Neon Functions",
+    "Neon Postgres 18",
+    "Neon Realtime",
+    "Neon Object Storage"
+  ],
+  "regionId": "aws-us-east-1",
+  "coordinator": {
+    "node": "v24.22.2",
+    "platform": "darwin",
+    "architecture": "arm64"
+  },
+  "storageVersion": 3,
+  "compatibility": "Fresh baseline only; development state recreated; one shipping object codec.",
+  "defaults": {
+    "chunkTargetBytes": 4194304,
+    "maxChunkFrames": 8192,
+    "maxChunkAgeMs": 3600000,
+    "blockTargetBytes": 65536,
+    "pageTargetBytes": 2097152,
+    "maxPageFrames": 8192,
+    "maxPageObjects": 64,
+    "readAhead": 0,
+    "cacheBytes": 33554432,
+    "pendingImmutableBytes": 134217728,
+    "replayAndBodyBytes": 268435456
+  },
+  "checks": {
+    "unitProperty": {
+      "total": 96,
+      "passed": 96,
+      "failed": 0,
+      "skipped": 0,
+      "command": "pnpm check; includes build, typecheck and example check"
+    },
+    "packedConsumer": {
+      "passed": true,
+      "command": "pnpm test:package"
+    },
+    "function": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-ingress.json"
+    },
+    "hints": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-hints.json"
+    },
+    "recovery": {
+      "total": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-recovery.json"
+    },
+    "neonData": {
+      "total": 115,
+      "passed": 115,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-neon.json"
+    },
+    "transactions": {
+      "total": 21,
+      "passed": 21,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-transactions.json"
+    },
+    "conformance": {
+      "total": 338,
+      "passed": 338,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-conformance.json",
+      "subscriptions": true,
+      "collection": true,
+      "upstreamVersion": "0.3.7",
+      "upstreamSha256": "947661c1ed02be223f7f85c7a5f9babdfe859095717a7e368d926ad14b63b3d7",
+      "unfiltered": true
+    },
+    "packedMultiInstance": {
+      "total": 8,
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "evidence": "2026-11-23-replay-final-packed.json"
+    }
+  },
+  "migrations": [
+    {
+      "id": "0001_installation",
+      "checksum": "6c9fe562d023e5b98459036263f77e8c1002ca10222afef14541dc1626ccde5c"
+    },
+    {
+      "id": "0002_streams",
+      "checksum": "beb7c0da6808b685e60af8008253c87423a72e0d839d9510367b2d1973c87a5d"
+    },
+    {
+      "id": "0003_storage",
+      "checksum": "c94a1220ca451d96af0bf544dbed818139ba8929c7d8754323594586921cb1b8"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "b795b26c2b6b14f8c7de4fe19772564338990ed51c21560d88be2ad218d60f36"
+    }
+  ],
+  "bundles": {
+    "publicConsumer": "9866f0071e17ae5d8a2db9a54dcb0921b55e585e34130c5c573c1be8afb84c1c",
+    "replay": "05eeea63d00c896427a9e3ab110a960ddf62c10e143f7aaca626ceca5b1b436e",
+    "packedConsumer": "d98d89ea6d6587c2b5040ea81346bdb60485863fc49bb6f5774c3134d19cfce3"
+  },
+  "performance": {
+    "exactSamples": 460,
+    "errors": 0,
+    "repetitions": 3,
+    "seed": 20261123,
+    "summary": [
+      {
+        "mode": "cold-seek",
+        "latencyMs": {
+          "count": 39,
+          "p50": 210.5091250000114,
+          "p95": 614.7230839999975,
+          "p99": 816.5186669999966
+        },
+        "sqlCalls": {
+          "count": 39,
+          "p50": 20,
+          "p95": 21,
+          "p99": 21
+        },
+        "objectGets": 41
+      },
+      {
+        "mode": "repeat-seek",
+        "latencyMs": {
+          "count": 78,
+          "p50": 144.68754199999967,
+          "p95": 524.6530409999978,
+          "p99": 1056.4510410000003
+        },
+        "sqlCalls": {
+          "count": 78,
+          "p50": 11,
+          "p95": 12,
+          "p99": 12
+        },
+        "objectGets": 26
+      },
+      {
+        "mode": "conditional",
+        "latencyMs": {
+          "count": 39,
+          "p50": 120.20629099999496,
+          "p95": 129.5293329999986,
+          "p99": 230.84754199999588
+        },
+        "sqlCalls": {
+          "count": 39,
+          "p50": 6,
+          "p95": 12,
+          "p99": 12
+        },
+        "objectGets": 0
+      },
+      {
+        "mode": "sequential",
+        "latencyMs": {
+          "count": 60,
+          "p50": 273.80554099999426,
+          "p95": 582.3163749999949,
+          "p99": 2301.967457999999
+        },
+        "sqlCalls": {
+          "count": 60,
+          "p50": 11,
+          "p95": 12,
+          "p99": 12
+        },
+        "objectGets": 13
+      },
+      {
+        "mode": "slow-reader",
+        "latencyMs": {
+          "count": 13,
+          "p50": 154.84229200000118,
+          "p95": 445.7097080000094,
+          "p99": 445.7097080000094
+        },
+        "sqlCalls": {
+          "count": 13,
+          "p50": 11,
+          "p95": 11,
+          "p99": 11
+        },
+        "objectGets": 0
+      },
+      {
+        "mode": "fanout",
+        "latencyMs": {
+          "count": 104,
+          "p50": 189.26104199999827,
+          "p95": 1907.0797500000044,
+          "p99": 1979.7200830000074
+        },
+        "sqlCalls": {
+          "count": 104,
+          "p50": 11,
+          "p95": 21,
+          "p99": 21
+        },
+        "objectGets": 79
+      },
+      {
+        "mode": "deep-fork-cold",
+        "latencyMs": {
+          "count": 3,
+          "p50": 479.9083329999994,
+          "p95": 523.7535829999979,
+          "p99": 523.7535829999979
+        },
+        "sqlCalls": {
+          "count": 3,
+          "p50": 20,
+          "p95": 20,
+          "p99": 20
+        },
+        "objectGets": 3
+      },
+      {
+        "mode": "deep-fork-warm",
+        "latencyMs": {
+          "count": 3,
+          "p50": 348.34412500000326,
+          "p95": 471.3169579999958,
+          "p99": 471.3169579999958
+        },
+        "sqlCalls": {
+          "count": 3,
+          "p50": 12,
+          "p95": 12,
+          "p99": 12
+        },
+        "objectGets": 1
+      },
+      {
+        "mode": "canceled-sse",
+        "latencyMs": {
+          "count": 8,
+          "p50": 268.27195900000515,
+          "p95": 305.4629589999968,
+          "p99": 305.4629589999968
+        },
+        "sqlCalls": {
+          "count": 8,
+          "p50": 16,
+          "p95": 16,
+          "p99": 16
+        },
+        "objectGets": 1
+      },
+      {
+        "mode": "catchup-to-live",
+        "latencyMs": {
+          "count": 1,
+          "p50": 1013.5798749999958,
+          "p95": 1013.5798749999958,
+          "p99": 1013.5798749999958
+        },
+        "sqlCalls": {
+          "count": 1,
+          "p50": 17,
+          "p95": 17,
+          "p99": 17
+        },
+        "objectGets": 0
+      },
+      {
+        "mode": "writer-shared-stream",
+        "latencyMs": {
+          "count": 24,
+          "p50": 178.74866700000712,
+          "p95": 317.22787499999686,
+          "p99": 385.91187500000524
+        },
+        "sqlCalls": {
+          "count": 24,
+          "p50": 9,
+          "p95": 9,
+          "p99": 9
+        },
+        "objectGets": 0
+      },
+      {
+        "mode": "reader-shared-stream",
+        "latencyMs": {
+          "count": 32,
+          "p50": 321.81258399999933,
+          "p95": 2215.077040999997,
+          "p99": 2435.858666
+        },
+        "sqlCalls": {
+          "count": 32,
+          "p50": 11,
+          "p95": 11,
+          "p99": 11
+        },
+        "objectGets": 2
+      },
+      {
+        "mode": "writer-separate-stream",
+        "latencyMs": {
+          "count": 24,
+          "p50": 155.9237920000014,
+          "p95": 275.94966700000805,
+          "p99": 306.94229199999245
+        },
+        "sqlCalls": {
+          "count": 24,
+          "p50": 9,
+          "p95": 9,
+          "p99": 9
+        },
+        "objectGets": 0
+      },
+      {
+        "mode": "reader-separate-stream",
+        "latencyMs": {
+          "count": 32,
+          "p50": 320.98541699998896,
+          "p95": 1835.382209000003,
+          "p99": 2086.995833000008
+        },
+        "sqlCalls": {
+          "count": 32,
+          "p50": 11,
+          "p95": 11,
+          "p99": 11
+        },
+        "objectGets": 1
+      }
+    ],
+    "firstBlockProbe": "2026-11-23-replay-final-first-block.json",
+    "fullDefaultBatch": "2026-11-23-replay-final-dense.json",
+    "metadataPolicies": "2026-11-23-replay-metadata-final.json"
+  },
+  "attempts": [
+    "Earlier noncanonical zero-token implementation failed upstream fork cases; canonical zero restored before final qualification.",
+    "Final ingress first attempt reached the preceding bundle/deployment ID (8 pass, 1 fail). Eight subsequent identity probes matched; unchanged complete recheck passed 9/9. First-attempt report retained.",
+    "Local benchmark deployment overlapped a clean dist build and failed module resolution; serialized deployment succeeded. No passing data taken from failed deployment."
+  ],
+  "cleanup": {
+    "verifiedAt": "2026-11-23T15:08:09.557Z",
+    "projectId": "bitter-water-06585105",
+    "owned": [
+      {
+        "projectId": "bitter-water-06585105",
+        "branchId": "br-restless-brook-bb70ytrf",
+        "name": "ds-test-1795435897428-replay",
+        "stateFile": ".neon-test-state-replay.json",
+        "functions": [
+          {
+            "slug": "replaybench"
+          },
+          {
+            "slug": "replayblocks256"
+          },
+          {
+            "slug": "replayblocks256big"
+          },
+          {
+            "slug": "replayblocks64"
+          },
+          {
+            "slug": "replayblocks64big"
+          },
+          {
+            "slug": "replaycandidate"
+          },
+          {
+            "slug": "replaydense32k"
+          },
+          {
+            "slug": "replaydense8k"
+          },
+          {
+            "slug": "replaydensefinal"
+          },
+          {
+            "slug": "replayfinalpolicy"
+          },
+          {
+            "slug": "replayordinal"
+          },
+          {
+            "slug": "replaypipeline"
+          },
+          {
+            "slug": "replayselected"
+          },
+          {
+            "slug": "replayselectedzero"
+          },
+          {
+            "slug": "replayserial"
+          }
+        ],
+        "environmentFiles": [
+          ".env.neon.replay",
+          ".env.neon.replay.blocks256.function",
+          ".env.neon.replay.blocks256big.function",
+          ".env.neon.replay.blocks64.function",
+          ".env.neon.replay.blocks64big.function",
+          ".env.neon.replay.candidate.function",
+          ".env.neon.replay.dense32k.function",
+          ".env.neon.replay.dense8k.function",
+          ".env.neon.replay.densefinal.function",
+          ".env.neon.replay.finalpolicy.function",
+          ".env.neon.replay.function",
+          ".env.neon.replay.ordinal.function",
+          ".env.neon.replay.pipeline.function",
+          ".env.neon.replay.selected.function",
+          ".env.neon.replay.selectedzero.function",
+          ".env.neon.replay.serial.function"
+        ],
+        "remoteAbsent": true,
+        "localAbsent": true,
+        "verifiedDeleted": true
+      },
+      {
+        "projectId": "bitter-water-06585105",
+        "branchId": "br-holy-silence-bbhshhkj",
+        "name": "ds-test-1795442604640-replayfinal",
+        "stateFile": ".neon-test-state-replay-final.json",
+        "functions": [
+          {
+            "slug": "dswebhookreceiver"
+          },
+          {
+            "slug": "durablestreams"
+          }
+        ],
+        "environmentFiles": [
+          ".env.neon.replay.final",
+          ".env.neon.replay.final.function"
+        ],
+        "remoteAbsent": true,
+        "localAbsent": true,
+        "verifiedDeleted": true
+      },
+      {
+        "projectId": "bitter-water-06585105",
+        "branchId": "br-curly-forest-bbjmdyq8",
+        "name": "ds-test-1795442184007-replayconform",
+        "stateFile": ".neon-test-state-replay-conformance.json",
+        "functions": [
+          {
+            "slug": "dswebhookreceiver"
+          },
+          {
+            "slug": "durablestreams"
+          }
+        ],
+        "environmentFiles": [
+          ".env.neon.replay.conformance",
+          ".env.neon.replay.drills.function"
+        ],
+        "remoteAbsent": true,
+        "localAbsent": true,
+        "verifiedDeleted": true
+      },
+      {
+        "projectId": "bitter-water-06585105",
+        "branchId": "br-rapid-term-bbu913ra",
+        "name": "ds-test-1795442692600-replayhints",
+        "stateFile": ".neon-test-state-replay-hints.json",
+        "functions": [
+          {
+            "slug": "dswebhookreceiver"
+          },
+          {
+            "slug": "durablestreams"
+          }
+        ],
+        "environmentFiles": [
+          ".env.neon.replay.hints",
+          ".env.neon.replay.hints.function"
+        ],
+        "remoteAbsent": true,
+        "localAbsent": true,
+        "verifiedDeleted": true
+      }
+    ],
+    "completed": true,
+    "recoveryWitnessBranchesAbsent": true,
+    "completedAt": "2026-11-23T15:10:32.443Z",
+    "verifiedDeletedAt": "2026-11-23T15:10:45.815Z",
+    "recoveryBranchesVerifiedDeleted": [
+      "br-billowing-heart-bbuvjkzc",
+      "br-odd-haze-bb07xg6k"
+    ],
+    "fixtureLedgersAbsent": true,
+    "unrelatedStatePreserved": [
+      ".neon-test-state-smoke.json",
+      ".neon-test-state-hints.json"
+    ]
+  },
+  "limits": [
+    "Closed-loop remote-coordinator profiles do not establish an arrival-rate ceiling or availability SLA.",
+    "Header memory snapshots and process lifetime RSS do not certify steady-state/fleet memory. Budgets are separate and per instance.",
+    "Synthetic footprint covers one million sealed 32-byte frames and one staging batch; relation sizes exclude fixed installation, producer/subscription state, provider history and long-running bloat.",
+    "Branch WAL includes setup/background work; independent lock-wait/CPU attribution is not reported.",
+    "Recovery retains witness objects; provider Object Storage historical recovery after physical deletion remains unqualified.",
+    "Other qualification branches share the account/project; no overlapping replay-branch workload during the final performance profile."
+  ],
+  "evidenceSha256": {
+    "2026-11-23-replay-baseline.json": "d0e1efbe80c6ff07c302f2d29736c3fa1ecb5cb206491a156d208f322b13a42e",
+    "2026-11-23-replay-block-matrix.json": "bdda426a045c844be4be679dbdc9e6d172db37842e132b2d050bb5eb55f68d48",
+    "2026-11-23-replay-blocks.json": "1c763deab4db96cf97d367cb5deb67173fb99d2f85e9cc2f423b8d785784f811",
+    "2026-11-23-replay-conformance-first.json": "c9873c3d12b6babf2be71b896d5222da4f5e8635d47954392a09414a4d4d3355",
+    "2026-11-23-replay-conformance.json": "5165973d47ec6ad2fe34bceb13f70d5f2e4593a03d3cb3a92a9c0f3fa816bd38",
+    "2026-11-23-replay-final-conformance.json": "c1c5cda90660872e129259b3c849254ab6b8c830ceb37ea3cec7729875d0d185",
+    "2026-11-23-replay-final-dense.json": "ff204ed0154512c9964d51467bb0a78bc0cbeafd46e3d950a4031f94051b85f5",
+    "2026-11-23-replay-final-deployed.json": "070c5257a6bac61bcd782fde5b5ad5481af24b3a9789e7ef8f37812ad9bb2aab",
+    "2026-11-23-replay-final-first-block.json": "f69184f9a30471188e1ecdf065a9423f9173d7f1ea0af1979b940a354c739321",
+    "2026-11-23-replay-final-hints.json": "44649c784c03f56f76749ab80d02aeb065ccf0b949091b8ed070369f1d98aa39",
+    "2026-11-23-replay-final-ingress-first.json": "bbef68eca8fbd96810cf78a83cbd9b75d1d1f324959068029175012ab420e077",
+    "2026-11-23-replay-final-ingress.json": "73aa159e2d1b282648cb1754730632d17e9dd34d146043e08c2c3cd74332ca41",
+    "2026-11-23-replay-final-inplace.json": "d1863d53833ed4a12f2c6cc15b726a8f825a20396df1909dbee123deffcb20d7",
+    "2026-11-23-replay-final-neon.json": "5a240704e88d894f061a837cf3fb308e3ef8da25d970d62c50e83405941dd140",
+    "2026-11-23-replay-final-packed.json": "aa72dfea82fa844af3e5deb62cf40d2e2ba13c32a4cc4b2fc959df421dc15d84",
+    "2026-11-23-replay-final-recovery.json": "c5f1e44df85b4ce954d0444d41b8091b27f026a2b04f9e7882f9989acc502440",
+    "2026-11-23-replay-final-transactions.json": "8150e7b688daeae6ded7c701e6b3a7e489b0c491ad98ad9751f6324debabba83",
+    "2026-11-23-replay-frame-cap-comparison.json": "ca9464550f5270f000c13fdb987a5586f072ed0c55e905ae6aafa35bf0708755",
+    "2026-11-23-replay-metadata-final.json": "e264556ae68b99341f2627bf6fd5647ae78c49625d34db920498eb43af05419e",
+    "2026-11-23-replay-offset-decision.json": "42679aa101452e752aa332b8cf8f942897b116a432727b2b8a578b38077e3b0d",
+    "2026-11-23-replay-ordinal-metadata.json": "fcc4d508d4c50e26f93bbde55b63f1c3a428fe9058cdad6283289e95e7245d2d",
+    "2026-11-23-replay-pipeline-comparison.json": "4f6ff2e400f9d864d98367f6649b1b439569f8b43f21124897fab719f72ab591",
+    "2026-11-23-replay-readpath-candidate.json": "4d3d452fd8cd762b689920ebf83422f0e76e6989cc788c4f0a46765629b09423",
+    "2026-11-23-replay-readpath.json": "ea96cf3cecb5dee9e114dfab3162cb65ffb0d33688394f817edfeca2a5c22b8e",
+    "2026-11-23-replay-streaming.json": "36bcef3f0318fdfdb20da7cecc9108d15598888dfbc7fdda2ab9a6eb6817a1a7"
+  }
+}

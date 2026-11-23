@@ -1,0 +1,62 @@
+{
+  "rawReportSha256": "fdea4bb0b2ff3541ff7c5ef8e6e2b22b3197e80636ec42480d3cbda8c268c4bf",
+  "total": 9,
+  "passed": 8,
+  "failed": 1,
+  "skipped": 0,
+  "durationMs": 75336.35766601562,
+  "cases": [
+    {
+      "name": "authenticated health identifies the deployed bundle and unauthorized calls fail before application work",
+      "status": "failed",
+      "durationMs": 355.74512500000003,
+      "failureMessages": [
+        "AssertionError: expected { ready: true, mode: 'tiered', \u2026(3) } to match object { ready: true, \u2026(2) }\n(2 matching properties omitted from actual)\n    at Proxy.<anonymous> (file:///Users/sam.willis/Code/neon-durable-streams-poc/node_modules/.pnpm/@vitest+expect@4.1.10/node_modules/@vitest/expect/dist/index.js:1283:10)\n    at Proxy.<anonymous> (file:///Users/sam.willis/Code/neon-durable-streams-poc/node_modules/.pnpm/@vitest+expect@4.1.10/node_modules/@vitest/expect/dist/index.js:1156:15)\n    at Proxy.methodWrapper (file:///Users/sam.willis/Code/neon-durable-streams-poc/node_modules/.pnpm/chai@6.3.0/node_modules/chai/index.js:1737:25)\n    at /Users/sam.willis/Code/neon-durable-streams-poc/test/function/ingress.test.ts:19:31\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///Users/sam.willis/Code/neon-durable-streams-poc/node_modules/.pnpm/@vitest+runner@4.1.10/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:20"
+      ]
+    },
+    {
+      "name": "a caller cannot impersonate a Neon Function Trigger using forged platform headers",
+      "status": "passed",
+      "durationMs": 285.77324999999996
+    },
+    {
+      "name": "the same path is isolated between independently authenticated tenants at real Function ingress",
+      "status": "passed",
+      "durationMs": 632.449875
+    },
+    {
+      "name": "SSE flushes its initial checkpoint and delivers a live final append before EOF through Neon ingress",
+      "status": "passed",
+      "durationMs": 3284.415167
+    },
+    {
+      "name": "authenticated maintenance publishes to Neon Object Storage and the Function replays sealed data",
+      "status": "passed",
+      "durationMs": 2796.223167
+    },
+    {
+      "name": "a real Neon schedule trigger seals idle data without an application maintenance call",
+      "status": "passed",
+      "durationMs": 60483.65154100001
+    },
+    {
+      "name": "deployed Function signs real public HTTPS wakes and synchronous done acknowledges their snapshot",
+      "status": "passed",
+      "durationMs": 2793.01725
+    },
+    {
+      "name": "public HTTPS asynchronous callback uses its scoped token and fences duplicate completion",
+      "status": "passed",
+      "durationMs": 1717.4161249999997
+    },
+    {
+      "name": "public HTTPS 500 responses persist retry state and retry the same wake",
+      "status": "passed",
+      "durationMs": 2851.357667
+    }
+  ],
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "bundleSha256": "9866f0071e17ae5d8a2db9a54dcb0921b55e585e34130c5c573c1be8afb84c1c",
+  "region": "us-east-1"
+}

@@ -1,0 +1,242 @@
+{
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "controlCommit": "366768286d504072b5af3fd6309ae317eccc9b1a",
+  "branchId": "br-restless-brook-bb70ytrf",
+  "harnessSha256": "6ed036770465f5e44608aecf3396662aa25d6a3c3e8bf6682f33106a1ce63992",
+  "scope": "Synthetic immutable manifests in actual constrained Neon schemas, 1048576 sealed appends of 32 bytes, after ordinary VACUUM ANALYZE. No object uploads or replay. A full transient staging batch is also inserted/deleted/vacuumed to measure reusable B-tree allocation. Relation totals include heap/index/TOAST; excludes fixed installation, producer, subscription state, dead-tuple churn and provider history. WAL includes other branch activity and is not a per-append cost measurement.",
+  "cleanupComplete": true,
+  "samples": [
+    {
+      "kind": "byte-control",
+      "framesPerChunk": 1024,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 2,
+      "chunks": 1024,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 1024,
+          "tupleBytes": 4800512,
+          "heap_bytes": 647168,
+          "index_bytes": 262144,
+          "total_bytes": 6660096
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 1024,
+          "tupleBytes": 360448,
+          "heap_bytes": 385024,
+          "index_bytes": 442368,
+          "total_bytes": 868352
+        }
+      ],
+      "observedBranchWalBytes": 6609696,
+      "directoryBytes": 124928,
+      "rawPerAppendDirectoryBytes": 4194304,
+      "stagingPeak": {
+        "heap_bytes": 163840,
+        "index_bytes": 98304,
+        "total_bytes": 294912
+      },
+      "reusableAppendIndexBytes": 98304,
+      "totalBytesAfterVacuumAndStagingChurn": 7651328,
+      "totalBytesAfterVacuum": 7544832
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 1024,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 1024,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 1024,
+          "tupleBytes": 647136,
+          "heap_bytes": 704512,
+          "index_bytes": 278528,
+          "total_bytes": 1024000
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 1024,
+          "tupleBytes": 360448,
+          "heap_bytes": 385024,
+          "index_bytes": 376832,
+          "total_bytes": 802816
+        }
+      ],
+      "observedBranchWalBytes": 1942784,
+      "directoryBytes": 157680,
+      "rawPerAppendDirectoryBytes": 0,
+      "stagingPeak": {
+        "heap_bytes": 196608,
+        "index_bytes": 114688,
+        "total_bytes": 344064
+      },
+      "reusableAppendIndexBytes": 114688,
+      "totalBytesAfterVacuumAndStagingChurn": 1966080,
+      "totalBytesAfterVacuum": 1843200
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 8192,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 128,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 128,
+          "tupleBytes": 159712,
+          "heap_bytes": 180224,
+          "index_bytes": 81920,
+          "total_bytes": 303104
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 128,
+          "tupleBytes": 45056,
+          "heap_bytes": 49152,
+          "index_bytes": 90112,
+          "total_bytes": 180224
+        }
+      ],
+      "observedBranchWalBytes": 313440,
+      "directoryBytes": 98544,
+      "rawPerAppendDirectoryBytes": 0,
+      "stagingPeak": {
+        "heap_bytes": 1564672,
+        "index_bytes": 802816,
+        "total_bytes": 2400256
+      },
+      "reusableAppendIndexBytes": 802816,
+      "totalBytesAfterVacuumAndStagingChurn": 1310720,
+      "totalBytesAfterVacuum": 499712
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 32768,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 32,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 32,
+          "tupleBytes": 32496,
+          "heap_bytes": 32768,
+          "index_bytes": 65536,
+          "total_bytes": 139264
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 32,
+          "tupleBytes": 11264,
+          "heap_bytes": 16384,
+          "index_bytes": 49152,
+          "total_bytes": 106496
+        }
+      ],
+      "observedBranchWalBytes": 67608,
+      "directoryBytes": 83760,
+      "rawPerAppendDirectoryBytes": 0,
+      "stagingPeak": {
+        "heap_bytes": 6250496,
+        "index_bytes": 3186688,
+        "total_bytes": 9469952
+      },
+      "reusableAppendIndexBytes": 3186688,
+      "totalBytesAfterVacuumAndStagingChurn": 3457024,
+      "totalBytesAfterVacuum": 262144
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 131072,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 8,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 8,
+          "tupleBytes": 16848,
+          "heap_bytes": 8192,
+          "index_bytes": 65536,
+          "total_bytes": 172032
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 8,
+          "tupleBytes": 2816,
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 98304
+        }
+      ],
+      "observedBranchWalBytes": 28152,
+      "directoryBytes": 83760,
+      "rawPerAppendDirectoryBytes": 0,
+      "stagingPeak": {
+        "heap_bytes": 24977408,
+        "index_bytes": 12681216,
+        "total_bytes": 37691392
+      },
+      "reusableAppendIndexBytes": 12681216,
+      "totalBytesAfterVacuumAndStagingChurn": 12976128,
+      "totalBytesAfterVacuum": 286720
+    }
+  ],
+  "interpretation": {
+    "selectedFrameCap": 8192,
+    "matchedRetainedOnlyReduction": 4.093333333333334,
+    "selectedRetainedOnlyReduction": 15.098360655737705,
+    "selectedIncludingStagingIndexReduction": 5.8375,
+    "scope": "One million 32-byte sealed frames in one history, one transient full hot batch, ordinary vacuum; relation sizes only. Actual deployed freeze/seal/replay measured separately. Active stream count, outstanding frozen batches, autovacuum, producer/subscription state and history determine a deployment footprint."
+  }
+}

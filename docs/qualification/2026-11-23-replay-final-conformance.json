@@ -1,0 +1,51 @@
+{
+  "target": "linux/arm64/glibc",
+  "testCompiler": "rolldown-wasi",
+  "nativeFiles": [
+    "native/630753f910bd6235aad7d702a984c109aa723563342b8057b88f34306702b626.node",
+    "native/90bd269553d258e80b19e3ccab4f98f0831f87442a2f056510ce24fd1b425fc2.bin"
+  ],
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "sourceSnapshotSha256": "8a4afded8eea25d048e136c20ed1589dcdb2f96cd3eab6de5e789fbdb6b510a9",
+  "payloadSha256": "e2ed9f07833041642d6f62443cf27a2713ebab180e9e97b0443ce40c7b33e36f",
+  "payloadBytes": 13122366,
+  "expandedBytes": 43218183,
+  "lockSha256": "37a34e7cc49e2767fabdd11bfd4517cf9a9d0c9f1f32539384c3e7246a0edd1d",
+  "fixtureSha256": "9b81350fafc77f8f7b012123db1c8b7018e51705d49f9de87969f6f5b32eaa7a",
+  "upstreamVersion": "0.3.7",
+  "upstreamSha256": "947661c1ed02be223f7f85c7a5f9babdfe859095717a7e368d926ad14b63b3d7",
+  "subscriptions": true,
+  "reclamation": {
+    "enabled": true,
+    "recovery": "provider-owned"
+  },
+  "profile": "conformance",
+  "expectedTests": 338,
+  "expectedFiles": [
+    "test/conformance/server.test.ts"
+  ],
+  "separatelyQualified": [],
+  "launcherSha256": "6159c7bfb279e8ffec5a53bb8e42dc1be8c616cec05137eb761ec3dde07947e5",
+  "deploymentZipSha256": "7d0b906bdd12cea832a48eb3644cb9d4fcf901114e278043f9eadb52d9e686d3",
+  "deploymentZipBytes": 8092574,
+  "generatedAt": "2026-11-23T15:01:56.103Z",
+  "passed": true,
+  "runtime": {
+    "ready": true,
+    "payloadSha256": "e2ed9f07833041642d6f62443cf27a2713ebab180e9e97b0443ce40c7b33e36f",
+    "profile": "conformance",
+    "node": "v24.22.1",
+    "arch": "arm64",
+    "platform": "linux",
+    "glibc": "2.39"
+  },
+  "exitCode": 0,
+  "signal": null,
+  "durationMs": 121136,
+  "total": 338,
+  "passedTests": 338,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "cleanupComplete": true
+}

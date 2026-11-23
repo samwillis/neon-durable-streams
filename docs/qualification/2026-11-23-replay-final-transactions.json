@@ -1,0 +1,49 @@
+{
+  "target": "linux/arm64/glibc",
+  "testCompiler": "rolldown-wasi",
+  "nativeFiles": [
+    "native/630753f910bd6235aad7d702a984c109aa723563342b8057b88f34306702b626.node",
+    "native/90bd269553d258e80b19e3ccab4f98f0831f87442a2f056510ce24fd1b425fc2.bin"
+  ],
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "sourceSnapshotSha256": "1489398a785522dc70c2cb37ee8c9ddaabd1f8e2329c3712a2acc18b5245b60f",
+  "payloadSha256": "4bb61e8c81e976ad3d20c2816a7b95375556423c4081132f4aee9f43e0df021d",
+  "payloadBytes": 13328925,
+  "expandedBytes": 43946851,
+  "lockSha256": "37a34e7cc49e2767fabdd11bfd4517cf9a9d0c9f1f32539384c3e7246a0edd1d",
+  "upstreamVersion": "0.3.7",
+  "upstreamSha256": "947661c1ed02be223f7f85c7a5f9babdfe859095717a7e368d926ad14b63b3d7",
+  "subscriptions": true,
+  "reclamation": {
+    "enabled": true,
+    "recovery": "provider-owned"
+  },
+  "profile": "integration",
+  "expectedFiles": [
+    "test/integration/storage.test.ts"
+  ],
+  "separatelyQualified": [],
+  "launcherSha256": "6159c7bfb279e8ffec5a53bb8e42dc1be8c616cec05137eb761ec3dde07947e5",
+  "deploymentZipSha256": "a8948ed624972cc2256bde20674db927b6e87b5fb2608c99f704aec774c81cec",
+  "deploymentZipBytes": 8092574,
+  "generatedAt": "2026-11-23T15:02:26.076Z",
+  "passed": true,
+  "runtime": {
+    "ready": true,
+    "payloadSha256": "4bb61e8c81e976ad3d20c2816a7b95375556423c4081132f4aee9f43e0df021d",
+    "profile": "integration",
+    "node": "v24.22.1",
+    "arch": "arm64",
+    "platform": "linux",
+    "glibc": "2.39"
+  },
+  "exitCode": 0,
+  "signal": null,
+  "durationMs": 12311,
+  "total": 21,
+  "passedTests": 21,
+  "failedTests": 0,
+  "skippedTests": 0,
+  "cleanupComplete": true
+}

@@ -13,7 +13,7 @@ The application owns admission, credentials, ingress protection, monitoring, and
 | Functions | `@neon/functions` 0.11.0, Node 24, native HTTPS ingress and authenticated schedule triggers. |
 | Protocol | Pinned upstream 0.3.7 / commit `461b40267aabd644558f9b19dbb9507dd5f691cf`; all 338 cases, subscriptions enabled. |
 | Schema | Four-file fresh baseline; earlier development histories require a fresh schema. Historical rolling results concern archived schema-0005 binaries only. See the [upgrade contract](compact-storage-v2.md). |
-| Regions | Frankfurt local/deployed qualification; US-east-1 required CI. Other regions and combinations need their own deployment evidence. |
+| Regions | Final replay qualification uses US-east-1 with a remote coordinator; earlier reports also cover Frankfurt. Other regions and combinations need their own deployment evidence. |
 
 Sealing publishes a packed block directory and deletes the exact append rows. Postgres retains O(chunks) manifest/index rows and O(blocks) directory entries, with no per-append sealed offset/length array. Hot/frozen payloads, producers and subscriptions have separate costs. Defaults seal at 4 MiB, 8,192 frames, or one hour. Normal cron preserves younger small tails. Cache retention defaults to 32 MiB; pending immutable fetches and replay/response admission have separate 128 MiB and 256 MiB budgets. See [compact storage](compact-storage-v2.md) for bounds and sizing limits.
 

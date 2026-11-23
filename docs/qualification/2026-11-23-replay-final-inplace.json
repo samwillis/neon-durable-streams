@@ -1,0 +1,89 @@
+{
+  "passed": true,
+  "stages": [
+    "deploy initial Function and cron",
+    "seed binary, JSON, fork, and subscription state",
+    "observe live future bytes before rollback",
+    "stop scheduling, quiesce, and drain the active reader",
+    "restore only the recorded disposable branch at its own WAL position",
+    "verify rollback and reconcile before exposing ingress",
+    "redeploy fresh instances and validate public protocol continuity",
+    "verify restored Realtime before resuming workers",
+    "verify restored token fencing and resumed subscription work",
+    "resume scheduling after public validation"
+  ],
+  "stageTimes": [
+    {
+      "stage": "deploy initial Function and cron",
+      "elapsedMs": 5075
+    },
+    {
+      "stage": "seed binary, JSON, fork, and subscription state",
+      "elapsedMs": 17242
+    },
+    {
+      "stage": "observe live future bytes before rollback",
+      "elapsedMs": 20433
+    },
+    {
+      "stage": "stop scheduling, quiesce, and drain the active reader",
+      "elapsedMs": 23347
+    },
+    {
+      "stage": "restore only the recorded disposable branch at its own WAL position",
+      "elapsedMs": 31504
+    },
+    {
+      "stage": "verify rollback and reconcile before exposing ingress",
+      "elapsedMs": 36969
+    },
+    {
+      "stage": "redeploy fresh instances and validate public protocol continuity",
+      "elapsedMs": 44616
+    },
+    {
+      "stage": "verify restored Realtime before resuming workers",
+      "elapsedMs": 139683
+    },
+    {
+      "stage": "verify restored token fencing and resumed subscription work",
+      "elapsedMs": 143786
+    },
+    {
+      "stage": "resume scheduling after public validation",
+      "elapsedMs": 145696
+    }
+  ],
+  "durationMs": 146385,
+  "verifiedChunks": 3,
+  "generatedAt": "2026-11-23T15:05:54.560Z",
+  "testSha256": "f5dc15b7335f01150cb303c8da95fdb28dd8f993a1799c74fc573916107e7854",
+  "node": "v24.22.2",
+  "region": "us-east-1",
+  "branchId": "br-billowing-heart-bbuvjkzc",
+  "preservedBranchId": "br-odd-haze-bb07xg6k",
+  "endpointPreserved": true,
+  "originalEpoch": "68bad45f-60eb-4304-a04b-f9e9fe4977ee",
+  "recoveryEpoch": "b7f3f450-de0f-495a-a155-b6c96b8e7ef8",
+  "hotReplayAcrossSealing": true,
+  "restoredRealtime": true,
+  "restoredRealtimePayloadObserved": true,
+  "restoredRealtimeObservedOffset": "0000000000000004_5ea721dfa3214fda8eaa8934491488d9",
+  "restoredRealtimeReadiness": [
+    {
+      "elapsedMs": 2123,
+      "ready": true
+    }
+  ],
+  "discardedOffsetRejected": true,
+  "rewrittenOrdinalPreserved": true,
+  "abandonedHistoryRejectedAfterRewriteAndSeal": true,
+  "unexpiredTokenFenced": true,
+  "cronResumedAfterValidation": true,
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": "no",
+  "deploymentId": "cb437e5a-e2df-40dd-a670-3b1aa004e0d4",
+  "previousDeploymentId": "af3e6e1b-ba23-4030-930e-313aca8b66bc",
+  "memoryMiB": 2048,
+  "deployedBundle": "9866f0071e17ae5d8a2db9a54dcb0921b55e585e34130c5c573c1be8afb84c1c"
+}

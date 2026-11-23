@@ -1,0 +1,21 @@
+{
+  "sourceCommit": "ad37ffb5db5029359801067ea0f5d47b79818dcc",
+  "sourceDirty": false,
+  "rawReportSha256": "6559e8ab52855337f363355be71df9f2e7f4657c985f0b3d738d24090a2c861f",
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "name": "a real point-in-time branch adopts sealed objects, fences restored tokens, and isolates new writes",
+      "status": "passed",
+      "durationMs": 73317.39470799999
+    },
+    {
+      "name": "a stopped deployed Function restores its own branch, reconciles sealed bytes, and resumes in a fresh epoch",
+      "status": "passed",
+      "durationMs": 129146.04462500001
+    }
+  ]
+}

@@ -125,5 +125,6 @@
     "matchedFrameCapReduction": 4.021929824561403,
     "selectedDefaultReduction": 26.2,
     "note": "The matched 1024-frame comparison isolates removal of sealed per-append boundary arrays. The 131072-frame profile additionally reduces object/manifest/ledger count from 1024 to 8. This synthetic retained-footprint result is separate from actual sealing, replay and writer-latency qualification. The first harness attempt hit an SQL parameter inference error, cleaned up its owned schemas and was corrected with explicit UUID casts before this successful run."
-  }
+  },
+  "supersededPolicyNote": "Historical retained-only measurement: selectedDefaultReduction refers to the former 131072-frame candidate. The final default is 8192 frames after measuring staging index allocation, freeze latency and sealer memory. See 2026-11-23-replay-final.md and 2026-11-23-replay-metadata-final.json; do not interpret 26.2x as total Postgres savings."
 }
