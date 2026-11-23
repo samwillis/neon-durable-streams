@@ -1,66 +1,161 @@
-# Durable Streams server library for Neon
+# Durable Streams for Neon
 
-Licensed under [Apache-2.0](LICENSE). Copyright 2026 Databricks, Inc.
+A TypeScript library for building your own [Durable Streams](https://durablestreams.com/) server on Neon. Embed a Fetch handler in your Neon Function and use your own Postgres, Object Storage, and Realtime resources. Your application supplies authentication, permissions, and deployment configuration.
 
-Design research dated **22 November 2026** for a production-grade TypeScript library. Users embed the library in their own server, deploy it to their own Neon Function, and operate their own Lakebase Postgres, Object Storage, and Realtime resources.
+Supports append and replay, long-poll and SSE, JSON batching, idempotent producers, stream closure and expiry, recursive forks, and durable subscriptions with webhooks or pull wakes.
 
-**Target:** full Durable Streams protocol conformance, durable recovery, safe upgrades, tenant isolation, bounded resource use, and documented operating limits. Production readiness requires evidence from fault testing, deployment tests, restore drills, rolling upgrades, and workload benchmarks, in addition to the conformance suite.
+**Status:** unpublished; available from a source checkout or package tarball. The current implementation passed all **338 pinned upstream conformance cases**, including subscriptions. See the [qualification report](docs/qualification/2026-11-23-replay-final.md) for tested builds, workloads, and operating limits.
 
-Start with the [production library design](docs/production-library.md) for the proposed package API, ownership boundaries, reliability contract, migration and recovery design, and release gates. The [protocol and platform investigation](docs/investigation.md) contains the underlying protocol/storage analysis. The [source manifest](docs/research-sources.json) records upstream source revisions and retrieved documentation hashes.
+## How it works
 
-The [plan review](docs/plan-review.md) finds enough direction to start, with explicit transaction, lifecycle, subscription, and reclamation contracts to settle before those implementations are frozen. The [implementation plan](docs/implementation-plan.md) gives the current milestone order and acceptance criteria.
+- **Neon Function** serves the Durable Streams API through the library's Fetch handler.
+- **Neon Postgres** stores stream identities, hot appends, chunk manifests, producer state, and subscriptions.
+- **Neon Object Storage** holds sealed immutable chunks. Sealing removes their append rows from Postgres; historical replay uses verified HTTP range reads and a bounded block cache.
+- **Neon Realtime** delivers committed append payloads to live readers after authorized durable catch-up. The Function orders and deduplicates updates, checks continuity, and replays durable data when needed.
 
-The main findings are:
+Clients own their resume offsets. Ordinary readers do not create persistent per-reader cursors; explicitly created durable subscriptions store their acknowledgements.
 
-- Current protocol scope includes recursive stream forks and a subscription control plane, alongside append, replay, long-poll, SSE, JSON mode, closure, TTL, and idempotent producers.
-- The conformance CLI leaves six subscription tests disabled. The full target needs a programmatic harness with `subscriptions: true`.
-- Neon Functions currently defaults to **100 concurrent invocations per account**. Treat open live reads as consumers of that budget until deployment measurements establish otherwise.
-- Realtime requires **Postgres 18**, is in beta, and should signal changes to durable state. Reads should resume from persisted offsets.
-- Sealing needs a recoverable Postgres-to-object-storage handoff. Historical restore requires Neon or a matching backup to recover every referenced object; the library protects current stream/fork/reader references.
-- The upstream Cloudflare server is already distributed as an embeddable library, providing a useful API precedent. Its platform coordination mechanisms need a transactional Postgres implementation here.
-- Neon's published SLA covers Postgres compute endpoints; it does not establish an availability guarantee for the complete Functions/Storage/Realtime stack.
+## Get started
 
-The quality target is a production library. The unpublished release candidate provides an authenticated Fetch handler, explicit migrations, and a durable Postgres hot log. Realtime-backed long-poll/SSE forwards committed append payloads after authorized durable catch-up, with bounded raw windows and replay for recovery; see the [payload contract](docs/realtime-payload-v1.md). Recoverable sealed storage is implemented and tested against Neon Object Storage. Recursive forks and partial binary/JSON forks are implemented. Durable subscriptions, installation-wide live admission, and explicit branch recovery are implemented. The [qualification index](docs/qualification/README.md) records tested builds, workloads, and operational limits.
+Use **Node.js 24**, `pg` 8, and a Neon branch with **Postgres 18**, Realtime enabled, and a private Object Storage bucket. Start with the [Neon Function example](examples/neon-function/README.md) for authentication, environment variables, maintenance triggers, health checks, and shutdown handling.
 
-## Current implementation
+The package is not on npm yet. Build a tarball from this checkout:
 
-The four-file [database baseline](docs/migrations.md) installs a compact hot/chunk layout: sealing deletes append rows and keeps one verified directory entry per object block. Ordinal/history offsets eliminate per-append sealed SQL metadata. Defaults seal at 4 MiB, 8,192 frames, or one hour; replay uses verified HTTP ranges and a bounded block cache. Earlier development migration histories require a fresh schema.
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm pack
+```
 
-The API supports PUT/POST/GET/HEAD/DELETE, JSON batching, producer deduplication/fencing, Stream-Seq, closure, TTL/absolute expiry, conditional reads, tenant isolation, and bounded replay pages. Long-poll and SSE are available with an explicitly configured notifier. Subscription control APIs are available with an explicitly configured persistent keyring. Consumer-owned database pools remain open when the handler closes; importing the library never provisions resources or migrates a database.
+Install that tarball in your application:
+
+```sh
+pnpm add /path/to/samwillis-durable-streams-neon-0.0.1.tgz pg @neon/functions
+```
+
+### Create the handler
+
+The following configuration uses the same environment variable names as the Neon Function example. `authenticate` and `authorize` are application-owned functions from your `auth.ts` module.
 
 ```ts
 import { Pool } from 'pg'
+import { attachDatabasePool } from '@neon/functions'
 import { createDurableStreams } from '@samwillis/durable-streams-neon'
 import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
+import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
+import { authenticate, authorize } from './auth.js'
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 })
+const pool = new Pool({ connectionString: process.env.DATABASE_URL!, max: 5 })
+attachDatabasePool(pool)
+
+const objects = createS3ChunkStorage({
+  endpoint: process.env.AWS_ENDPOINT_URL_S3!,
+  region: process.env.AWS_REGION!,
+  bucket: process.env.DS_BUCKET!,
+})
 const notifier = createNeonRealtimeNotifier({
-  url: process.env.NEON_REALTIME_URL!,
-  secret: process.env.NEON_REALTIME_SECRET!,
+  url: process.env.DS_REALTIME_URL!,
+  secret: process.env.DS_REALTIME_SECRET!,
   database: new URL(process.env.DATABASE_URL!).pathname.slice(1),
 })
+
 const streams = createDurableStreams({
-  postgres: { pool, schema: 'durable_streams' },
-  live: { notifier },
-  auth: {
-    authenticate: verifyCaller, // Return { tenantId, subject }, or null.
-    authorize: checkPermission, // Check operation and path for that principal.
+  postgres: {
+    pool,
+    schema: 'durable_streams',
+    environmentId: process.env.DS_ENVIRONMENT_ID!, // Serving Neon branch ID.
   },
-  publicBaseUrl: 'https://streams.example.com/v1/stream',
+  storage: { objects },
+  live: { notifier },
+  auth: { authenticate, authorize },
 })
+
 export default { fetch: streams.fetch }
 ```
 
-On Neon Functions, register the consumer's pool with `attachDatabasePool` from `@neon/functions`. Run `migrate` from the package's `/migrations` entrypoint through a direct connection as an explicit deployment step before serving requests. The package is currently consumed from this checkout/tarball; it has not been published to npm.
+`authenticate(request)` verifies the caller and returns `{ tenantId, subject }`, optionally with `expiresAt` in Unix milliseconds, or `null`. `authorize(context)` checks that principal's operation and stream path and returns a boolean. Both hooks may be asynchronous. Derive tenant identity from verified credentials. Keep Realtime and storage credentials on the server.
 
-See [development and tests](docs/development.md) for commands and the [compact storage contract](docs/compact-storage-v2.md) for current ownership and resource bounds. Clean runtime `03ad7b6` passed direct qualification against actual Neon: **68 unit/property, 97 Neon regression, 21 transaction/process-loss, nine deployed Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**. Conformance enables subscriptions and collection. Automatic CI was skipped as requested; [evidence](docs/qualification/README.md) records the complete direct runs, the initial coordinator timeout and unchanged-source recheck, and earlier workload measurements. The [lifecycle design](docs/lifecycle-design.md) describes explicit ownership and typed transitions without an actor runtime. The package remains unpublished; workload capacity and provider historical object recovery retain their documented qualification limits.
+The default stream mount is `/v1/stream`. Set `basePath` to change it, `publicBaseUrl` to set the canonical mount URL, and `allowedOrigins` to allow specific browser origins. See the [complete example](examples/neon-function/index.ts) for a working API-key policy and the routes omitted from this minimal handler.
 
+### Initialize the database
 
+Before serving requests, run `migrate` as an explicit deployment step using a **direct** Postgres connection. Use the same schema, branch ID, and object-storage configuration as the handler:
 
-For tiered storage, supply `storage: { objects }` using `createS3ChunkStorage` from `/s3`. Call `migrate(directPool, { storageIdentity: objects.identity })` explicitly and schedule bounded `streams.maintain()` batches from an authenticated worker or cron Function. Read the [sealed storage contract](docs/sealed-storage-v1.md) before operating the worker. Physical object deletion is disabled by default; the canonical schema supports an explicit collection opt-in during stopped administration and delegates historical object recovery to Neon or matching backups. Read the [reclamation contract](docs/reclamation-v1.md) before enabling it. Explicit quiesced recovery and branch adoption are available through `/operations`; read the [operations contract](docs/operations-v1.md) before cutover.
+```ts
+import { migrate } from '@samwillis/durable-streams-neon/migrations'
 
-See the [Neon Function consumer](examples/neon-function/README.md) for deployment, ownership, authentication, and scheduled recovery wiring.
+await migrate(directPool, {
+  schema: 'durable_streams',
+  environmentId: process.env.DS_ENVIRONMENT_ID!,
+  storageIdentity: objects.identity,
+})
+```
 
-See the [subscription contract](docs/subscriptions-v1.md) for registration barriers, token/key management, worker scheduling, and delivery guarantees.
+Here, `directPool` is a deployment-owned `pg.Pool` using your direct connection string, and `objects` uses the adapter configuration shown above. Close those deployment clients when initialization finishes. Imports and constructors do not run migrations or provision Neon resources. Use a pooled connection for request traffic.
 
-Consumer deployment, monitoring, recovery, supported dependencies, and traffic/storage responsibilities are documented in the [operator runbook](docs/operator-runbook.md).
+The current prerelease requires a fresh schema and empty object namespace. Earlier development layouts require recreation. See [database initialization](docs/migrations.md) and [installation and recovery](docs/operations-v1.md).
+
+### Schedule maintenance
+
+Run bounded batches from an authenticated worker or Neon schedule trigger:
+
+```ts
+await streams.maintain({
+  maxChunks: 64,
+  maxSubscriptionWork: 64,
+  timeBudgetMs: 40_000,
+})
+```
+
+Maintenance seals chunks, dispatches subscription work, and cleans up metadata. Schedule it even when your handler starts opportunistic work after appends: scheduled passes recover work after process loss and during quiet periods. The [Function example](examples/neon-function/README.md#maintenance-and-recovery) wires a minute cron trigger and bounded append hints. For an administrative drain of younger hot tails, use `forceHot: true`.
+
+### Read and write a stream
+
+With the example's bearer-key authentication, set `STREAM_URL` to your Function's `/v1/stream` mount and `STREAM_TOKEN` to an application key:
+
+```sh
+curl -i -X PUT "$STREAM_URL/example" \
+  -H "Authorization: Bearer $STREAM_TOKEN" \
+  -H 'Content-Type: text/plain' --data-binary 'hello'
+
+curl -i -X POST "$STREAM_URL/example" \
+  -H "Authorization: Bearer $STREAM_TOKEN" \
+  -H 'Content-Type: text/plain' --data-binary ' world'
+
+curl -i "$STREAM_URL/example?offset=-1" \
+  -H "Authorization: Bearer $STREAM_TOKEN"
+```
+
+Save `Stream-Next-Offset` and pass it as `offset` on the next read. Continue paging until `Stream-Up-To-Date: true`. Treat offsets as opaque strings. Add `live=long-poll` or `live=sse` to follow new appends; `offset=now` starts at the current tail. With SSE, advance the saved checkpoint only after its control event. See the [Durable Streams protocol](https://github.com/durable-streams/durable-streams) for client libraries and the complete HTTP interface.
+
+## Configuration and operations
+
+| Setting | Default |
+| --- | --- |
+| Received body / stored frame limit | 1 MiB each |
+| Replay page | 2 MiB, up to 8192 frames and 64 immutable objects |
+| Chunk sealing thresholds | 4 MiB, 8192 frames, or one hour from the first append |
+| Verification block target | 64 KiB |
+| Verified cache | 32 MiB per server instance |
+| Cross-object read-ahead | Off; configurable to one following read |
+
+Use the `limits` and `storage` options to tune page budgets and sealing policy; the 64-object page cap is fixed. A chunk's triggering frame can exceed its byte target. The [storage contract](docs/compact-storage-v2.md) describes hard bounds and separate pending-read and response-memory budgets; size these alongside Function concurrency and database capacity.
+
+To enable durable subscriptions, initialize a persistent keyring with `initializeSubscriptions` from `/subscriptions`, then supply `subscriptions: { keyring }` to the handler. All instances share that keyring. Follow the [subscription guide](docs/subscriptions-v1.md) for registration, acknowledgements, delivery, and key rotation.
+
+Your application owns its database pool, notifier, and storage adapter. On shutdown, await `streams.close()` before closing those clients. Monitor request errors, live-reader admission, staging bytes, maintenance backlog, and delivery lag. Physical object collection is disabled by default; historical recovery needs every referenced object's original bytes, including objects deleted after the restore point. Follow the [operator runbook](docs/operator-runbook.md) and [collection contract](docs/reclamation-v1.md) before enabling deletion or restoring a branch.
+
+## Reference
+
+| Guide | Covers |
+| --- | --- |
+| [Neon Function example](examples/neon-function/README.md) | Deployment configuration, authentication, cron, health, and shutdown |
+| [Storage layout](docs/compact-storage-v2.md) | Hot data, sealed blocks, range reads, and resource bounds |
+| [Subscriptions](docs/subscriptions-v1.md) | Webhooks, pull wakes, scoped tokens, and acknowledgements |
+| [Operations](docs/operator-runbook.md) | Monitoring, keys, deployment, and recovery |
+| [Qualification](docs/qualification/README.md) | Tested revisions, conformance, benchmarks, and limits |
+| [Development](AGENTS.md) | Repository conventions, local checks, and real-Neon testing |
+
+## License
+
+[Apache-2.0](LICENSE). Copyright 2026 Databricks, Inc.

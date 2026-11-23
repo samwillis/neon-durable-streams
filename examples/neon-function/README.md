@@ -2,7 +2,7 @@
 
 This consumer embeds the library in a Node.js 24 Neon Function. It owns the pool, Realtime adapter, S3 adapter, authentication policy, shutdown handling, and maintenance routes. The library never provisions resources or runs migrations while handling a request.
 
-The example demonstrates deployment wiring. The package remains unreleased while recovery/adoption, reclamation, and production qualification are incomplete.
+The example demonstrates deployment wiring. The package remains unpublished; the [qualification report](../../docs/qualification/2026-11-23-replay-final.md) records completed conformance, recovery, collection, and deployment checks and their operating limits.
 
 ## Environment
 
@@ -56,4 +56,4 @@ The hosted-service conformance/ingress fixture sets `DS_MAINTENANCE_HINTS=off` s
 
 A separate qualification branch runs the same Function with hints enabled and no cron trigger. It proves pull-wake delivery through Realtime and full-chunk sealing without manual maintenance; the ordinary profile disables hints to prove independent cron recovery. The load workflow uses the combined hints-plus-cron profile.
 
-The current four-file baseline removes sealed append rows and retains compact boundary directories. Cron and hints use size/count/age policy; the authenticated manual maintenance route forces a drain. Read the [compact storage and installation contract](../../docs/compact-storage-v2.md). The cron integration fixture uses a one-second age override; the hints-only fixture uses the production one-hour default.
+The current four-file baseline removes sealed append rows and retains one verified directory entry per object block. Cron and hints use size/count/age policy; the authenticated manual maintenance route forces a drain. Read the [compact storage and installation contract](../../docs/compact-storage-v2.md). The cron integration fixture uses a one-second age override; the hints-only fixture uses the production one-hour default.
