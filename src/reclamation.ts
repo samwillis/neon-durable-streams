@@ -16,6 +16,10 @@ const UUID = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
 const KEY = new RegExp(`^v1/(${UUID})/(${UUID})/(${UUID})/([0-9a-f]{64})\\.ndsc$`)
 const BATCH = 128
 const CLAIM_MS = 120_000
+// Stored cursor order is stable. These rotate work fairly; they are not object
+// lifecycle states, and an empty task must still advance to the next task.
+const COLLECTION_TASKS = ['retire', 'collect', 'pruneChunk', 'inventory', 'verifyOrphan', 'pruneMetadata'] as const
+const METADATA_TASKS = ['wakes', 'subscriptions', 'outbox', 'generation-data', 'generation-rows', 'paths', 'objects', 'pins'] as const
 
 /** Durable phase rotation is shared across instances, including one-round hints.
  * Every object operation runs outside SQL. Only explicit operator policy enables it. */
@@ -43,17 +47,17 @@ export class ReclamationManager {
       const policy = (await client.query<{ enabled: boolean; work_phase: number }>(`SELECT enabled,work_phase FROM ${this.schema}.reclamation_policy FOR UPDATE`)).rows[0]!
       if (!policy.enabled) return undefined
       this.capabilities(policy.enabled)
-      await client.query(`UPDATE ${this.schema}.reclamation_policy SET work_phase=(work_phase+1)%6`)
+      await client.query(`UPDATE ${this.schema}.reclamation_policy SET work_phase=(work_phase+1)%${COLLECTION_TASKS.length}`)
       return policy.work_phase
     })
     if (phase === undefined) return { ...result, worked: false }
-    switch (phase) {
-      case 0: result.reclaimedChunks = await this.retire(); break
-      case 1: result.deletedObjects = await this.collect(); break
-      case 2: result.prunedRows = await this.pruneChunk(); break
-      case 3: result.inventoriedObjects = await this.inventory(); break
-      case 4: await this.verifyOrphan(); break
-      case 5: result.prunedRows = await this.pruneMetadata(); break
+    switch (COLLECTION_TASKS[phase]) {
+      case 'retire': result.reclaimedChunks = await this.retire(); break
+      case 'collect': result.deletedObjects = await this.collect(); break
+      case 'pruneChunk': result.prunedRows = await this.pruneChunk(); break
+      case 'inventory': result.inventoriedObjects = await this.inventory(); break
+      case 'verifyOrphan': await this.verifyOrphan(); break
+      case 'pruneMetadata': result.prunedRows = await this.pruneMetadata(); break
     }
     // Even an empty phase must not end an unbudgeted round before other phases.
     return { ...result, worked: true }
@@ -67,7 +71,7 @@ export class ReclamationManager {
       const chunks = await client.query<{ id: string; object_key: string | null; sha256: string | null; encoded_bytes: number | null }>(`SELECT id,object_key,sha256,encoded_bytes
         FROM ${this.schema}.chunks WHERE stream_id=$1 AND retired_at IS NULL ORDER BY id LIMIT 16 FOR UPDATE`, [stream.id])
       for (const chunk of chunks.rows) {
-        // Backfill pre-0006 SEALED manifests, which have no upload-intent row.
+        // Preserve deletion retry identity even if its upload intent was lost.
         if (chunk.object_key) await client.query(`INSERT INTO ${this.schema}.chunk_objects (object_key,stream_id,chunk_id,sha256,encoded_bytes)
           VALUES ($1,$2,$3,$4,$5) ON CONFLICT (object_key) DO NOTHING`, [chunk.object_key, stream.id, chunk.id, chunk.sha256, chunk.encoded_bytes])
         await client.query(`UPDATE ${this.schema}.chunks SET retired_at=clock_timestamp(),
@@ -175,7 +179,7 @@ export class ReclamationManager {
       const chunk = (await client.query<{ id: string; stream_id: string; start_offset: string; end_offset: string; state: string }>(`SELECT c.id,c.stream_id,c.start_offset,c.end_offset,c.state FROM ${this.schema}.chunks c JOIN ${this.schema}.streams s ON s.id=c.stream_id
         WHERE c.retired_at IS NOT NULL AND ${this.unreferenced()} AND ${this.noSubscriptionRefs('s.id')}
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.streams child WHERE child.source_id=s.id)
-        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes j WHERE j.stream_id=s.id AND NOT j.processed)
+        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes j WHERE j.stream_id=s.id)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.replay_pins p WHERE p.chunk_id=c.id AND p.expires_at>clock_timestamp())
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.chunk_objects o WHERE o.chunk_id=c.id AND o.collected_at IS NULL)
         ORDER BY c.retired_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED`)).rows[0]
@@ -197,20 +201,21 @@ export class ReclamationManager {
   private async pruneMetadata(): Promise<number> {
     return this.guard.run({}, async (client) => {
       const phase = (await client.query<{ metadata_phase: number }>(`SELECT metadata_phase FROM ${this.schema}.reclamation_policy FOR UPDATE`)).rows[0]!.metadata_phase
-      await client.query(`UPDATE ${this.schema}.reclamation_policy SET metadata_phase=(metadata_phase+1)%8`)
-      if (phase === 0) return this.pruneWake(client)
-      if (phase === 1) return (await client.query(`WITH batch AS (SELECT id FROM ${this.schema}.subscriptions s WHERE deleted_at IS NOT NULL
+      await client.query(`UPDATE ${this.schema}.reclamation_policy SET metadata_phase=(metadata_phase+1)%${METADATA_TASKS.length}`)
+      const task = METADATA_TASKS[phase]
+      if (task === 'wakes') return this.pruneWake(client)
+      if (task === 'subscriptions') return (await client.query(`WITH batch AS (SELECT id FROM ${this.schema}.subscriptions s WHERE deleted_at IS NOT NULL
         AND current_wake IS NULL AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_wakes w WHERE w.subscription_id=s.id)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_members m WHERE m.subscription_id=s.id)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_pending_links l WHERE l.subscription_id=s.id)
         ORDER BY deleted_at,id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED) DELETE FROM ${this.schema}.subscriptions s USING batch b WHERE s.id=b.id`)).rowCount ?? 0
-      if (phase === 2) return this.pruneOutbox(client)
-      if (phase === 3 || phase === 4) return this.pruneGeneration(client, phase === 4)
-      if (phase === 5) return (await client.query(`WITH batch AS (SELECT p.tenant_id,p.path FROM ${this.schema}.paths p WHERE active_stream_id IS NULL
+      if (task === 'outbox') return this.pruneOutbox(client)
+      if (task === 'generation-data' || task === 'generation-rows') return this.pruneGeneration(client, task === 'generation-rows')
+      if (task === 'paths') return (await client.query(`WITH batch AS (SELECT p.tenant_id,p.path FROM ${this.schema}.paths p WHERE active_stream_id IS NULL
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.streams s WHERE s.tenant_id=p.tenant_id AND s.path=p.path)
         ORDER BY p.tenant_id,p.path LIMIT ${BATCH} FOR UPDATE OF p SKIP LOCKED)
         DELETE FROM ${this.schema}.paths p USING batch b WHERE p.tenant_id=b.tenant_id AND p.path=b.path`)).rowCount ?? 0
-      if (phase === 6) return (await client.query(`WITH batch AS (SELECT object_key FROM ${this.schema}.chunk_objects WHERE collected_at IS NOT NULL
+      if (task === 'objects') return (await client.query(`WITH batch AS (SELECT object_key FROM ${this.schema}.chunk_objects WHERE collected_at IS NOT NULL
         AND claim_token IS NULL ORDER BY collected_at,object_key LIMIT ${BATCH} FOR UPDATE SKIP LOCKED)
         DELETE FROM ${this.schema}.chunk_objects o USING batch b WHERE o.object_key=b.object_key`)).rowCount ?? 0
       return (await client.query(`WITH batch AS (SELECT id,chunk_id FROM ${this.schema}.replay_pins WHERE expires_at<=clock_timestamp() ORDER BY expires_at,id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED)
@@ -233,12 +238,12 @@ export class ReclamationManager {
   }
   private async pruneOutbox(client: PoolClient): Promise<number> {
     const candidate = (await client.query<{ tenant_id: string }>(`SELECT s.tenant_id FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id=c.stream_id
-      WHERE (c.processed OR NOT EXISTS (SELECT 1 FROM ${this.schema}.subscriptions x WHERE x.tenant_id=s.tenant_id AND x.deleted_at IS NULL))
+      WHERE (NOT EXISTS (SELECT 1 FROM ${this.schema}.subscriptions x WHERE x.tenant_id=s.tenant_id AND x.deleted_at IS NULL))
       ORDER BY c.created_at,c.stream_id,c.version LIMIT 1`)).rows[0]
     if (!candidate) return 0
     await client.query(`SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, [`durable-streams:subscription-registry:${this.schema}:${candidate.tenant_id}`])
     return (await client.query(`WITH batch AS (SELECT c.stream_id,c.version FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id=c.stream_id
-      WHERE s.tenant_id=$1 AND (c.processed OR NOT EXISTS (SELECT 1 FROM ${this.schema}.subscriptions x WHERE x.tenant_id=s.tenant_id AND x.deleted_at IS NULL))
+      WHERE s.tenant_id=$1 AND (NOT EXISTS (SELECT 1 FROM ${this.schema}.subscriptions x WHERE x.tenant_id=s.tenant_id AND x.deleted_at IS NULL))
       ORDER BY c.created_at,c.stream_id,c.version LIMIT ${BATCH} FOR UPDATE OF c SKIP LOCKED)
       DELETE FROM ${this.schema}.stream_changes c USING batch b WHERE c.stream_id=b.stream_id AND c.version=b.version`, [candidate.tenant_id])).rowCount ?? 0
   }

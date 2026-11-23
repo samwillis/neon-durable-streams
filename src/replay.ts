@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { PoolClient } from 'pg'
+import type { StoredFrame } from './replay-plan.js'
 import { StreamError } from './errors.js'
 import type { InstallationGuard } from './installation.js'
 
@@ -12,8 +13,8 @@ export function assertReplayDeadline(deadline: number): void {
 /** Acquire under the replay snapshot; object I/O never holds its SQL locks. */
 export class ReplayPins {
   constructor(private readonly schema: string, private readonly guard: InstallationGuard) {}
-  async acquire(client: PoolClient, frames: readonly { readonly chunk_id: string | null; readonly payload: Buffer | null }[]): Promise<ReplayLease | undefined> {
-    const chunks = [...new Set(frames.filter((frame) => frame.payload === null).map((frame) => frame.chunk_id!))].sort()
+  async acquire(client: PoolClient, frames: readonly StoredFrame[]): Promise<ReplayLease | undefined> {
+    const chunks = [...new Set(frames.flatMap((frame) => frame.storage === 'object' ? [frame.manifest.id] : []))].sort()
     if (!chunks.length) return undefined
     const locked = await client.query<{ id: string; retired_at: Date | null }>(`SELECT id, retired_at FROM ${this.schema}.chunks
       WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE`, [chunks])

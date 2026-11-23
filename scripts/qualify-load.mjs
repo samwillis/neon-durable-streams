@@ -66,7 +66,6 @@ const sample = async (phase = 'writing') => {
   const row = (await pool.query(`SELECT
     (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".chunks c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE c.state = 'frozen' AND s.path LIKE $1) AS frozen_chunks,
     (SELECT COALESCE(sum(a.payload_bytes), 0) FROM "${env.TEST_FUNCTION_SCHEMA}".appends a JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = a.stream_id WHERE a.payload IS NOT NULL AND s.path LIKE $1) AS local_payload_bytes,
-    (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".stream_changes c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE NOT c.processed AND s.path LIKE $1) AS pending_changes,
     (SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".stream_changes c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id = c.stream_id WHERE s.path LIKE $1) AS retained_changes,
     (SELECT count(*) FROM pg_stat_activity WHERE datname=current_database()) AS database_connections`, [`${run}/%`])).rows[0]
   const response = await request('health', 'GET', undefined, { 'x-ds-maintenance-key': env.TEST_FUNCTION_MAINTENANCE_KEY })
@@ -74,7 +73,7 @@ const sample = async (phase = 'writing') => {
   const health = await response.json()
   if (health.build !== env.TEST_FUNCTION_BUNDLE_SHA) throw new Error('Runtime sampling reached a different build')
   backlog.push({ phase, elapsedSeconds: started ? (performance.now() - started) / 1000 : 0, frozenChunks: Number(row.frozen_chunks), localPayloadBytes: Number(row.local_payload_bytes),
-    pendingChanges: Number(row.pending_changes), retainedChanges: Number(row.retained_changes), databaseConnections: Number(row.database_connections), runtime: health.runtime ?? null })
+    pendingChanges: Number(row.retained_changes), retainedChanges: Number(row.retained_changes), databaseConnections: Number(row.database_connections), runtime: health.runtime ?? null })
 }
 try {
   connectionsBefore = Number((await pool.query('SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()')).rows[0].count)

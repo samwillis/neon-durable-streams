@@ -35,6 +35,7 @@ CREATE TABLE __SCHEMA__.chunks (
   CHECK ((state = 'frozen' AND object_key IS NULL AND sha256 IS NULL AND encoded_bytes IS NULL AND sealed_at IS NULL)
     OR (state = 'sealed' AND object_key IS NOT NULL AND sha256 ~ '^[0-9a-f]{64}$' AND encoded_bytes > 0 AND sealed_at IS NOT NULL)),
   retired_at timestamptz,
+  CONSTRAINT chunk_claim CHECK ((claim_token IS NULL) = (claim_until IS NULL)),
   CONSTRAINT chunk_directory_shape CHECK
     (end_deltas IS NULL OR __SCHEMA__.valid_directory(end_deltas,frame_count,payload_bytes,start_offset,end_offset)),
   CONSTRAINT sealed_directory_required CHECK
@@ -78,7 +79,8 @@ CREATE TABLE __SCHEMA__.chunk_objects (
   claim_epoch bigint NOT NULL DEFAULT 0,
   claim_until timestamptz,
   next_attempt_at timestamptz NOT NULL DEFAULT clock_timestamp(),
-  CHECK (collected_at IS NULL OR retired_at IS NOT NULL)
+  CHECK (collected_at IS NULL OR retired_at IS NOT NULL),
+  CONSTRAINT object_claim CHECK ((claim_token IS NULL) = (claim_until IS NULL))
 );
 CREATE INDEX chunk_objects_chunk ON __SCHEMA__.chunk_objects (chunk_id);
 CREATE INDEX chunk_objects_pending ON __SCHEMA__.chunk_objects (retired_at, object_key)

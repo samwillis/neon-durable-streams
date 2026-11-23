@@ -26,3 +26,5 @@ Initialization is transactional and serialized with an advisory lock. The migrat
 This consolidation replaces the unreleased nine-step development history. Existing development installations require a **fresh schema**. The runner rejects their recorded history before changing it. It does not reset databases, rewrite migration receipts, adopt old data, or run a historical conversion. Preserve any development data you need and keep its matching Git revision and object store for reading it. The earlier migration SQL and conversion tooling remain available in Git history; they are not part of the current package. Partial migration targets are no longer supported.
 
 Immutable object format v1 and the final logical schema are unchanged. Recovery, branch adoption, and current-data collection fences remain in place; a new baseline is not a recovery procedure. See [recovery](operations-v1.md) and [storage](compact-storage-v2.md).
+
+The lifecycle cleanup also removes redundant outbox/publication flags and adds recovery and ownership checks. See [lifecycle design](lifecycle-design.md). These baseline checksum changes require a fresh development schema too.

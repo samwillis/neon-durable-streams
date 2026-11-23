@@ -24,7 +24,7 @@ export interface RecoveryOptions extends OperationTarget {
   /** Set when adopting to a new server URL; omit to retain the original URL. */
   readonly publicBaseUrl?: string
 }
-interface RecoveryRow extends InstallationIdentity {
+interface RecoveryFields {
   recovery_token: string | null
   recovery_source_epoch: string | null
   completed_recovery_token: string | null
@@ -35,8 +35,13 @@ interface RecoveryRow extends InstallationIdentity {
   recovery_verified: string
   recovery_complete: boolean
 }
+type RecoveringFields = RecoveryFields & { recovery_token: string; recovery_source_epoch: string; recovery_target_environment: string }
+type ActiveInstallation = InstallationIdentity & RecoveryFields & { serving_state: 'active'; recovery_token: null }
+type VerifyingRecovery = InstallationIdentity & RecoveringFields & { serving_state: 'recovering'; recovery_complete: false }
+type VerifiedRecovery = InstallationIdentity & RecoveringFields & { serving_state: 'recovering'; recovery_complete: true }
+type RecoveryRow = ActiveInstallation | VerifyingRecovery | VerifiedRecovery
 function target(options: OperationTarget): string { return validateSchema(options.schema ?? 'durable_streams') }
-function validRecovery(row: RecoveryRow | undefined, token: string): asserts row is RecoveryRow {
+function validRecovery(row: RecoveryRow | undefined, token: string): asserts row is VerifyingRecovery | VerifiedRecovery {
   if (!row || row.serving_state !== 'recovering' || row.recovery_token !== token) throw new StorageCompatibilityError('Recovery token is stale or installation is active')
 }
 /** Administrative data-plane operation; never expose through the stream API. */

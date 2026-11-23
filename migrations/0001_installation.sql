@@ -16,7 +16,13 @@ CREATE TABLE __SCHEMA__.installation (
   recovery_cursor uuid,
   recovery_verified bigint NOT NULL DEFAULT 0,
   recovery_complete boolean NOT NULL DEFAULT false,
-  recovery_started_at timestamptz
+  recovery_started_at timestamptz,
+  CONSTRAINT recovery_progress CHECK (recovery_verified >= 0),
+  CONSTRAINT recovery_operation CHECK (
+    (serving_state = 'active' AND recovery_token IS NULL)
+    OR (serving_state = 'recovering' AND recovery_token IS NOT NULL
+      AND recovery_source_epoch IS NOT NULL AND recovery_target_environment IS NOT NULL
+      AND recovery_started_at IS NOT NULL))
 );
 
 CREATE TABLE __SCHEMA__.live_capacity (

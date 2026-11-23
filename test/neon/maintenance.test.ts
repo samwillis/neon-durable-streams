@@ -64,7 +64,7 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
   const stats = await handler.maintain({ maxChunks: 128, maxSubscriptionWork: 128, timeBudgetMs: 1 })
   expect(stats.changes).toBe(128)
   expect(stats.sealed).toBe(1)
-  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1 AND NOT processed`, [stream.id])).rows[0].count).toBe('3')
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1`, [stream.id])).rows[0].count).toBe('3')
   // Completed outbox work must not grow with every append. The three pending
   // changes still carry the next transaction's durable delivery intent.
   expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1`, [stream.id])).rows[0].count).toBe('3')

@@ -11,20 +11,24 @@ import type { ControlRoute, SubscriptionConfig } from './subscription-protocol.j
 import type { SubscriptionOptions } from './subscriptions.js'
 import { deliverWebhook, webhookTarget } from './webhook.js'
 import { WakeTokens } from './wake-token.js'
+import { decideCompletion, decideDelivery, decideMembership, leaseState } from './subscription-state.js'
+import type { WakeState } from './subscription-state.js'
 
 interface Sub {
   id: string; tenant_id: string; name: string; config: SubscriptionConfig; config_hash: string; pattern_regex: string | null
   public_base_url: string; generation: string; current_wake: string | null; holder: string | null; lease_until: Date | null
   retry_count: number; retry_at: Date | null; next_work_at: Date | null; member_count: number; blocked_members: number
-  created_at: Date; deleted_at: Date | null; lease_valid?: boolean
+  created_at: Date; deleted_at: Date | null; lease_valid?: boolean | null
 }
+interface ScheduledSubscription extends Sub { readonly retry_due: boolean }
+interface AvailableWake extends Wake { readonly delivery_available: boolean }
 interface Member {
   path: string; stream_id: string | null; explicit_link: boolean; glob_link: boolean; acked_offset: string; tail_offset: string
 }
 interface Snapshot { path: string; stream_id: string | null; link_type: 'explicit' | 'glob'; acked_offset: string; tail_offset: string }
 interface Wake {
   id: string; subscription_id: string; tenant_id: string; generation: string; kind: 'webhook' | 'pull-wake'
-  token_hash: Buffer | null; token_cipher: Buffer | null; state: string; delivery_claim: string | null; delivery_until: Date | null; pull_published: boolean; created_at: Date
+  token_hash: Buffer | null; token_cipher: Buffer | null; state: WakeState; delivery_claim: string | null; delivery_until: Date | null; created_at: Date
 }
 interface WebhookJob { sub: Sub; wake: Wake; streams: readonly Snapshot[]; claim: string }
 interface Change { stream_id: string; version: string; before_offset: string; after_offset: string; kind: string; fanout_after: string | null; tenant_id: string; path: string; active_stream_id: string | null }
@@ -264,21 +268,20 @@ export class PostgresSubscriptions {
       await this.streams.appendWake(client, sub.tenant_id, sub.config.wake_stream!, members.filter((member) => member.tail_offset > member.acked_offset).map((member) => ({
         type: 'wake', subscription_id: sub.name, stream: member.path, generation: Number(generation), ts: result.rows[0]!.created_at.getTime(),
       })))
-      await client.query(`UPDATE ${this.schema}.subscription_wakes SET pull_published = true WHERE id = $1`, [id])
     }
     const updated = await client.query<Sub>(`UPDATE ${this.schema}.subscriptions SET generation = $2, current_wake = $3,
       holder = CASE WHEN $4 THEN 'webhook' ELSE NULL END,
       lease_until = CASE WHEN $4 THEN clock_timestamp() + $5 * interval '1 millisecond' ELSE NULL END,
       next_work_at = CASE WHEN $4 THEN clock_timestamp() + LEAST($5,$6) * interval '1 millisecond' ELSE NULL END WHERE id = $1 RETURNING *`, [sub.id, String(generation), id, sub.config.type === 'webhook', sub.config.lease_ttl_ms, this.webhookTimeout + 10_000])
     Object.assign(sub, updated.rows[0])
-    return { wake: { ...result.rows[0]!, pull_published: sub.config.type === 'pull-wake' }, streams: snapshots }
+    return { wake: result.rows[0]!, streams: snapshots }
   }
   private async claim(tenant: string, name: string, worker: string): Promise<Response> {
     const outcome = await this.streams.transaction({}, async (client) => {
       const sub = await this.find(client, tenant, name)
       if (sub.config.type !== 'pull-wake') throw new StreamError(400, 'INVALID_REQUEST', 'Only pull-wake subscriptions can be claimed')
-      if (sub.holder && sub.lease_valid) return { busy: { code: 'ALREADY_CLAIMED', current_holder: sub.holder, generation: Number(sub.generation) } }
-      if (sub.holder) await this.invalidate(client, sub, 'expired')
+      if (leaseState(sub).phase === 'held') return { busy: { code: 'ALREADY_CLAIMED', current_holder: sub.holder, generation: Number(sub.generation) } }
+      if (leaseState(sub).phase === 'expired') await this.invalidate(client, sub, 'expired')
       if (!await this.pending(client, sub)) throw new StreamError(409, 'NO_PENDING_WORK', 'Subscription has no pending work')
       if (!sub.current_wake) await this.issue(client, sub)
       const id = sub.current_wake!
@@ -313,15 +316,14 @@ export class PostgresSubscriptions {
         SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [owner.subscription_id])
       const sub = result.rows[0]
       const wake = (await client.query<Wake>(`SELECT * FROM ${this.schema}.subscription_wakes WHERE id = $1`, [wakeId])).rows[0]!
-      if (!sub || !wake || sub.deleted_at || sub.current_wake !== wakeId || !sub.lease_valid || !wake.token_hash || !timingSafeEqual(wake.token_hash, hashToken(token))
+      if (!sub || !wake || sub.deleted_at || sub.current_wake !== wakeId || leaseState(sub).phase !== 'held' || !wake.token_hash || !timingSafeEqual(wake.token_hash, hashToken(token))
         || (sub.tenant_id !== claims.tenantId || sub.name !== claims.name || Number(sub.generation) !== claims.generation || sub.config.type !== claims.kind)
         || body.wake_id !== `w_${wakeId}` || body.generation !== Number(sub.generation)
         || (route.action === 'callback' ? sub.config.type !== 'webhook' : sub.config.type !== 'pull-wake')) throw fenced()
       if (route.action !== 'release') await this.applyAcks(client, sub, body.acks)
       if (route.action === 'release' || body.done === true) {
         await this.invalidate(client, sub, 'completed')
-        await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = 0, retry_at = NULL WHERE id = $1`, [sub.id])
-        sub.retry_at = null
+        await this.clearRetry(client, sub)
         return { next: await this.queue(client, sub) }
       }
       await client.query(`UPDATE ${this.schema}.subscriptions SET lease_until = clock_timestamp() + $2 * interval '1 millisecond',
@@ -361,8 +363,10 @@ export class PostgresSubscriptions {
   private async applyChange(client: PoolClient, sub: Sub, change: Change, active: { id: string; tail_offset: string } | undefined): Promise<void> {
     const found = await client.query<Member>(`SELECT * FROM ${this.schema}.subscription_members WHERE subscription_id = $1 AND path = $2`, [sub.id, change.path])
     let member = found.rows[0]
-    if (active?.id !== change.stream_id) {
-      if (member?.stream_id === change.stream_id) {
+    const decision = decideMembership({ streamId: change.stream_id, activeId: active?.id, member, full: sub.member_count >= this.maxStreams })
+    if (decision === 'ignore') return
+    if (decision === 'retire') {
+      if (member) {
         await this.invalidate(client, sub, 'fenced')
         if (member.explicit_link) await client.query(`UPDATE ${this.schema}.subscription_members SET stream_id = NULL, acked_offset = $3, glob_link = false WHERE subscription_id = $1 AND path = $2`, [sub.id, change.path, ZERO_OFFSET])
         else { await client.query(`DELETE FROM ${this.schema}.subscription_members WHERE subscription_id = $1 AND path = $2`, [sub.id, change.path]); await client.query(`UPDATE ${this.schema}.subscriptions SET member_count = member_count - 1 WHERE id = $1`, [sub.id]); sub.member_count-- }
@@ -370,19 +374,21 @@ export class PostgresSubscriptions {
       }
       return
     }
-    if (!member && sub.member_count >= this.maxStreams) {
+    if (decision === 'defer') {
       const inserted = await client.query(`INSERT INTO ${this.schema}.subscription_pending_links (subscription_id, tenant_id, stream_id, before_offset)
         VALUES ($1,$2,$3,$4) ON CONFLICT (subscription_id,stream_id) DO UPDATE SET before_offset = LEAST(${this.schema}.subscription_pending_links.before_offset, EXCLUDED.before_offset) RETURNING (xmax = 0) AS inserted`, [sub.id, sub.tenant_id, change.stream_id, change.before_offset])
       if (inserted.rows[0]?.inserted) await client.query(`UPDATE ${this.schema}.subscriptions SET blocked_members = blocked_members + 1 WHERE id = $1`, [sub.id])
       return
     }
-    if (!member) {
+    if (decision === 'insert') {
       await this.insertMember(client, sub, change.path, change.stream_id, change.before_offset, false, true)
       // insertMember may adopt an earlier quota-blocked baseline. Querying the
       // pending predicate avoids replacing that durable intent with this change.
       if (await this.pending(client, sub)) await this.markPending(client, sub)
       return
-    } else if (member.stream_id !== change.stream_id) {
+    }
+    if (!member || !active) throw new Error('Membership decision has no active stream/member')
+    if (decision === 'replace') {
       if (member.stream_id !== null) await this.invalidate(client, sub, 'fenced')
       await client.query(`UPDATE ${this.schema}.subscription_members SET stream_id = $3, acked_offset = $4 WHERE subscription_id = $1 AND path = $2`, [sub.id, change.path, change.stream_id, change.before_offset])
       member.acked_offset = change.before_offset
@@ -392,7 +398,7 @@ export class PostgresSubscriptions {
   private async dispatch(): Promise<number> {
     return this.streams.transaction({}, async (client) => {
       const first = await client.query<Change>(`SELECT c.*, s.tenant_id, s.path FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id = c.stream_id
-        WHERE NOT c.processed AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes prior WHERE prior.stream_id = c.stream_id AND prior.version < c.version AND NOT prior.processed)
+        WHERE NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes prior WHERE prior.stream_id = c.stream_id AND prior.version < c.version)
         ORDER BY c.created_at, c.stream_id, c.version LIMIT 1 FOR UPDATE OF c SKIP LOCKED`)
       const change = first.rows[0]
       if (!change) return 0
@@ -402,7 +408,7 @@ export class PostgresSubscriptions {
         // The shared registry lock makes this bulk fast path safe against a
         // registration whose at-tail backfill has not committed yet.
         const processed = await client.query(`WITH batch AS (SELECT c.stream_id, c.version FROM ${this.schema}.stream_changes c JOIN ${this.schema}.streams s ON s.id = c.stream_id
-          WHERE NOT c.processed AND s.tenant_id = $1 ORDER BY c.created_at, c.stream_id, c.version LIMIT 128 FOR UPDATE OF c SKIP LOCKED)
+          WHERE s.tenant_id = $1 ORDER BY c.created_at, c.stream_id, c.version LIMIT 128 FOR UPDATE OF c SKIP LOCKED)
           DELETE FROM ${this.schema}.stream_changes c USING batch b WHERE c.stream_id = b.stream_id AND c.version = b.version`, [change.tenant_id])
         return processed.rowCount ?? 0
       }
@@ -417,7 +423,7 @@ export class PostgresSubscriptions {
       let through = change.version
       if (change.fanout_after === null && subscribers.rows.length < 16) {
         const prefix = await client.query<{ version: string }>(`SELECT version FROM ${this.schema}.stream_changes
-          WHERE stream_id = $1 AND version >= $2 AND NOT processed ORDER BY version LIMIT 128`, [change.stream_id, change.version])
+          WHERE stream_id = $1 AND version >= $2 ORDER BY version LIMIT 128`, [change.stream_id, change.version])
         through = prefix.rows.at(-1)?.version ?? through
       }
       const active = await this.activePath(client, change.tenant_id, change.path)
@@ -428,7 +434,7 @@ export class PostgresSubscriptions {
         // the exclusive registry barrier and establishes its own tail baseline.
         // Stream versions live on the stream, independently of outbox retention.
         const processed = await client.query(`DELETE FROM ${this.schema}.stream_changes
-          WHERE stream_id = $1 AND version >= $2 AND version <= $3 AND NOT processed`, [change.stream_id, change.version, through])
+          WHERE stream_id = $1 AND version >= $2 AND version <= $3`, [change.stream_id, change.version, through])
         return processed.rowCount ?? 0
       }
       await client.query(`UPDATE ${this.schema}.stream_changes SET fanout_after = $3 WHERE stream_id = $1 AND version = $2`,
@@ -461,42 +467,47 @@ export class PostgresSubscriptions {
   private async prepareDelivery(): Promise<{ job?: WebhookJob; worked: boolean }> {
     let attempted: string | undefined
     try { return await this.streams.transaction({}, async (client) => {
-      const selected = await client.query<Sub>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE deleted_at IS NULL AND next_work_at <= clock_timestamp()
-        ORDER BY next_work_at, id LIMIT 1 FOR UPDATE SKIP LOCKED) SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`)
+      const selected = await client.query<ScheduledSubscription>(`WITH locked AS MATERIALIZED (SELECT * FROM ${this.schema}.subscriptions WHERE deleted_at IS NULL AND next_work_at <= clock_timestamp()
+        ORDER BY next_work_at, id LIMIT 1 FOR UPDATE SKIP LOCKED) SELECT *, lease_until > clock_timestamp() AS lease_valid,
+        retry_at IS NULL OR retry_at <= clock_timestamp() AS retry_due FROM locked`)
       const sub = selected.rows[0]
       if (!sub) return { worked: false }
       attempted = sub.id
-      if (sub.holder && !sub.lease_valid) await this.invalidate(client, sub, 'expired')
-      if (sub.config.type === 'pull-wake' && sub.current_wake) {
-        // A published wake waits indefinitely for a claim; a held lease is due
-        // only on expiration. New appends do not flood the wake channel.
-        await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = lease_until WHERE id = $1`, [sub.id])
-        return { worked: true }
-      }
-      if (!sub.current_wake && !await this.pending(client, sub)) {
-        await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = NULL WHERE id = $1`, [sub.id])
-        return { worked: true }
-      }
-      const due = await client.query<{ due: boolean }>('SELECT $1::timestamptz IS NULL OR $1::timestamptz <= clock_timestamp() AS due', [sub.retry_at])
-      if (!due.rows[0]!.due) {
-        await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = LEAST(retry_at,lease_until) WHERE id = $1`, [sub.id])
-        return { worked: true }
-      }
-      if (!sub.current_wake) {
-        const claim = randomUUID()
-        const issued = await this.issue(client, sub, claim)
-        if (sub.config.type === 'pull-wake') {
-          await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = 0, retry_at = NULL WHERE id = $1`, [sub.id])
+      if (leaseState(sub).phase === 'expired') await this.invalidate(client, sub, 'expired')
+      const wake = sub.current_wake && sub.config.type === 'webhook' ? (await client.query<AvailableWake>(`SELECT *,
+        delivery_until IS NULL OR delivery_until <= clock_timestamp() AS delivery_available
+        FROM ${this.schema}.subscription_wakes WHERE id=$1`, [sub.current_wake])).rows[0] : undefined
+      if (sub.current_wake && sub.config.type === 'webhook' && !wake) throw new Error('Current subscription wake is missing')
+      const decision = decideDelivery({ retryDue: sub.retry_due, wake: sub.current_wake && sub.config.type === 'pull-wake'
+        ? { phase: 'published' } : wake ? { phase: 'delivery', state: wake.state, available: wake.delivery_available }
+        : { phase: 'none', pending: await this.pending(client, sub) } })
+      switch (decision) {
+        case 'wait-for-claim':
+          // Published pull wakes wait without polling until claimed; held wakes
+          // schedule their database lease deadline instead.
+          await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = lease_until WHERE id = $1`, [sub.id])
           return { worked: true }
+        case 'idle':
+          await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = NULL WHERE id = $1`, [sub.id])
+          return { worked: true }
+        case 'backoff':
+          await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = LEAST(retry_at,lease_until) WHERE id = $1`, [sub.id])
+          return { worked: true }
+        case 'issue': {
+          const claim = randomUUID()
+          const issued = await this.issue(client, sub, claim)
+          if (sub.config.type === 'pull-wake') {
+            await this.clearRetry(client, sub)
+            return { worked: true }
+          }
+          return { worked: true, job: { sub, wake: issued.wake, streams: issued.streams, claim } }
         }
-        return { worked: true, job: { sub, wake: issued.wake, streams: issued.streams, claim } }
+        case 'wait-for-delivery':
+          await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = LEAST(lease_until,$2::timestamptz) WHERE id = $1`, [sub.id, wake!.delivery_until ?? sub.lease_until])
+          return { worked: true }
+        case 'deliver': break
       }
-      const wake = (await client.query<Wake>(`SELECT * FROM ${this.schema}.subscription_wakes WHERE id = $1`, [sub.current_wake])).rows[0]!
-      const available = await client.query<{ available: boolean }>('SELECT $1::timestamptz IS NULL OR $1::timestamptz <= clock_timestamp() AS available', [wake.delivery_until])
-      if (wake.state === 'delivered' || !available.rows[0]!.available) {
-        await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = LEAST(lease_until,$2::timestamptz) WHERE id = $1`, [sub.id, wake.delivery_until ?? sub.lease_until])
-        return { worked: true }
-      }
+      if (!wake) throw new Error('Delivery decision has no wake')
       const claim = randomUUID()
       await client.query(`UPDATE ${this.schema}.subscription_wakes SET delivery_claim = $2, delivery_until = clock_timestamp() + $3 * interval '1 millisecond' WHERE id = $1`, [wake.id, claim, this.webhookTimeout + 10_000])
       await client.query(`UPDATE ${this.schema}.subscriptions SET next_work_at = LEAST(lease_until,clock_timestamp() + $2 * interval '1 millisecond') WHERE id = $1`, [sub.id, this.webhookTimeout + 10_000])
@@ -508,13 +519,20 @@ export class PostgresSubscriptions {
           SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [attempted])
         const sub = found.rows[0]
         if (!sub) return
-        if (sub.holder && !sub.lease_valid) await this.invalidate(client, sub, 'expired')
-        const delay = this.retryDelay(sub.retry_count)
-        await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = retry_count + 1, retry_at = clock_timestamp() + $2 * interval '1 millisecond',
-          next_work_at = LEAST(lease_until,clock_timestamp() + $2 * interval '1 millisecond') WHERE id = $1`, [sub.id, delay])
+        if (leaseState(sub).phase === 'expired') await this.invalidate(client, sub, 'expired')
+        await this.scheduleRetry(client, sub)
       }).catch(() => {})
       throw error
     }
+  }
+  private async clearRetry(client: PoolClient, sub: Sub): Promise<void> {
+    await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = 0, retry_at = NULL WHERE id = $1`, [sub.id])
+    sub.retry_at = null; sub.retry_count = 0
+  }
+  private async scheduleRetry(client: PoolClient, sub: Sub): Promise<void> {
+    const delay = this.retryDelay(sub.retry_count)
+    await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = retry_count + 1, retry_at = clock_timestamp() + $2 * interval '1 millisecond',
+      next_work_at = LEAST(lease_until,clock_timestamp() + $2 * interval '1 millisecond') WHERE id = $1`, [sub.id, delay])
   }
   private retryDelay(count: number): number {
     const base = Math.min(60_000, 1000 * 2 ** Math.min(count, 16))
@@ -526,17 +544,17 @@ export class PostgresSubscriptions {
         SELECT *, lease_until > clock_timestamp() AS lease_valid FROM locked`, [job.sub.id])
       const sub = found.rows[0]!
       const wake = (await client.query<Wake>(`SELECT * FROM ${this.schema}.subscription_wakes WHERE id = $1`, [job.wake.id])).rows[0]!
-      if (sub.deleted_at || sub.current_wake !== wake.id || !sub.lease_valid || wake.delivery_claim !== job.claim) return
-      if (!result.ok) {
-        const delay = this.retryDelay(sub.retry_count)
+      if (!sub || !wake) return
+      const decision = decideCompletion({ deleted: sub.deleted_at !== null, currentWake: sub.current_wake, wakeId: wake.id,
+        leaseHeld: leaseState(sub).phase === 'held', currentClaim: wake.delivery_claim, claim: job.claim, ...result })
+      if (decision === 'ignore') return
+      if (decision === 'retry') {
         await client.query(`UPDATE ${this.schema}.subscription_wakes SET delivery_claim = NULL, delivery_until = NULL WHERE id = $1`, [wake.id])
-        await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = retry_count + 1, retry_at = clock_timestamp() + $2 * interval '1 millisecond',
-          next_work_at = LEAST(lease_until,clock_timestamp() + $2 * interval '1 millisecond') WHERE id = $1`, [sub.id, delay])
+        await this.scheduleRetry(client, sub)
         return
       }
-      await client.query(`UPDATE ${this.schema}.subscriptions SET retry_count = 0, retry_at = NULL WHERE id = $1`, [sub.id])
-      sub.retry_at = null
-      if (result.done) {
+      await this.clearRetry(client, sub)
+      if (decision === 'complete') {
         // Ack only the immutable wake snapshot. Later appends stay pending.
         await client.query(`UPDATE ${this.schema}.subscription_members m SET acked_offset = GREATEST(m.acked_offset,w.tail_offset)
           FROM ${this.schema}.subscription_wake_streams w WHERE w.wake_id = $1 AND m.subscription_id = $2 AND m.path = w.path AND m.stream_id IS NOT DISTINCT FROM w.stream_id`, [wake.id, sub.id])

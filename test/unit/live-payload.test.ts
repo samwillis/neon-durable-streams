@@ -1,4 +1,5 @@
 import { expect, test, vi } from 'vitest'
+import fc from 'fast-check'
 import { AppendBuffer, PayloadWindow } from '../../src/live-payload.js'
 import type { AppendUpdate, RealtimeAppend } from '../../src/live-payload.js'
 import { advanceOffset, ZERO_OFFSET } from '../../src/offset.js'
@@ -101,4 +102,86 @@ test('a raw window covers setup races, replaces snapshots, bounds its lifetime, 
     expect(closes).toHaveBeenCalledTimes(2)
     expect(errors).not.toHaveBeenCalled()
   } finally { window.close(); vi.useRealTimers() }
+})
+
+test('synchronous invalidation during subscribe closes the returned handle without retaining a timer', async () => {
+  vi.useFakeTimers()
+  const close = vi.fn(), wake = vi.fn()
+  const value = new PayloadWindow({ notifier: { watch() { throw new Error('unused') }, watchAppends(_input, listener) {
+    listener({ type: 'invalidate' }); return { ready: Promise.resolve(), close }
+  } }, schema: 'fixture', tenantId: 'tenant', streamId,
+  installation: { id: streamId, serving_epoch: streamId, serving_state: 'active', environment_id: null, storage_identity: null },
+  maxBytes: 1024, maxFrames: 16, windowMs: 1000, wake, report: () => {} }, { next: ZERO_OFFSET, upToDate: true, stream: { closed: false } })
+  try { await Promise.resolve(); expect(close).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0) }
+  finally { value.close(); vi.useRealTimers() }
+})
+
+test('generated late events cannot revive a closed payload window or leak a watch', async () => {
+  vi.useFakeTimers()
+  try {
+    await fc.assert(fc.asyncProperty(fc.array(fc.record({ type: fc.constantFrom('ready', 'fail', 'snapshot', 'invalidate', 'replay', 'timer', 'close'), index: fc.nat(20) }), { maxLength: 80 }), async (events) => {
+      const handles: { ready: ReturnType<typeof Promise.withResolvers<void>>; listener: (event: AppendUpdate) => void; closes: number }[] = []
+      let wakes = 0, reports = 0, closed = false
+      const initial = { next: ZERO_OFFSET, upToDate: true, stream: { closed: false } }
+      const value = new PayloadWindow({ notifier: { watch() { throw new Error('unused') }, watchAppends(_input, listener) {
+        const handle = { ready: Promise.withResolvers<void>(), listener, closes: 0 }; handles.push(handle)
+        return { ready: handle.ready.promise, close() { handle.closes++ } }
+      } }, schema: 'fixture', tenantId: 'tenant', streamId,
+      installation: { id: streamId, serving_epoch: streamId, serving_state: 'active', environment_id: null, storage_identity: null },
+      maxBytes: 1024, maxFrames: 16, windowMs: 1000, wake() { wakes++ }, report() { reports++ } }, initial)
+      try {
+        for (const event of [...events, { type: 'close', index: 0 }, { type: 'replay', index: 0 }]) {
+          const before = { count: handles.length, wakes, reports }, handle = handles[event.index % handles.length]!
+          if (event.type === 'ready') handle.ready.resolve()
+          if (event.type === 'fail') handle.ready.reject(new Error('delayed subscription failure'))
+          if (event.type === 'snapshot') handle.listener({ type: 'replace', rows: [], removed: [] })
+          if (event.type === 'invalidate') handle.listener({ type: 'invalidate' })
+          if (event.type === 'replay') value.reconcile(initial, value.revision)
+          if (event.type === 'timer') await vi.advanceTimersByTimeAsync(1000)
+          if (event.type === 'close') value.close()
+          await Promise.resolve(); await Promise.resolve()
+          expect(handles.every((item) => item.closes <= 1)).toBe(true)
+          expect(handles.filter((item) => item.closes === 0).length).toBeLessThanOrEqual(1)
+          if (closed) expect({ count: handles.length, wakes, reports }).toEqual(before)
+          if (event.type === 'close') closed = true
+          if (closed) { expect(handles.every((item) => item.closes === 1)).toBe(true); expect(value.verified).toBe(false) }
+        }
+      } finally { value.close(); vi.clearAllTimers() }
+    }), { numRuns: 150 })
+  } finally { vi.useRealTimers() }
+})
+
+test('subscription readiness and a stale replay cannot skip the required reconciliation', async () => {
+  const ready = Promise.withResolvers<void>()
+  const initial = { next: ZERO_OFFSET, upToDate: true, stream: { closed: false } }
+  const value = new PayloadWindow({ notifier: { watch() { throw new Error('unused') }, watchAppends() { return { ready: ready.promise, close() {} } } },
+    schema: 'fixture', tenantId: 'tenant', streamId,
+    installation: { id: streamId, serving_epoch: streamId, serving_state: 'active', environment_id: null, storage_identity: null },
+    maxBytes: 1024, maxFrames: 16, windowMs: 1000, wake() {}, report() {} }, initial)
+  try {
+    const staleRevision = value.revision
+    value.reconcile(initial, staleRevision)
+    expect(value.verified).toBe(false)
+    ready.resolve(); await Promise.resolve()
+    value.reconcile(initial, staleRevision)
+    expect(value.verified).toBe(false)
+    value.reconcile(initial, value.revision)
+    expect(value.verified).toBe(true)
+  } finally { value.close() }
+})
+
+test('failed subscription backoff cannot be bypassed by replay or redundant invalidations', async () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(0), subscribe = vi.fn(() => ({ ready: Promise.reject(new Error('offline')), close() {} }))
+  const initial = { next: ZERO_OFFSET, upToDate: true, stream: { closed: false } }
+  const value = new PayloadWindow({ notifier: { watch() { throw new Error('unused') }, watchAppends: subscribe }, schema: 'fixture', tenantId: 'tenant', streamId,
+    installation: { id: streamId, serving_epoch: streamId, serving_state: 'active', environment_id: null, storage_identity: null },
+    maxBytes: 1024, maxFrames: 16, windowMs: 1000, wake() {}, report() {} }, initial)
+  try {
+    await Promise.resolve()
+    for (let i = 0; i < 5; i++) { value.invalidate(); value.reconcile(initial, value.revision) }
+    expect(subscribe).toHaveBeenCalledOnce()
+    now.mockReturnValue(1001)
+    value.reconcile(initial, value.revision)
+    expect(subscribe).toHaveBeenCalledTimes(2)
+  } finally { value.close(); now.mockRestore(); await Promise.resolve() }
 })

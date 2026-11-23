@@ -9,6 +9,7 @@ import { assertReplayDeadline } from './replay.js'
 import { boundaryDirectory, equalDirectory } from './boundary-directory.js'
 import { VerifiedChunkCache } from './chunk-cache.js'
 import { advanceOffset } from './offset.js'
+import type { StoredFrame } from './replay-plan.js'
 
 export interface ChunkInventoryPage {
   readonly objects: readonly { readonly key: string; readonly size: number }[]
@@ -35,36 +36,25 @@ export interface StorageOptions {
   /** Per-server verified-object cache budget; zero disables retention. */
   readonly cacheBytes?: number
 }
-interface Manifest {
-  id: string
-  stream_id: string
-  start_offset: string
-  end_offset: string
-  state: 'frozen' | 'sealed'
-  frame_count: number
-  payload_bytes: string
-  claim_token: string
-  claim_epoch: string
-  object_key: string | null
-  sha256: string | null
-  encoded_bytes: number | null
-}
-export interface StoredFrame {
+interface FrozenClaim {
+  readonly id: string
   readonly stream_id: string
   readonly start_offset: string
   readonly end_offset: string
-  readonly payload: Buffer | null
-  readonly payload_bytes: number
-  readonly message_ends: number[] | null
-  readonly chunk_id: string | null
-  readonly object_key: string | null
-  readonly sha256: string | null
-  readonly encoded_bytes: number | null
-  readonly end_deltas: number[] | null
-  readonly chunk_start: string | null
-  readonly first_frame: number | null
-  readonly last_frame: number | null
+  readonly state: 'frozen'
+  readonly frame_count: number
+  readonly payload_bytes: string
+  readonly claim_token: string
+  readonly claim_epoch: string
 }
+interface PreparedChunk {
+  readonly claim: FrozenClaim
+  readonly identity: { readonly installationId: string; readonly streamId: string; readonly chunkId: string }
+  readonly bytes: Buffer
+  readonly digest: string
+  readonly key: string
+}
+interface VerifiedChunk extends PreparedChunk { readonly directory: number[] }
 
 /** Durable claims and immutable FROZEN frames make upload retries deterministic. */
 export class ChunkManager {
@@ -134,68 +124,86 @@ export class ChunkManager {
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
       if (rotated) frozen++
-      const claim = await this.guard.run({}, async (client) => {
-        const candidate = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.chunks WHERE state = 'frozen'
-          AND retired_at IS NULL
-          AND (claim_until IS NULL OR claim_until <= clock_timestamp()) ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`)
-        if (!candidate.rows[0]) return undefined
-        const result = await client.query<Manifest>(`UPDATE ${this.schema}.chunks SET claim_token = $2,
-          claim_epoch = claim_epoch + 1, claim_until = clock_timestamp() + $3 * interval '1 millisecond', attempts = attempts + 1
-          WHERE id = $1 RETURNING *`, [candidate.rows[0].id, randomUUID(), this.lease])
-        return result.rows[0]!
-      })
+      const claim = await this.claimFrozen()
       if (!claim) { if (!rotated) break; continue }
       try {
-        const source = await this.pool.query<{ start_offset: string; end_offset: string; payload: Buffer; message_ends: number[] | null }>(`SELECT start_offset,end_offset,payload,message_ends FROM ${this.schema}.appends
-          WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3 ORDER BY end_offset`, [claim.stream_id,claim.start_offset,claim.end_offset])
-        const identity = { installationId: this.installationId!, streamId: claim.stream_id, chunkId: claim.id }
-        const frames = source.rows.map((frame) => ({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }))
-        if (frames.length !== claim.frame_count || frames[0]?.start !== claim.start_offset || frames.at(-1)?.end !== claim.end_offset
-          || BigInt(frames.reduce((sum, frame) => sum + (frame.payload?.length ?? 0), 0)) !== BigInt(claim.payload_bytes)) throw new Error('Frozen manifest mismatch')
-        const bytes = encodeChunk({ ...identity, frames })
-        const digest = chunkDigest(bytes)
-        const key = `v1/${identity.installationId}/${identity.streamId}/${identity.chunkId}/${digest}.ndsc`
-        {
-          const intended = await this.guard.run({}, async (client) => {
-            const valid = await client.query(`SELECT id FROM ${this.schema}.chunks WHERE id=$1 AND claim_token=$2 AND claim_epoch=$3
-              AND state='frozen' AND retired_at IS NULL AND claim_until>clock_timestamp() FOR UPDATE`, [claim.id, claim.claim_token, claim.claim_epoch])
-            if (!valid.rowCount) return false
-            await client.query(`INSERT INTO ${this.schema}.chunk_objects (object_key,stream_id,chunk_id,sha256,encoded_bytes)
-              VALUES ($1,$2,$3,$4,$5) ON CONFLICT (object_key) DO NOTHING`, [key, claim.stream_id, claim.id, digest, bytes.length])
-            const intent = await client.query(`SELECT 1 FROM ${this.schema}.chunk_objects WHERE object_key=$1 AND retired_at IS NULL
-              AND NOT orphan_candidate AND quarantine_reason IS NULL AND sha256=$2 AND encoded_bytes=$3`, [key, digest, bytes.length])
-            return !!intent.rowCount
-          })
-          if (!intended) continue
-        }
-        await this.options.objects.put(key, bytes)
-        // Verify the exact uploaded object before discarding any local payload.
-        const verified = await this.options.objects.get(key, bytes.length)
-        if (verified.length !== bytes.length) throw new Error('Published object length differs')
-        const directory = boundaryDirectory(claim.start_offset, decodeChunk(verified, identity, digest).frames)
-        const published = await this.guard.run({}, async (client) => {
-          const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
-            encoded_bytes = $6, end_deltas=$7, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
-            WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp()
-            AND retired_at IS NULL RETURNING id`,
-          [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length, directory])
-          if (!result.rowCount) return false
-          const cleared = await client.query(`DELETE FROM ${this.schema}.appends WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3`, [claim.stream_id,claim.start_offset,claim.end_offset])
-          if (cleared.rowCount !== claim.frame_count) throw new Error('Chunk publication frame mismatch')
-          return true
-        })
-        if (published) sealed++
+        const prepared = await this.prepare(claim)
+        if (!await this.recordIntent(prepared)) continue
+        const verified = await this.uploadAndVerify(prepared)
+        if (await this.publish(verified)) sealed++
       } catch (error) {
-        // A failed/ambiguous publication can be retried only by obtaining a new
-        // durable claim. This conditional release cannot unlock another worker.
-        await this.guard.run({}, async (client) => {
-          await client.query(`UPDATE ${this.schema}.chunks SET claim_until = NULL, claim_token = NULL
-            WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen'`, [claim.id, claim.claim_token, claim.claim_epoch])
-        }).catch(() => {})
+        await this.releaseClaim(claim)
         throw error
       }
     }
     return { frozen, sealed }
+  }
+
+  private async claimFrozen(): Promise<FrozenClaim | undefined> {
+    return this.guard.run({}, async (client) => {
+      const candidate = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.chunks WHERE state = 'frozen'
+        AND retired_at IS NULL
+        AND (claim_until IS NULL OR claim_until <= clock_timestamp()) ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`)
+      if (!candidate.rows[0]) return undefined
+      const result = await client.query<FrozenClaim>(`UPDATE ${this.schema}.chunks SET claim_token = $2,
+        claim_epoch = claim_epoch + 1, claim_until = clock_timestamp() + $3 * interval '1 millisecond', attempts = attempts + 1
+        WHERE id = $1 RETURNING *`, [candidate.rows[0].id, randomUUID(), this.lease])
+      return result.rows[0]!
+    })
+  }
+  private async prepare(claim: FrozenClaim): Promise<PreparedChunk> {
+    const source = await this.pool.query<{ start_offset: string; end_offset: string; payload: Buffer; message_ends: number[] | null }>(`SELECT start_offset,end_offset,payload,message_ends FROM ${this.schema}.appends
+      WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3 ORDER BY end_offset`, [claim.stream_id,claim.start_offset,claim.end_offset])
+    const identity = { installationId: this.installationId!, streamId: claim.stream_id, chunkId: claim.id }
+    const frames = source.rows.map((frame) => ({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }))
+    if (frames.length !== claim.frame_count || frames[0]?.start !== claim.start_offset || frames.at(-1)?.end !== claim.end_offset
+      || BigInt(frames.reduce((sum, frame) => sum + (frame.payload?.length ?? 0), 0)) !== BigInt(claim.payload_bytes)) throw new Error('Frozen manifest mismatch')
+    const bytes = encodeChunk({ ...identity, frames })
+    const digest = chunkDigest(bytes)
+    const key = `v1/${identity.installationId}/${identity.streamId}/${identity.chunkId}/${digest}.ndsc`
+    return { claim, identity, bytes, digest, key }
+  }
+  private async recordIntent({ claim, key, digest, bytes }: PreparedChunk): Promise<boolean> {
+    return this.guard.run({}, async (client) => {
+      const valid = await client.query(`SELECT id FROM ${this.schema}.chunks WHERE id=$1 AND claim_token=$2 AND claim_epoch=$3
+        AND state='frozen' AND retired_at IS NULL AND claim_until>clock_timestamp() FOR UPDATE`, [claim.id, claim.claim_token, claim.claim_epoch])
+      if (!valid.rowCount) return false
+      await client.query(`INSERT INTO ${this.schema}.chunk_objects (object_key,stream_id,chunk_id,sha256,encoded_bytes)
+        VALUES ($1,$2,$3,$4,$5) ON CONFLICT (object_key) DO NOTHING`, [key, claim.stream_id, claim.id, digest, bytes.length])
+      const intent = await client.query(`SELECT 1 FROM ${this.schema}.chunk_objects WHERE object_key=$1 AND retired_at IS NULL
+        AND NOT orphan_candidate AND quarantine_reason IS NULL AND sha256=$2 AND encoded_bytes=$3`, [key, digest, bytes.length])
+      return !!intent.rowCount
+    })
+  }
+  /** Network I/O holds no SQL transaction. Only verified bytes may publish. */
+  private async uploadAndVerify(prepared: PreparedChunk): Promise<VerifiedChunk> {
+    const { claim, key, bytes, identity, digest } = prepared
+    await this.options.objects.put(key, bytes)
+    // Verify the exact uploaded object before discarding any local payload.
+    const verified = await this.options.objects.get(key, bytes.length)
+    if (verified.length !== bytes.length) throw new Error('Published object length differs')
+    const directory = boundaryDirectory(claim.start_offset, decodeChunk(verified, identity, digest).frames)
+    return { ...prepared, directory }
+  }
+  private async publish({ claim, key, digest, bytes, directory }: VerifiedChunk): Promise<boolean> {
+    return this.guard.run({}, async (client) => {
+      const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
+        encoded_bytes = $6, end_deltas=$7, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
+        WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp()
+        AND retired_at IS NULL RETURNING id`,
+      [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length, directory])
+      if (!result.rowCount) return false
+      const cleared = await client.query(`DELETE FROM ${this.schema}.appends WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3`, [claim.stream_id,claim.start_offset,claim.end_offset])
+      if (cleared.rowCount !== claim.frame_count) throw new Error('Chunk publication frame mismatch')
+      return true
+    })
+  }
+  private async releaseClaim(claim: FrozenClaim): Promise<void> {
+    // Conditional release cannot unlock a replacement worker after a lost reply.
+    await this.guard.run({}, async (client) => {
+      await client.query(`UPDATE ${this.schema}.chunks SET claim_until = NULL, claim_token = NULL
+        WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen'`, [claim.id, claim.claim_token, claim.claim_epoch])
+    }).catch(() => {})
   }
 
   /** The replay owner holds its pins; object I/O holds no SQL transaction. */
@@ -203,20 +211,19 @@ export class ChunkManager {
     const result: ChunkFrame[] = []
     for (const frame of frames) {
       assertReplayDeadline(deadline)
-      if (frame.payload !== null) { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
-      if (!frame.chunk_id || !frame.object_key || !frame.sha256 || !frame.encoded_bytes || !frame.end_deltas || !frame.chunk_start
-        || !frame.first_frame || !frame.last_frame) throw new Error('Sealed range is missing its manifest')
-      const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: frame.chunk_id }
-      const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), frame.sha256, frame.encoded_bytes])
+      if (frame.storage === 'postgres') { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
+      const { manifest } = frame
+      const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: manifest.id }
+      const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), manifest.sha256, manifest.encodedBytes])
       const decoded = await this.cache.get(key, async () => {
-        const bytes = await this.options.objects.get(frame.object_key!, frame.encoded_bytes!)
-        if (bytes.length !== frame.encoded_bytes) throw new Error('Sealed object length differs from manifest')
-        return decodeChunk(Buffer.from(bytes), identity, frame.sha256!)
-      }, frame.encoded_bytes)
+        const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes)
+        if (bytes.length !== manifest.encodedBytes) throw new Error('Sealed object length differs from manifest')
+        return decodeChunk(Buffer.from(bytes), identity, manifest.sha256)
+      }, manifest.encodedBytes)
       assertReplayDeadline(deadline)
-      if (!equalDirectory(boundaryDirectory(frame.chunk_start, decoded.frames), frame.end_deltas)) throw new Error('Sealed object differs from boundary directory')
-      const selected = decoded.frames.slice(frame.first_frame - 1, frame.last_frame)
-      if (selected.length !== frame.last_frame - frame.first_frame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
+      if (!equalDirectory(boundaryDirectory(manifest.start, decoded.frames), manifest.endDeltas)) throw new Error('Sealed object differs from boundary directory')
+      const selected = decoded.frames.slice(frame.firstFrame - 1, frame.lastFrame)
+      if (selected.length !== frame.lastFrame - frame.firstFrame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
         || selected.reduce((sum, value) => sum + value.payload.length, 0) !== frame.payload_bytes) throw new Error('Sealed object differs from planned range')
       for (const found of selected) result.push({ ...found, payload: Buffer.from(found.payload) })
     }

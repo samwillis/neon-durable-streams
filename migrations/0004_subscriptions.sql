@@ -27,7 +27,9 @@ CREATE TABLE __SCHEMA__.subscriptions (
   blocked_members integer NOT NULL DEFAULT 0 CHECK (blocked_members >= 0),
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   deleted_at timestamptz,
-  UNIQUE (tenant_id, id)
+  UNIQUE (tenant_id, id),
+  CONSTRAINT subscription_lease_owner CHECK ((holder IS NULL) = (lease_until IS NULL)),
+  CONSTRAINT subscription_lease_wake CHECK (current_wake IS NOT NULL OR holder IS NULL)
 );
 CREATE UNIQUE INDEX subscription_active_name ON __SCHEMA__.subscriptions (tenant_id, name) WHERE deleted_at IS NULL;
 CREATE INDEX subscription_work_due ON __SCHEMA__.subscriptions (next_work_at, id) WHERE deleted_at IS NULL AND next_work_at IS NOT NULL;
@@ -61,12 +63,12 @@ CREATE TABLE __SCHEMA__.subscription_wakes (
   state text NOT NULL CHECK (state IN ('ready', 'delivered', 'completed', 'expired', 'fenced')),
   delivery_claim uuid,
   delivery_until timestamptz,
-  pull_published boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   UNIQUE (subscription_id, generation),
   UNIQUE (subscription_id, id),
   FOREIGN KEY (tenant_id, subscription_id) REFERENCES __SCHEMA__.subscriptions (tenant_id, id),
-  CHECK ((token_hash IS NULL) = (token_cipher IS NULL))
+  CHECK ((token_hash IS NULL) = (token_cipher IS NULL)),
+  CONSTRAINT wake_delivery_claim CHECK ((delivery_claim IS NULL) = (delivery_until IS NULL))
 );
 ALTER TABLE __SCHEMA__.subscriptions ADD CONSTRAINT current_wake_fk
   FOREIGN KEY (id, current_wake) REFERENCES __SCHEMA__.subscription_wakes (subscription_id, id);
@@ -105,10 +107,9 @@ CREATE TABLE __SCHEMA__.stream_changes (
   before_offset text COLLATE "C" NOT NULL,
   after_offset text COLLATE "C" NOT NULL,
   kind text NOT NULL CHECK (kind IN ('created', 'appended', 'closed', 'deleted', 'expired')),
-  processed boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
   fanout_after uuid,
   PRIMARY KEY (stream_id, version)
 );
-CREATE INDEX stream_changes_pending ON __SCHEMA__.stream_changes (created_at) WHERE NOT processed;
-CREATE INDEX stream_changes_stream_pending ON __SCHEMA__.stream_changes (stream_id, version) WHERE NOT processed;
+CREATE INDEX stream_changes_pending ON __SCHEMA__.stream_changes (created_at);
+CREATE INDEX stream_changes_stream_pending ON __SCHEMA__.stream_changes (stream_id, version);

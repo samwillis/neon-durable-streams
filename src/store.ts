@@ -7,8 +7,11 @@ import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
 import type { TransactionOptions } from './transaction.js'
 import { MIGRATION_IDS } from './migrations.js'
+import { streamPresence, unavailableGenerationStatus } from './stream-lifecycle.js'
 import { ChunkManager } from './storage.js'
-import type { StorageOptions, StoredFrame } from './storage.js'
+import type { StorageOptions } from './storage.js'
+import { decodeReplayRow } from './replay-plan.js'
+import type { StoredFrame, ReplayRow } from './replay-plan.js'
 import type { ChunkFrame } from './chunk-codec.js'
 import { assertReplayDeadline, ReplayPins } from './replay.js'
 import type { ReplayLease } from './replay.js'
@@ -203,10 +206,11 @@ export class PostgresStreamStore {
     const outcome = await this.transaction({}, async (client) => {
       const stream = await this.lock(client, tenant, path)
       if (!stream) return { found: false, status: 404 } as const
-      if (stream.deleted_at) return { found: false, status: 410 } as const
-      if (stream.expired) {
+      const presence = streamPresence(stream)
+      if (presence === 'deleted') return { found: false, status: 410 } as const
+      if (presence === 'expired') {
         await this.retire(client, stream, 'expired')
-        return { found: false, status: stream.ref_count ? 410 : 404 } as const
+        return { found: false, status: unavailableGenerationStatus(stream.ref_count) } as const
       }
       return { found: true, value: await work(client, stream) } as const
     })
@@ -293,7 +297,7 @@ export class PostgresStreamStore {
   private async framePlan(client: PoolClient, id: string, start: string, limit = this.maxPageFrames, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
     const end = `left(c.start_offset,17)||lpad((substring(c.start_offset,18)::bigint+c.end_deltas[i])::text,16,'0')`
     const before = `left(c.start_offset,17)||lpad((substring(c.start_offset,18)::bigint+CASE WHEN i=1 THEN 0 ELSE c.end_deltas[i-1] END)::text,16,'0')`
-    const result = await client.query<StoredFrame>(`${this.lineage()}, local_frames AS (
+    const result = await client.query<ReplayRow>(`${this.lineage()}, local_frames AS (
         SELECT f.*,NULL::uuid AS chunk_id,NULL::integer AS ordinal FROM lineage l CROSS JOIN LATERAL (
           SELECT stream_id,start_offset,end_offset,payload_bytes FROM ${this.schema}.appends
           WHERE stream_id=l.id AND end_offset>$2 AND end_offset<=l.cap ORDER BY end_offset LIMIT $4
@@ -329,7 +333,7 @@ export class PostgresStreamStore {
       if (range.start_offset !== expected || range.end_offset <= expected) throw new Error('Durable replay plan has a gap or overlap')
       expected = range.end_offset
     }
-    return result.rows
+    return result.rows.map(decodeReplayRow)
   }
 
   private async materialize(plan: PinnedFrames): Promise<readonly ChunkFrame[]> {
@@ -338,7 +342,7 @@ export class PostgresStreamStore {
     try {
       assertReplayDeadline(deadline)
       result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
-        if (!frame.payload) throw new StorageCompatibilityError('Sealed replay requires object storage')
+        if (frame.storage !== 'postgres') throw new StorageCompatibilityError('Sealed replay requires object storage')
         return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
       })
       await this.pins.validate(lease)
@@ -583,7 +587,7 @@ export class PostgresStreamStore {
 
   private async materializeRead(plan: ReplayPlan): Promise<ReadResult> {
     const frames = await this.materialize(plan)
-    if (plan.frames.some((frame) => frame.payload === null)) await this.guard.check()
+    if (plan.frames.some((frame) => frame.storage === 'object')) await this.guard.check()
     const body = formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type)
     assertReplayDeadline(plan.deadline)
     return { stream: plan.stream, body, next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
@@ -598,7 +602,7 @@ export class PostgresStreamStore {
       FROM ${this.schema}.streams s WHERE tenant_id = $1 AND id = $2`, [tenant, id])
     const stream = metadata.rows[0]
     if (!stream) throw new StreamError(404, 'STREAM_NOT_FOUND', 'Stream no longer exists')
-    if (stream.deleted_at || stream.expired) throw new StreamError(stream.ref_count ? 410 : 404, 'STREAM_UNAVAILABLE', 'Stream is unavailable')
+    if (streamPresence(stream) !== 'available') throw new StreamError(unavailableGenerationStatus(stream.ref_count), 'STREAM_UNAVAILABLE', 'Stream is unavailable')
     return stream
   }
 

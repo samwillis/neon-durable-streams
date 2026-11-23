@@ -122,7 +122,7 @@ test('one bounded dispatch coalesces committed appends without consuming intent 
   await direct.query(`DROP TRIGGER pause_coalesced ON "${schema}".subscriptions`)
   await direct.query(`DROP FUNCTION "${schema}".pause_coalesced()`)
   expect(stats.changes).toBe(12)
-  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 AND NOT c.processed`, [path])).rows[0].count).toBe('1')
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1`, [path])).rows[0].count).toBe('1')
   await maintain()
   const value = await claim(name)
   expect(value.streams.find((stream) => stream.path === path)?.tail_offset).toBe(tail)
@@ -144,7 +144,7 @@ test('resumed multi-batch fan-out preserves appends needed by a newly registered
     await request(path, 'POST', 'one')
     const baseline = (await request(path, 'POST', 'two')).headers.get('Stream-Next-Offset')!
     await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
-    const pending = () => pool.query<{ count: string }>(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 AND NOT c.processed`, [path])
+    const pending = () => pool.query<{ count: string }>(`SELECT count(*) FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1`, [path])
     expect((await pending()).rows[0]!.count).toBe('2')
     const lateId = '00000000-0000-4000-8000-000000000001'
     const registryKey = `durable-streams:subscription-registry:"${schema}":a`
@@ -195,7 +195,7 @@ test('registration backfill cannot be overtaken by dispatch when an append commi
     const registry = (await pool.query<{ key: string }>('SELECT hashtextextended($1,0) AS key', [`durable-streams:subscription-registry:"${schema}":a`])).rows[0]!.key
     const unsigned = BigInt.asUintN(64, BigInt(registry))
     await poll(async () => Boolean((await pool.query(`SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND classid = $1::oid AND objid = $2::oid AND mode = 'ShareLock' AND NOT granted`, [String(unsigned >> 32n), String(unsigned & 0xffffffffn)])).rowCount))
-    expect((await pool.query(`SELECT c.processed FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 ORDER BY c.version DESC LIMIT 1`, [source])).rows[0].processed).toBe(false)
+    expect((await pool.query(`SELECT c.version FROM "${schema}".stream_changes c JOIN "${schema}".streams s ON s.id = c.stream_id WHERE s.path = $1 ORDER BY c.version DESC LIMIT 1`, [source])).rowCount).toBe(1)
   } finally {
     await gate.query('SELECT pg_advisory_unlock($1::bigint)', [gateKey]); gate.release()
     await registration; await dispatch
