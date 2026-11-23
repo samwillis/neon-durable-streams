@@ -1,6 +1,6 @@
 # Durable Streams server library for Neon
 
-Licensed under [Apache-2.0](LICENSE). Copyright 2026 Sam Willis.
+Licensed under [Apache-2.0](LICENSE). Copyright 2026 Databricks, Inc.
 
 Design research dated **22 November 2026** for a production-grade TypeScript library. Users embed the library in their own server, deploy it to their own Neon Function, and operate their own Lakebase Postgres, Object Storage, and Realtime resources.
 

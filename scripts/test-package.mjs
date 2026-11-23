@@ -23,7 +23,7 @@ try {
   const installed = join(temporary, 'node_modules/@samwillis/durable-streams-neon')
   const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'))
   if (metadata.license !== 'Apache-2.0' || !(await readFile(join(installed, 'LICENSE'), 'utf8')).includes('Apache License')
-    || !(await readFile(join(installed, 'NOTICE'), 'utf8')).includes('Copyright 2026 Sam Willis')) throw new Error('Packaged license/notice missing')
+    || !(await readFile(join(installed, 'NOTICE'), 'utf8')).includes('Copyright 2026 Databricks, Inc.')) throw new Error('Packaged license/notice missing')
   await writeFile(join(temporary, 'consumer.ts'), `
 import { createDurableStreams, type Principal } from '@samwillis/durable-streams-neon'
 import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
