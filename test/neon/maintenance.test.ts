@@ -30,20 +30,21 @@ afterAll(async () => {
 
 test('a hint uploads full frozen chunks while preserving small hot tails', async () => {
   expect((await request('hot', 'PUT', 'hot')).status).toBe(201)
-  await handler.maintain({ maxChunks: 128, freezeHot: false, timeBudgetMs: 1 })
-  let data = await pool.query(`SELECT a.chunk_id, a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'hot'`)
-  expect(data.rows).toEqual([{ chunk_id: null, payload: Buffer.from('hot') }])
+  await handler.maintain({ maxChunks: 128, timeBudgetMs: 1 })
+  let data = await pool.query(`SELECT a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'hot'`)
+  expect(data.rows).toEqual([{ payload: Buffer.from('hot') }])
   await request('hot', 'POST', 'a complete full chunk of payload bytes')
-  expect((await handler.maintain({ maxChunks: 128, freezeHot: false, timeBudgetMs: 1 })).sealed).toBe(1)
-  data = await pool.query(`SELECT a.payload, c.state FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id JOIN "${schema}".chunks c ON c.id = a.chunk_id WHERE s.path = 'hot'`)
-  expect(data.rows).toEqual([{ payload: null, state: 'sealed' }, { payload: null, state: 'sealed' }])
+  expect((await handler.maintain({ maxChunks: 128, timeBudgetMs: 1 })).sealed).toBe(1)
+  data = await pool.query(`SELECT a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'hot'`)
+  expect(data.rows).toEqual([])
+  expect((await pool.query(`SELECT c.frame_count FROM "${schema}".chunks c JOIN "${schema}".streams s ON s.id=c.stream_id WHERE s.path='hot'`)).rows).toEqual([{ frame_count: 2 }])
 })
 
 test('a tiny soft budget still gives wake publication and sealing a turn under outbox backlog', async () => {
   await request('fair/source', 'PUT')
   await request('wake', 'PUT', '[]', { 'Content-Type': 'application/json' })
   expect((await request('__ds/subscriptions/fair', 'PUT', JSON.stringify({ type: 'pull-wake', pattern: 'fair/*', wake_stream: 'wake' }), { 'Content-Type': 'application/json' })).status).toBe(201)
-  await handler.maintain({ maxChunks: 8, maxSubscriptionWork: 16, freezeHot: false })
+  await handler.maintain({ maxChunks: 8, maxSubscriptionWork: 16 })
   const stream = (await pool.query<{ id: string; change_version: string }>(`SELECT id, change_version FROM "${schema}".streams WHERE path = 'fair/source'`)).rows[0]!
   let offset = ZERO_OFFSET
   const frames = Array.from({ length: 130 }, (_, i) => {
@@ -60,7 +61,7 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
     await client.query(`UPDATE "${schema}".streams SET tail_offset=$2, change_version=change_version+130,hot_frames=130,hot_bytes=130 WHERE id=$1`, [stream.id, offset])
   })
   expect((await request('fair/source', 'POST', 'x')).status).toBe(204)
-  const stats = await handler.maintain({ maxChunks: 128, maxSubscriptionWork: 128, timeBudgetMs: 1, freezeHot: false })
+  const stats = await handler.maintain({ maxChunks: 128, maxSubscriptionWork: 128, timeBudgetMs: 1 })
   expect(stats.changes).toBe(128)
   expect(stats.sealed).toBe(1)
   expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1 AND NOT processed`, [stream.id])).rows[0].count).toBe('3')
@@ -75,6 +76,6 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
   const rest = await request(`fair/source?offset=${first.headers.get('Stream-Next-Offset')}`)
   expect(await rest.text()).toBe('xxx')
   expect(rest.headers.get('Stream-Up-To-Date')).toBe('true')
-  await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 8, freezeHot: false })
+  await handler.maintain({ maxChunks: 1, maxSubscriptionWork: 8 })
   expect((await pool.query(`SELECT count(*) FROM "${schema}".stream_changes WHERE stream_id=$1`, [stream.id])).rows[0].count).toBe('0')
 })

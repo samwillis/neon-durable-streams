@@ -78,7 +78,8 @@ test('authenticated maintenance publishes to Neon Object Storage and the Functio
   const maintenance = await request('_maintenance', 'POST', undefined, { 'x-ds-maintenance-key': TEST_FUNCTION_MAINTENANCE_KEY })
   expect(maintenance.status).toBe(200)
   await maintenance.json() // The schedule may already have sealed this batch.
-  const remote = await pool.query(`SELECT bool_and(a.payload IS NULL) AS sealed FROM "${TEST_FUNCTION_SCHEMA}".appends a JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id = a.stream_id WHERE s.tenant_id = 'function-a' AND s.path = $1`, [path])
+  const remote = await pool.query(`SELECT NOT EXISTS(SELECT 1 FROM "${TEST_FUNCTION_SCHEMA}".appends a JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id=a.stream_id WHERE s.tenant_id='function-a' AND s.path=$1)
+    AND EXISTS(SELECT 1 FROM "${TEST_FUNCTION_SCHEMA}".chunks c JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id=c.stream_id WHERE s.tenant_id='function-a' AND s.path=$1 AND c.state='sealed') AS sealed`,[path])
   expect(remote.rows[0].sealed).toBe(true)
   expect(await (await request(`v1/stream/${path}`)).text()).toBe('before after')
   expect((await request(`v1/stream/${path}`, 'POST', 'a retried body', tuple)).status).toBe(204)
@@ -89,8 +90,8 @@ test('a real Neon schedule trigger seals idle data without an application mainte
   const path = `scheduled-${randomUUID()}`
   expect((await request(`v1/stream/${path}`, 'PUT', 'idle bytes awaiting scheduled recovery')).status).toBe(201)
   await expect.poll(async () => {
-    const result = await pool.query(`SELECT bool_and(a.payload IS NULL) AS sealed FROM "${TEST_FUNCTION_SCHEMA}".appends a
-      JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id = a.stream_id WHERE s.tenant_id = 'function-a' AND s.path = $1`, [path])
+    const result = await pool.query(`SELECT NOT EXISTS(SELECT 1 FROM "${TEST_FUNCTION_SCHEMA}".appends a JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id=a.stream_id WHERE s.tenant_id='function-a' AND s.path=$1)
+      AND EXISTS(SELECT 1 FROM "${TEST_FUNCTION_SCHEMA}".chunks c JOIN "${TEST_FUNCTION_SCHEMA}".streams s ON s.id=c.stream_id WHERE s.tenant_id='function-a' AND s.path=$1 AND c.state='sealed') AS sealed`,[path])
     return result.rows[0].sealed
   }, { timeout: 90_000, interval: 1000 }).toBe(true)
   expect(await (await request(`v1/stream/${path}`)).text()).toBe('idle bytes awaiting scheduled recovery')

@@ -60,7 +60,8 @@ test('hints seal a full chunk while small hot tails remain local, without a sche
   const pending = await pool.query(`SELECT count(*) FROM "${env.TEST_FUNCTION_SCHEMA}".chunks c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id=c.stream_id WHERE s.path=$1`, [path])
   expect(pending.rows[0].count).toBe('0')
   for (let i = 0; i < 8; i++) expect((await request(`v1/stream/${path}`, 'POST', payload)).status).toBe(204)
-  await expect.poll(async () => (await pool.query(`SELECT bool_and(a.payload IS NULL) AS sealed FROM "${env.TEST_FUNCTION_SCHEMA}".appends a JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id=a.stream_id WHERE s.path=$1`, [path])).rows[0].sealed,
+  await expect.poll(async () => (await pool.query(`SELECT NOT EXISTS(SELECT 1 FROM "${env.TEST_FUNCTION_SCHEMA}".appends a JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id=a.stream_id WHERE s.path=$1)
+    AND EXISTS(SELECT 1 FROM "${env.TEST_FUNCTION_SCHEMA}".chunks c JOIN "${env.TEST_FUNCTION_SCHEMA}".streams s ON s.id=c.stream_id WHERE s.path=$1 AND c.state='sealed') AS sealed`,[path])).rows[0].sealed,
   { timeout: 15_000, interval: 250 }).toBe(true)
   const hash = createHash('sha256')
   let bytes = 0, offset = '-1'

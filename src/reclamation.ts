@@ -172,8 +172,9 @@ export class ReclamationManager {
   }
   private async pruneChunk(): Promise<number> {
     return this.guard.run({}, async (client) => {
-      const chunk = (await client.query<{ id: string }>(`SELECT c.id FROM ${this.schema}.chunks c JOIN ${this.schema}.streams s ON s.id=c.stream_id
+      const chunk = (await client.query<{ id: string; stream_id: string; start_offset: string; end_offset: string; state: string }>(`SELECT c.id,c.stream_id,c.start_offset,c.end_offset,c.state FROM ${this.schema}.chunks c JOIN ${this.schema}.streams s ON s.id=c.stream_id
         WHERE c.retired_at IS NOT NULL AND ${this.unreferenced()} AND ${this.noSubscriptionRefs('s.id')}
+        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.streams child WHERE child.source_id=s.id)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes j WHERE j.stream_id=s.id AND NOT j.processed)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.replay_pins p WHERE p.chunk_id=c.id AND p.expires_at>clock_timestamp())
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.chunk_objects o WHERE o.chunk_id=c.id AND o.collected_at IS NULL)
@@ -184,11 +185,13 @@ export class ReclamationManager {
       // exclude the candidate; locked/remaining expired pins defer its removal.
       const pins = await client.query(`WITH batch AS (SELECT id,chunk_id FROM ${this.schema}.replay_pins WHERE chunk_id=$1 AND expires_at<=clock_timestamp()
         ORDER BY expires_at,id LIMIT ${BATCH} FOR UPDATE SKIP LOCKED) DELETE FROM ${this.schema}.replay_pins p USING batch b WHERE p.id=b.id AND p.chunk_id=b.chunk_id`, [chunk.id])
-      const frames = await client.query(`WITH batch AS (SELECT stream_id,end_offset FROM ${this.schema}.appends WHERE chunk_id=$1 ORDER BY end_offset LIMIT ${BATCH})
-        DELETE FROM ${this.schema}.appends a USING batch b WHERE a.stream_id=b.stream_id AND a.end_offset=b.end_offset`, [chunk.id])
-      const removed = await client.query(`DELETE FROM ${this.schema}.chunks c WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.chunk_id=c.id)
+      const frames = chunk.state==='frozen' ? await client.query(`WITH batch AS (SELECT end_offset FROM ${this.schema}.appends
+        WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3 ORDER BY end_offset LIMIT ${BATCH})
+        DELETE FROM ${this.schema}.appends a USING batch b WHERE a.stream_id=$1 AND a.end_offset=b.end_offset`, [chunk.stream_id,chunk.start_offset,chunk.end_offset]) : undefined
+      const removed = await client.query(`DELETE FROM ${this.schema}.chunks c WHERE id=$1 AND NOT EXISTS (SELECT 1 FROM ${this.schema}.appends a
+        WHERE a.stream_id=c.stream_id AND a.end_offset>c.start_offset AND a.end_offset<=c.end_offset)
         AND NOT EXISTS (SELECT 1 FROM ${this.schema}.replay_pins p WHERE p.chunk_id=c.id)`, [chunk.id])
-      return (pins.rowCount ?? 0) + (frames.rowCount ?? 0) + (removed.rowCount ?? 0)
+      return (pins.rowCount ?? 0) + (frames?.rowCount ?? 0) + (removed.rowCount ?? 0)
     })
   }
   private async pruneMetadata(): Promise<number> {
@@ -224,9 +227,6 @@ export class ReclamationManager {
     if (!sub.rowCount) return 0
     const snapshots = await client.query(`WITH batch AS (SELECT wake_id,path FROM ${this.schema}.subscription_wake_streams WHERE wake_id=$1 ORDER BY path LIMIT ${BATCH})
       DELETE FROM ${this.schema}.subscription_wake_streams w USING batch b WHERE w.wake_id=b.wake_id AND w.path=b.path`, [candidate.id])
-    await client.query(`INSERT INTO ${this.schema}.legacy_wake_tokens (wake_id,subscription_id,subscription_name,token_hash)
-      SELECT w.id,w.subscription_id,s.name,w.token_hash FROM ${this.schema}.subscription_wakes w JOIN ${this.schema}.subscriptions s ON s.id=w.subscription_id
-      WHERE w.id=$1 AND w.token_version=1 AND w.token_hash IS NOT NULL ON CONFLICT DO NOTHING`, [candidate.id])
     const wakes = await client.query(`DELETE FROM ${this.schema}.subscription_wakes w WHERE id=$1 AND state IN ('completed','expired','fenced')
       AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_wake_streams x WHERE x.wake_id=w.id)`, [candidate.id])
     return (snapshots.rowCount ?? 0) + (wakes.rowCount ?? 0)
@@ -253,6 +253,7 @@ export class ReclamationManager {
     if (!stream) return 0
     if (final) {
       await client.query(`DELETE FROM ${this.schema}.stream_expirations WHERE stream_id=$1`, [stream.id])
+      await client.query(`DELETE FROM ${this.schema}.hot_chunks WHERE stream_id=$1`, [stream.id])
       return (await client.query(`DELETE FROM ${this.schema}.streams WHERE id=$1`, [stream.id])).rowCount ?? 0
     }
     const frames = await client.query(`WITH batch AS (SELECT end_offset FROM ${this.schema}.appends WHERE stream_id=$1 ORDER BY end_offset LIMIT ${BATCH})

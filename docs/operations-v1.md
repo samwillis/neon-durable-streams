@@ -49,7 +49,8 @@ Point-in-time rollback can discard appends and acknowledgments already observed 
 
 This package is unreleased. Upgrade from the pre-0005 checkout using the same stopped-ingress procedure: old prerelease binaries do not contain the serving-epoch guard. Run explicit checksummed migrations, deploy fresh instances, and verify replay/producer continuity before reopening. Older binaries must not run against a newer unsupported schema. The pinned same-schema mixed-binary pair passes eight real-Function checks; see the [upgrade matrix](upgrade-compatibility-v1.md). Other version/schema pairs and restore scale/fault profiles remain separate qualification gates. The bounded stopped-Function in-place procedure is covered by the [restore drill](inplace-restore-v1.md).
 
-The schema-0005 compatibility profile retains every object and frame index. Current schema 0007 keeps replay pins, retirement barriers, scoped inventory, signed fencing, and bounded cleanup, but removes the schema-0006 application PITR retention policy. Historical object recovery belongs to Neon or matching backups; current-reference safety belongs to this library. Collection is disabled by default and must be enabled explicitly through stopped administration. Upgrade 0006 → 0007 is also stopped and disables any prior collection opt-in. Read the [collection contract](reclamation-v1.md).
+Current serving requires canonical schema 0009. Migrations 0008/0009 and the explicit stopped converter replace sealed per-frame SQL rows with compact manifest directories; see the [upgrade procedure](compact-storage-v2.md). Earlier serving layouts are supported only by migration tooling. Pins, retirement barriers, scoped inventory and signed fencing remain, with provider/backup-owned historical recovery and collection disabled by default. The old schema-0005 rolling evidence remains scoped to those archived binaries.
+
 
 ## Observability
 

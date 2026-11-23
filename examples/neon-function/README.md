@@ -22,6 +22,7 @@ Neon injects `DATABASE_URL` and the `AWS_*` Object Storage variables. Create a p
 | `DS_DEPLOYMENT_ID` | Optional unique rollout identifier; returned by health separately from the code hash; defaults to `DS_BUILD_HASH` |
 | `DS_ALLOWED_ORIGINS_JSON` | Optional exact browser-origin allowlist; defaults to `[]` |
 | `DS_PUBLIC_BASE_URL` | Optional canonical stream mount URL for `Location` headers |
+| `DS_MAX_CHUNK_AGE_MS` | Maximum hot age from the first append; defaults to 3600000 (one hour) |
 | `DS_MAINTENANCE_HINTS` | `on` by default; coalesced bounded work after successful mutations; `off` isolates cron qualification |
 | `DS_CRON_MAX_CHUNKS`, `DS_CRON_SUBSCRIPTION_WORK` | Bounded cron batches, each defaulting to 64 (maximum 128) |
 | `DS_LIVE_FALLBACK_MS` | Optional coalesced fallback interval; defaults to 5000 ms |
@@ -54,3 +55,5 @@ The qualification tooling also deploys a separate HTTPS webhook receiver fixture
 The hosted-service conformance/ingress fixture sets `DS_MAINTENANCE_HINTS=off` so the scheduled-recovery assertion actually requires cron. The load qualification workflow enables hints to measure the production profile. A time budget is soft: each begun round finishes its bounded work before the deadline prevents another round. Every round gives subscription dispatch, link recovery, wake preparation, lifecycle cleanup, and sealing a turn. Measure backlog and tune the counts for the workload.
 
 A separate qualification branch runs the same Function with hints enabled and no cron trigger. It proves pull-wake delivery through Realtime and full-chunk sealing without manual maintenance; the ordinary profile disables hints to prove independent cron recovery. The load workflow uses the combined hints-plus-cron profile.
+
+Schema 0009 removes sealed append rows and retains compact boundary directories. Cron and hints use size/count/age policy; the authenticated manual maintenance route forces a drain. Read the [compact storage and stopped-upgrade contract](../../docs/compact-storage-v2.md). The cron integration fixture uses a one-second age override; the hints-only fixture uses the production one-hour default.

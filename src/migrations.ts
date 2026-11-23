@@ -5,7 +5,9 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
-export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation', '0007_provider_recovery'] as const
+export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation', '0007_provider_recovery', '0008_compact_prepare', '0009_compact_storage'] as const
+export { convertSealedStorage } from './storage-upgrade.js'
+export type { StorageConversionOptions } from './storage-upgrade.js'
 
 export interface Migration {
   readonly id: string
@@ -23,13 +25,14 @@ export async function migrationPlan(schema = 'durable_streams'): Promise<readonl
 
 /** Explicit, transactional DDL. Call through the deployment's direct connection. */
 export async function migrate(pool: Pool, options: { readonly schema?: string; readonly storageIdentity?: string; readonly environmentId?: string; readonly maxLiveReaders?: number
-  /** Explicit legacy compatibility installation; physical collection is unavailable. */
-  readonly target?: '0005_operations' } = {}): Promise<readonly string[]> {
+  /** Migration/fixture tooling only. Serving requires the complete canonical schema. */
+  readonly target?: typeof MIGRATION_IDS[number] } = {}): Promise<readonly string[]> {
   const schema = options.schema ?? 'durable_streams'
   const identifier = validateSchema(schema)
   const plan = await migrationPlan(schema)
-  if (options.target !== undefined && options.target !== '0005_operations') throw new TypeError('Unsupported migration target')
-  const selected = options.target ? plan.slice(0, 5) : plan
+  const index = options.target === undefined ? plan.length - 1 : MIGRATION_IDS.indexOf(options.target)
+  if (index < 0) throw new TypeError('Unsupported migration target')
+  const selected = plan.slice(0, index + 1)
   return transaction(pool, { timeoutMs: 60_000 }, async (client) => {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`durable-streams:migrate:${schema}`])
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${identifier}`)
@@ -57,12 +60,19 @@ export async function migrate(pool: Pool, options: { readonly schema?: string; r
         throw new StorageCompatibilityError('Missing or incompatible installation identity; explicit recovery required')
       }
     }
-    await client.query(`SELECT id FROM ${identifier}.installation FOR UPDATE`)
+    const beforeBinding = (await client.query<{ storage_identity: string | null }>(`SELECT storage_identity FROM ${identifier}.installation FOR UPDATE`)).rows[0]!
     if (options.storageIdentity !== undefined) {
       if (!options.storageIdentity || options.storageIdentity.length > 2048) throw new TypeError('Invalid storage identity')
       const binding = await client.query(`UPDATE ${identifier}.installation SET storage_identity = $1
         WHERE storage_identity IS NULL OR storage_identity = $1 RETURNING id`, [options.storageIdentity])
       if (binding.rowCount !== 1) throw new StorageCompatibilityError('Storage identity differs; explicit branch adoption or recovery is required')
+      if (beforeBinding.storage_identity === null && selected.some((migration) => migration.id === '0008_compact_prepare')) {
+        // Enabling tiered storage on an existing hot-only installation also
+        // enrolls its old tails. This one-time administrative scan keeps the
+        // ordinary append path/indexes free of extra due-counter updates.
+        await client.query(`INSERT INTO ${identifier}.hot_chunks SELECT id,clock_timestamp()+interval '1 hour'
+          FROM ${identifier}.streams WHERE hot_frames>0 ON CONFLICT DO NOTHING`)
+      }
     }
     if (options.environmentId !== undefined) {
       if (!options.environmentId || Buffer.byteLength(options.environmentId) > 2048) throw new TypeError('Invalid environment identity')

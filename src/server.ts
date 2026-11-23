@@ -54,8 +54,8 @@ export interface MaintenanceOptions {
   readonly maxSubscriptionWork?: number
   /** Finish the current bounded round, then stop claiming work at this budget. */
   readonly timeBudgetMs?: number
-  /** Hints can upload already-frozen chunks without sealing tiny hot tails. */
-  readonly freezeHot?: boolean
+  /** Administrative drain only. Normal maintenance seals size/count/age-due chunks. */
+  readonly forceHot?: boolean
 }
 export type ServerEvent =
   | { readonly type: 'request'; readonly method: string; readonly status: number; readonly durationMs: number }
@@ -289,7 +289,8 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
         const chunks = input?.maxChunks ?? 8
         if (!Number.isSafeInteger(chunks) || chunks < 1 || chunks > 128) throw new RangeError('Invalid chunk maintenance batch')
         if (input?.timeBudgetMs !== undefined && (!Number.isSafeInteger(input.timeBudgetMs) || input.timeBudgetMs < 1 || input.timeBudgetMs > 300_000)) throw new RangeError('Invalid maintenance time budget')
-        if (input?.freezeHot !== undefined && typeof input.freezeHot !== 'boolean') throw new TypeError('Invalid hot chunk rotation policy')
+        if (input?.forceHot !== undefined && typeof input.forceHot !== 'boolean') throw new TypeError('Invalid hot chunk rotation policy')
+        if (input && 'freezeHot' in input) throw new TypeError('freezeHot was replaced by age-based maintenance; use forceHot only for an explicit drain')
         const until = input?.timeBudgetMs === undefined ? Infinity : started + input.timeBudgetMs
         const total: Record<keyof MaintenanceResult, number> = { frozen: 0, sealed: 0, retired: 0, changes: 0, deliveries: 0, links: 0,
           reclaimedChunks: 0, deletedObjects: 0, prunedRows: 0, inventoriedObjects: 0 }
@@ -298,7 +299,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
         for (let i = 0; i < Math.max(chunks, maximum) && !closed; i++) {
           const current = {
             ...(subscriptions && i < maximum ? await subscriptions.maintain(1) : { changes: 0, deliveries: 0, links: 0, worked: false }),
-            ...(i < chunks ? await store.maintain({ maxChunks: 1, freezeHot: input?.freezeHot ?? true }) : { frozen: 0, sealed: 0, retired: 0,
+            ...(i < chunks ? await store.maintain({ maxChunks: 1, forceHot: input?.forceHot ?? false }) : { frozen: 0, sealed: 0, retired: 0,
               reclaimedChunks: 0, deletedObjects: 0, prunedRows: 0, inventoriedObjects: 0, reclamationWorked: false }),
           }
           for (const key of Object.keys(total) as (keyof MaintenanceResult)[]) total[key] += current[key]
@@ -328,7 +329,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
       subscriptions?.close()
       let timer: ReturnType<typeof setTimeout> | undefined
       try { await Promise.race([(async () => { await Promise.allSettled([...pending]); await live?.drain() })(), new Promise<void>((resolve) => { timer = setTimeout(resolve, deadlineMs) })]) }
-      finally { clearTimeout(timer) }
+      finally { clearTimeout(timer); store.close() }
     },
   }
 }

@@ -12,10 +12,11 @@ The application owns admission, credentials, ingress protection, monitoring, and
 | Object Storage | Neon S3 endpoint with `@aws-sdk/client-s3` 3.1169.0; private bucket, immutable v1 chunk keys. |
 | Functions | `@neon/functions` 0.11.0, Node 24, native HTTPS ingress and authenticated schedule triggers. |
 | Protocol | Pinned upstream 0.3.7 / commit `461b40267aabd644558f9b19dbb9507dd5f691cf`; all 338 cases, subscriptions enabled. |
-| Schema | Current schema 0007; stopped upgrades from 0005/0006. Schema-0005 compatibility has no physical collection. The separately packed rolling pair is qualified only on schema 0005. |
+| Schema | Canonical serving schema 0009; stopped resumable conversion from earlier layouts. Historical rolling results concern archived schema-0005 binaries only. See the [upgrade contract](compact-storage-v2.md). |
 | Regions | Frankfurt local/deployed qualification; US-east-1 required CI. Other regions and combinations need their own deployment evidence. |
 
-Sealing moves payload bytes to Object Storage. Format v1 retains per-append offset/frame indexes in Postgres while that history is reachable, including history retained by forks. Postgres metadata therefore grows with retained append count; this design does not offer constant database size for an indefinitely retained stream. Reclamation removes those indexes only after the generation becomes unreachable and its references and active reader pins permit cleanup. Include that index cost, especially for tiny appends, in sizing.
+Sealing publishes a bounded boundary array in each manifest and deletes the exact append rows. Postgres retains O(chunks) manifest/index rows plus approximately four raw boundary bytes per append and array/page overhead; hot/frozen payloads, producers and subscriptions have separate costs. Defaults seal at 4 MiB, 1,024 frames, or one hour from the first append. Normal cron preserves younger small tails. The verified-object cache defaults to a 32 MiB accounting budget per server. See [compact storage](compact-storage-v2.md) for bounds and sizing limits.
+
 
 The checked-in lockfile pins the complete dependency graph used by CI. Dependency updates rerun packed-consumer, actual Function, Neon, recovery, and full conformance gates. A peer range describes the accepted client API; it does not claim every historical driver/provider combination has passed the matrix. The package is unpublished and remains marked private.
 

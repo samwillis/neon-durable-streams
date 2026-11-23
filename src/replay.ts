@@ -11,11 +11,10 @@ export function assertReplayDeadline(deadline: number): void {
 
 /** Acquire under the replay snapshot; object I/O never holds its SQL locks. */
 export class ReplayPins {
-  enabled = false
   constructor(private readonly schema: string, private readonly guard: InstallationGuard) {}
   async acquire(client: PoolClient, frames: readonly { readonly chunk_id: string | null; readonly payload: Buffer | null }[]): Promise<ReplayLease | undefined> {
     const chunks = [...new Set(frames.filter((frame) => frame.payload === null).map((frame) => frame.chunk_id!))].sort()
-    if (!this.enabled || !chunks.length) return undefined
+    if (!chunks.length) return undefined
     const locked = await client.query<{ id: string; retired_at: Date | null }>(`SELECT id, retired_at FROM ${this.schema}.chunks
       WHERE id = ANY($1::uuid[]) ORDER BY id FOR SHARE`, [chunks])
     if (locked.rows.length !== chunks.length || locked.rows.some((chunk) => chunk.retired_at !== null)) {

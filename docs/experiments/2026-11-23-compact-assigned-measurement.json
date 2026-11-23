@@ -1,0 +1,217 @@
+{
+  "generatedAt": "2026-11-23T09:02:07.509Z",
+  "harnessSha256": "9ef9a4c2388b6c47bc5a8c357b8b896ee5b6b5fd6de4abf6637ee8dd53d0625e",
+  "artifacts": {
+    "baseline": {
+      "commit": "1ba871b2495ceb0a988676c314886384446506a2",
+      "sourceDirty": false,
+      "sourceSnapshotSha256": "9d28098887f6b5bebd25f8924c7569aea21fe999f00dba1b46ce60e9dce005e7",
+      "tarballSha256": "3e78eacedf6bf98b511fd349a2684eab6620a7d9be4f3624bac1a5434fb8bec4",
+      "sourceLockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+      "consumerLockSha256": "6271a2c677a6c7f60f0dc0b5c6f7620b1a573e2fcfee45329815fef2f995a158"
+    },
+    "current": {
+      "commit": "acde3de184be02be0c8b915fe774b6fd94788f73",
+      "sourceDirty": true,
+      "sourceSnapshotSha256": "7b15d655b6f497cd8b95ee5b1bccc2b6f3799a6dadc036fdf8b012db9ffa50e3",
+      "tarballSha256": "e282f0dad08c8442c3c7b7afaeacaf58bc58fe94d8c07000ab67a8e2304df46a",
+      "sourceLockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+      "consumerLockSha256": "7a5edb6bd4070a75af402a5876e6fd748f854a69a982777419074276d12ab17c"
+    }
+  },
+  "node": "v24.22.2",
+  "region": "eu-central-1",
+  "cleanupComplete": true,
+  "scope": "Actual sealing/replay on disposable Neon; two 4096-frame batches per profile; 64 ordinary API appends; remaining frames seeded transactionally. Separate live tuple bytes from allocated high-water relation sizes. Branch WAL includes background activity; connection read bytes include protocol overhead. No throughput/capacity claim.",
+  "samples": [
+    {
+      "kind": "baseline",
+      "framesPerChunk": 128,
+      "rows": 8192,
+      "ordinaryAppends": 64,
+      "ordinary": {
+        "durationMs": 14659.615375,
+        "sqlCalls": 640,
+        "observedBranchWalBytes": 178480,
+        "headTupleUpdates": 128,
+        "headHotUpdates": 63
+      },
+      "sealingDurationMs": 62985.001666,
+      "sealingObjects": {
+        "gets": 64,
+        "getBytes": 872162,
+        "puts": 64,
+        "putBytes": 872162
+      },
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 8192,
+          "liveTupleBytes": 1048573,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 2834432,
+            "index_bytes": 3096576,
+            "total_bytes": 5971968
+          },
+          "allocatedAfterVacuum": 5996544
+        },
+        {
+          "name": "chunks",
+          "rows": 64,
+          "liveTupleBytes": 28160,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 40960,
+            "index_bytes": 73728,
+            "total_bytes": 147456
+          },
+          "allocatedAfterVacuum": 155648
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 64,
+          "liveTupleBytes": 22528,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 24576,
+            "index_bytes": 73728,
+            "total_bytes": 131072
+          },
+          "allocatedAfterVacuum": 139264
+        }
+      ],
+      "replay": {
+        "durationMs": 29702.421625000003,
+        "pages": 64,
+        "objectGets": 64,
+        "objectBytes": 872162,
+        "sqlCalls": 1087,
+        "observedConnectionReadBytes": 3832042
+      }
+    },
+    {
+      "kind": "current",
+      "framesPerChunk": 128,
+      "rows": 8192,
+      "ordinaryAppends": 64,
+      "ordinary": {
+        "durationMs": 13140.509084000005,
+        "sqlCalls": 576,
+        "observedBranchWalBytes": 240792,
+        "headTupleUpdates": 64,
+        "headHotUpdates": 64
+      },
+      "sealingDurationMs": 63560.99904200001,
+      "sealingObjects": {
+        "gets": 64,
+        "getBytes": 872162,
+        "puts": 64,
+        "putBytes": 872162
+      },
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "liveTupleBytes": 0,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 2433024,
+            "index_bytes": 2957312,
+            "total_bytes": 5431296
+          },
+          "allocatedAfterVacuum": 5029888
+        },
+        {
+          "name": "chunks",
+          "rows": 64,
+          "liveTupleBytes": 62464,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 73728,
+            "index_bytes": 73728,
+            "total_bytes": 188416
+          },
+          "allocatedAfterVacuum": 188416
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 64,
+          "liveTupleBytes": 22528,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 24576,
+            "index_bytes": 73728,
+            "total_bytes": 131072
+          },
+          "allocatedAfterVacuum": 139264
+        }
+      ],
+      "replay": {
+        "durationMs": 28930.599917000014,
+        "pages": 64,
+        "objectGets": 64,
+        "objectBytes": 872162,
+        "sqlCalls": 1087,
+        "observedConnectionReadBytes": 311094
+      }
+    },
+    {
+      "kind": "current",
+      "framesPerChunk": 1024,
+      "rows": 8192,
+      "ordinaryAppends": 64,
+      "ordinary": {
+        "durationMs": 13084.579666999984,
+        "sqlCalls": 576,
+        "observedBranchWalBytes": 83840,
+        "headTupleUpdates": 64,
+        "headHotUpdates": 64
+      },
+      "sealingDurationMs": 10075.114875,
+      "sealingObjects": {
+        "gets": 8,
+        "getBytes": 868802,
+        "puts": 8,
+        "putBytes": 868802
+      },
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "liveTupleBytes": 0,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 2129920,
+            "index_bytes": 2891776,
+            "total_bytes": 5062656
+          },
+          "allocatedAfterVacuum": 5062656
+        },
+        {
+          "name": "chunks",
+          "rows": 8,
+          "liveTupleBytes": 36480,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 8192,
+            "index_bytes": 73728,
+            "total_bytes": 172032
+          },
+          "allocatedAfterVacuum": 212992
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 8,
+          "liveTupleBytes": 2816,
+          "allocatedBeforeVacuum": {
+            "heap_bytes": 8192,
+            "index_bytes": 49152,
+            "total_bytes": 65536
+          },
+          "allocatedAfterVacuum": 98304
+        }
+      ],
+      "replay": {
+        "durationMs": 25643.812416,
+        "pages": 64,
+        "objectGets": 8,
+        "objectBytes": 868802,
+        "sqlCalls": 1087,
+        "observedConnectionReadBytes": 646228
+      }
+    }
+  ]
+}

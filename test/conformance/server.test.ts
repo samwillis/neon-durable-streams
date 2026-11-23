@@ -44,7 +44,7 @@ let stopped = false
 const maintenanceErrors: unknown[] = []
 function scheduleMaintenance() {
   maintenanceTimer = setTimeout(() => {
-    maintenance = handler.maintain({ maxChunks: 8, freezeHot: false }).catch((error: unknown) => { maintenanceErrors.push(error) })
+    maintenance = handler.maintain({ maxChunks: 8 }).catch((error: unknown) => { maintenanceErrors.push(error) })
       .finally(() => { if (!stopped) scheduleMaintenance() })
   }, 500)
 }

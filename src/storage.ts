@@ -6,6 +6,9 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
 import { assertReplayDeadline } from './replay.js'
+import { boundaryDirectory, equalDirectory } from './boundary-directory.js'
+import { VerifiedChunkCache } from './chunk-cache.js'
+import { advanceOffset } from './offset.js'
 
 export interface ChunkInventoryPage {
   readonly objects: readonly { readonly key: string; readonly size: number }[]
@@ -27,6 +30,10 @@ export interface StorageOptions {
   readonly targetChunkBytes?: number
   readonly maxChunkFrames?: number
   readonly workerLeaseMs?: number
+  /** Maximum hot residency from the first append, independent of cron cadence. */
+  readonly maxChunkAgeMs?: number
+  /** Per-server verified-object cache budget; zero disables retention. */
+  readonly cacheBytes?: number
 }
 interface Manifest {
   id: string
@@ -53,24 +60,33 @@ export interface StoredFrame {
   readonly object_key: string | null
   readonly sha256: string | null
   readonly encoded_bytes: number | null
+  readonly end_deltas: number[] | null
+  readonly chunk_start: string | null
+  readonly first_frame: number | null
+  readonly last_frame: number | null
 }
 
 /** Durable claims and immutable FROZEN frames make upload retries deterministic. */
 export class ChunkManager {
-  reclamation = false
   private readonly schema: string
   private readonly target: number
   private readonly maximumFrames: number
   private readonly lease: number
+  readonly maxAgeMs: number
+  private readonly cache: VerifiedChunkCache
   private installationId?: string
+  close(): void { this.cache.close() }
   constructor(private readonly pool: Pool, schema: string, private readonly options: StorageOptions, private readonly guard = new InstallationGuard(pool, schema)) {
     this.schema = validateSchema(schema)
     this.target = options.targetChunkBytes ?? 4 * 1024 * 1024
-    this.maximumFrames = options.maxChunkFrames ?? 128
+    this.maximumFrames = options.maxChunkFrames ?? 1024
     this.lease = options.workerLeaseMs ?? 120_000
+    this.maxAgeMs = options.maxChunkAgeMs ?? 3_600_000
+    this.cache = new VerifiedChunkCache(options.cacheBytes ?? 32 * 1024 * 1024)
     if (!Number.isSafeInteger(this.target) || this.target < 1 || this.target > 16 * 1024 * 1024
       || !Number.isSafeInteger(this.maximumFrames) || this.maximumFrames < 1 || this.maximumFrames > 1024
       || !Number.isSafeInteger(this.lease) || this.lease < 1000 || this.lease > 300_000
+      || !Number.isSafeInteger(this.maxAgeMs) || this.maxAgeMs < 1 || this.maxAgeMs > 604_800_000
       || !options.objects.identity || options.objects.identity.length > 2048) throw new RangeError('Invalid storage options')
   }
   async assertBinding(): Promise<void> {
@@ -81,41 +97,46 @@ export class ChunkManager {
   }
   /** Caller holds the stream lock; rotation never performs network I/O. */
   async freeze(client: PoolClient, streamId: string, force = false): Promise<boolean> {
-    if (!force) {
-      const head = await client.query<{ hot_bytes: string; hot_frames: number }>(`SELECT hot_bytes, hot_frames FROM ${this.schema}.streams WHERE id = $1`, [streamId])
-      if (!head.rows.length || (BigInt(head.rows[0]!.hot_bytes) < BigInt(this.target) && head.rows[0]!.hot_frames < this.maximumFrames)) return false
-    }
+    const head = (await client.query<{ hot_bytes: string; hot_frames: number; hot_start_offset: string }>(`SELECT hot_bytes,hot_frames,hot_start_offset FROM ${this.schema}.streams WHERE id=$1`, [streamId])).rows[0]
+    if (!head || !head.hot_frames || (!force && BigInt(head.hot_bytes)<BigInt(this.target) && head.hot_frames<this.maximumFrames)) return false
     const frames = await client.query<{ start_offset: string; end_offset: string; payload_bytes: number }>(`SELECT start_offset, end_offset, payload_bytes FROM ${this.schema}.appends
-      WHERE stream_id = $1 AND chunk_id IS NULL ORDER BY end_offset LIMIT $2`, [streamId, this.maximumFrames])
-    if (!frames.rows.length) return false
+      WHERE stream_id=$1 AND end_offset>$3 ORDER BY end_offset LIMIT $2`, [streamId, this.maximumFrames,head.hot_start_offset])
+    if (!frames.rows.length) throw new Error('Hot chunk counters have no staging range')
     // Bound an old installation's backlog as well as fresh append-time rotations.
     const selected = []
     let bytes = 0
     for (const frame of frames.rows) { selected.push(frame); bytes += frame.payload_bytes; if (bytes >= this.target) break }
     const first = selected[0]!, last = selected[selected.length - 1]!
+    let previous=head.hot_start_offset
+    for (const frame of selected) {
+      if (frame.start_offset!==previous || frame.end_offset!==advanceOffset(previous,frame.payload_bytes)) throw new Error('Hot staging range is not contiguous')
+      previous=frame.end_offset
+    }
+    if (selected.length>head.hot_frames || BigInt(bytes)>BigInt(head.hot_bytes)) throw new Error('Hot staging range differs from counters')
     const id = randomUUID()
     await client.query(`INSERT INTO ${this.schema}.chunks (id, stream_id, start_offset, end_offset, state, frame_count, payload_bytes)
       VALUES ($1, $2, $3, $4, 'frozen', $5, $6)`, [id, streamId, first.start_offset, last.end_offset, selected.length, bytes])
-    const assigned = await client.query(`UPDATE ${this.schema}.appends SET chunk_id = $2 WHERE stream_id = $1 AND chunk_id IS NULL AND end_offset <= $3`, [streamId, id, last.end_offset])
-    if (assigned.rowCount !== selected.length) throw new Error('Hot chunk rotation invariant failed')
-    await client.query(`UPDATE ${this.schema}.streams SET hot_bytes = hot_bytes - $2, hot_frames = hot_frames - $3, seal_after = clock_timestamp() WHERE id = $1`, [streamId, bytes, selected.length])
+    await client.query(`UPDATE ${this.schema}.streams SET hot_bytes=hot_bytes-$2,hot_frames=hot_frames-$3,hot_start_offset=$4 WHERE id=$1`, [streamId,bytes,selected.length,last.end_offset])
+    await client.query(`DELETE FROM ${this.schema}.hot_chunks h USING ${this.schema}.streams s WHERE h.stream_id=$1 AND s.id=h.stream_id AND s.hot_frames=0`, [streamId])
     return true
   }
 
-  async maintain(input: { readonly maxChunks?: number; readonly freezeHot?: boolean } = {}): Promise<{ frozen: number; sealed: number }> {
+  async maintain(input: { readonly maxChunks?: number; readonly forceHot?: boolean } = {}): Promise<{ frozen: number; sealed: number }> {
     const maximum = input.maxChunks ?? 8
     if (!Number.isSafeInteger(maximum) || maximum < 1 || maximum > 128) throw new RangeError('Invalid maintenance batch')
     await this.assertBinding()
     let frozen = 0, sealed = 0
     for (let i = 0; i < maximum; i++) {
-      const rotated = input.freezeHot === false ? false : await this.guard.run({}, async (client) => {
-        const stream = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.streams WHERE hot_frames > 0 AND (deleted_at IS NULL OR ref_count > 0) ORDER BY seal_after, id LIMIT 1 FOR NO KEY UPDATE SKIP LOCKED`)
+      const rotated = await this.guard.run({}, async (client) => {
+        const stream = await client.query<{ id: string }>(`SELECT s.id FROM ${this.schema}.hot_chunks h JOIN ${this.schema}.streams s ON s.id=h.stream_id
+          WHERE ${input.forceHot ? 'true' : 'h.due_at<=clock_timestamp()'} AND (s.deleted_at IS NULL OR s.ref_count > 0)
+          ORDER BY h.due_at,h.stream_id LIMIT 1 FOR NO KEY UPDATE OF s SKIP LOCKED`)
         return stream.rows[0] ? this.freeze(client, stream.rows[0].id, true) : false
       })
       if (rotated) frozen++
       const claim = await this.guard.run({}, async (client) => {
         const candidate = await client.query<{ id: string }>(`SELECT id FROM ${this.schema}.chunks WHERE state = 'frozen'
-          ${this.reclamation ? 'AND retired_at IS NULL' : ''}
+          AND retired_at IS NULL
           AND (claim_until IS NULL OR claim_until <= clock_timestamp()) ORDER BY created_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`)
         if (!candidate.rows[0]) return undefined
         const result = await client.query<Manifest>(`UPDATE ${this.schema}.chunks SET claim_token = $2,
@@ -125,7 +146,8 @@ export class ChunkManager {
       })
       if (!claim) { if (!rotated) break; continue }
       try {
-        const source = await this.pool.query<{ start_offset: string; end_offset: string; payload: Buffer; message_ends: number[] | null }>(`SELECT start_offset, end_offset, payload, message_ends FROM ${this.schema}.appends WHERE chunk_id = $1 ORDER BY end_offset`, [claim.id])
+        const source = await this.pool.query<{ start_offset: string; end_offset: string; payload: Buffer; message_ends: number[] | null }>(`SELECT start_offset,end_offset,payload,message_ends FROM ${this.schema}.appends
+          WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3 ORDER BY end_offset`, [claim.stream_id,claim.start_offset,claim.end_offset])
         const identity = { installationId: this.installationId!, streamId: claim.stream_id, chunkId: claim.id }
         const frames = source.rows.map((frame) => ({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }))
         if (frames.length !== claim.frame_count || frames[0]?.start !== claim.start_offset || frames.at(-1)?.end !== claim.end_offset
@@ -133,7 +155,7 @@ export class ChunkManager {
         const bytes = encodeChunk({ ...identity, frames })
         const digest = chunkDigest(bytes)
         const key = `v1/${identity.installationId}/${identity.streamId}/${identity.chunkId}/${digest}.ndsc`
-        if (this.reclamation) {
+        {
           const intended = await this.guard.run({}, async (client) => {
             const valid = await client.query(`SELECT id FROM ${this.schema}.chunks WHERE id=$1 AND claim_token=$2 AND claim_epoch=$3
               AND state='frozen' AND retired_at IS NULL AND claim_until>clock_timestamp() FOR UPDATE`, [claim.id, claim.claim_token, claim.claim_epoch])
@@ -148,15 +170,17 @@ export class ChunkManager {
         }
         await this.options.objects.put(key, bytes)
         // Verify the exact uploaded object before discarding any local payload.
-        decodeChunk(await this.options.objects.get(key, bytes.length), identity, digest)
+        const verified = await this.options.objects.get(key, bytes.length)
+        if (verified.length !== bytes.length) throw new Error('Published object length differs')
+        const directory = boundaryDirectory(claim.start_offset, decodeChunk(verified, identity, digest).frames)
         const published = await this.guard.run({}, async (client) => {
           const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
-            encoded_bytes = $6, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
+            encoded_bytes = $6, end_deltas=$7, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
             WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp()
-            ${this.reclamation ? 'AND retired_at IS NULL' : ''} RETURNING id`,
-          [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length])
+            AND retired_at IS NULL RETURNING id`,
+          [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length, directory])
           if (!result.rowCount) return false
-          const cleared = await client.query(`UPDATE ${this.schema}.appends SET payload = NULL, message_ends = NULL WHERE chunk_id = $1 AND payload IS NOT NULL`, [claim.id])
+          const cleared = await client.query(`DELETE FROM ${this.schema}.appends WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3`, [claim.stream_id,claim.start_offset,claim.end_offset])
           if (cleared.rowCount !== claim.frame_count) throw new Error('Chunk publication frame mismatch')
           return true
         })
@@ -176,27 +200,25 @@ export class ChunkManager {
 
   /** The replay owner holds its pins; object I/O holds no SQL transaction. */
   async materialize(frames: readonly StoredFrame[], deadline: number): Promise<readonly ChunkFrame[]> {
-    let currentChunkId: string | undefined
-    let decoded: readonly ChunkFrame[] | undefined
     const result: ChunkFrame[] = []
     for (const frame of frames) {
       assertReplayDeadline(deadline)
       if (frame.payload !== null) { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
-      if (!frame.chunk_id || !frame.object_key || !frame.sha256 || !frame.encoded_bytes) throw new Error('Sealed frame is missing its manifest')
-      if (currentChunkId !== frame.chunk_id || !decoded) {
-        // A copied response page must not retain whole chunk buffers while
-        // another object is fetched or a slow reader holds the page.
-        decoded = undefined
-        const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: frame.chunk_id }
-        const bytes = await this.options.objects.get(frame.object_key, frame.encoded_bytes)
-        assertReplayDeadline(deadline)
+      if (!frame.chunk_id || !frame.object_key || !frame.sha256 || !frame.encoded_bytes || !frame.end_deltas || !frame.chunk_start
+        || !frame.first_frame || !frame.last_frame) throw new Error('Sealed range is missing its manifest')
+      const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: frame.chunk_id }
+      const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), frame.sha256, frame.encoded_bytes])
+      const decoded = await this.cache.get(key, async () => {
+        const bytes = await this.options.objects.get(frame.object_key!, frame.encoded_bytes!)
         if (bytes.length !== frame.encoded_bytes) throw new Error('Sealed object length differs from manifest')
-        decoded = decodeChunk(bytes, identity, frame.sha256).frames
-        currentChunkId = frame.chunk_id
-      }
-      const found = decoded.find((value) => value.start === frame.start_offset && value.end === frame.end_offset)
-      if (!found || found.payload.length !== frame.payload_bytes) throw new Error('Sealed object differs from frame index')
-      result.push({ ...found, payload: Buffer.from(found.payload) })
+        return decodeChunk(Buffer.from(bytes), identity, frame.sha256!)
+      }, frame.encoded_bytes)
+      assertReplayDeadline(deadline)
+      if (!equalDirectory(boundaryDirectory(frame.chunk_start, decoded.frames), frame.end_deltas)) throw new Error('Sealed object differs from boundary directory')
+      const selected = decoded.frames.slice(frame.first_frame - 1, frame.last_frame)
+      if (selected.length !== frame.last_frame - frame.first_frame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
+        || selected.reduce((sum, value) => sum + value.payload.length, 0) !== frame.payload_bytes) throw new Error('Sealed object differs from planned range')
+      for (const found of selected) result.push({ ...found, payload: Buffer.from(found.payload) })
     }
     return result
   }

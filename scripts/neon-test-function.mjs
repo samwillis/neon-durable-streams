@@ -73,7 +73,7 @@ const deployment = await neon.functions.deploy({ projectId, branchId, slug: 'dur
     DS_AUTH_JSON: JSON.stringify([{ key: userKey, tenantId: 'function-a', subject: 'qualification-a' }, { key: otherKey, tenantId: 'function-b', subject: 'qualification-b' }]),
     DS_MAINTENANCE_KEY: maintenanceKey, DS_BUILD_HASH: hash, DS_DEPLOYMENT_ID: deploymentId,
     DS_MAINTENANCE_TRIGGER_NAME: 'durable-streams-maintenance', DS_LIVE_FALLBACK_MS: liveFallbackMs, DS_LIVE_VALIDATION_MS: liveValidationMs,
-    DS_MAINTENANCE_HINTS: hintMode, DS_CRON_MAX_CHUNKS: '64', DS_CRON_SUBSCRIPTION_WORK: '64' }),
+    DS_MAX_CHUNK_AGE_MS: process.env.NEON_TEST_NO_CRON === '1' ? '3600000' : '1000', DS_MAINTENANCE_HINTS: hintMode, DS_CRON_MAX_CHUNKS: '64', DS_CRON_SUBSCRIPTION_WORK: '64' }),
 })
 let url
 const deadline = Date.now() + 180_000

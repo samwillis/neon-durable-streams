@@ -1,6 +1,6 @@
 # Postgres efficiency and simplification review
 
-Proposed design, 23 November 2026. This document reviews runtime revision `59c3b85` and documentation baseline `1ba871b`. It does **not** describe an implemented storage upgrade. Existing conformance results qualify the existing layout. The library remains unpublished.
+Design review, 23 November 2026. The primary layout, policy, cache, head-update, and canonical-runtime changes are now implemented; see the [current contract](compact-storage-v2.md). The implementation also replaces per-frame freeze assignment with immutable manifest ranges and a monotonic hot floor; it needs no extra HOT descriptor state. The explicitly deferred ledger/outbox/object-format redesigns remain follow-up decisions. The measurements below describe the original baseline. This document reviews runtime revision `59c3b85` and documentation baseline `1ba871b`. The detailed proposal below records the design decision; qualification evidence distinguishes the old and new implementations. The library remains unpublished.
 
 ## Recommendation
 

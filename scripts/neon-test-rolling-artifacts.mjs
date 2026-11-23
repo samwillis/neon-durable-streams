@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 // Build actual packed consumers, without cloud credentials in build processes.
-const baseline = 'b22c1675f7eb5c32b52f39be39279c819ea5f21f'
+const baseline = '1ba871b2495ceb0a988676c314886384446506a2'
 const stateFile = '.neon-test-state-rolling-artifacts.json'
 const root = resolve(import.meta.dirname, '..')
 const run = promisify(execFile)

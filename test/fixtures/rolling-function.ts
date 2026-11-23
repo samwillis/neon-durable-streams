@@ -38,7 +38,7 @@ export default { async fetch(request: Request) {
     if (!key || !timingSafeEqual(admin, digest(key))) return new Response(null, { status: 401 })
     if (path === '/_maintain') {
       if (request.method !== 'POST') return new Response(null, { status: 405 })
-      return Response.json(await streams.maintain({ maxChunks: 8, maxSubscriptionWork: 16 }))
+      return Response.json(await streams.maintain({ maxChunks: 8, maxSubscriptionWork: 16, forceHot: true }))
     }
     const health = await streams.inspectHealth()
     return Response.json({ ...health, revision: required('DS_REVISION'), build: required('DS_BUILD_HASH'), instance: required('DS_INSTANCE'),

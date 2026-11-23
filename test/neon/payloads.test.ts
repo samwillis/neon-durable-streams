@@ -107,7 +107,7 @@ test('sealing or raw snapshot replacement recovers exact bytes through durable r
     await request(handler, 'sealed', 'POST', 'one-')
     await request(handler, 'sealed', 'POST', 'two-')
     await request(handler, 'sealed', 'POST', 'three-')
-    await handler.maintain({ maxChunks: 8 })
+    await handler.maintain({ maxChunks: 8, forceHot: true })
     watches[live.watchIndex]!.listener({ type: 'replace', rows: [], removed: [] })
     const content = await live.readUntil('three-')
     expect(content.match(/one-/g)).toHaveLength(1)
@@ -132,7 +132,7 @@ test('buffer overflow and bounded window replacement recover from the durable cu
 test('fork replay catches up inherited data before forwarding only child appends', async () => {
   const handler = server()
   await request(handler, 'parent', 'PUT', 'inherited-')
-  await handler.maintain()
+  await handler.maintain({ forceHot: true })
   await request(handler, 'fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/parent' })
   const live = await open(handler, 'fork', '-1')
   try {

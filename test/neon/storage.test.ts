@@ -59,8 +59,9 @@ test('replay crosses sealed and hot data after a new server instance, preserving
   expect((await request(writer, 'restart', 'POST', 'once----', tuple)).status).toBe(200)
   expect((await writer.maintain({ maxChunks: 16 })).sealed).toBeGreaterThanOrEqual(2)
   expect((await request(writer, 'restart', 'POST', 'hot')).status).toBe(204)
-  const stats = await pool.query(`SELECT c.state, a.payload IS NULL AS remote FROM "${schema}".appends a LEFT JOIN "${schema}".chunks c ON c.id = a.chunk_id JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'restart' ORDER BY a.end_offset`)
-  expect(stats.rows).toEqual([{ state: 'sealed', remote: true }, { state: 'sealed', remote: true }, { state: null, remote: false }])
+  const stats = await pool.query(`SELECT a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'restart' ORDER BY a.end_offset`)
+  expect(stats.rows).toEqual([{ payload: Buffer.from('hot') }])
+  expect((await pool.query(`SELECT c.end_deltas FROM "${schema}".chunks c JOIN "${schema}".streams s ON s.id=c.stream_id WHERE s.path='restart' ORDER BY c.end_offset`)).rows).toEqual([{ end_deltas: [13] }, { end_deltas: [13] }])
   const fresh = server()
   expect(await readAll(fresh, 'restart')).toBe('start---once----hot')
   expect((await request(fresh, 'restart', 'POST', 'different', tuple)).status).toBe(204)
@@ -151,6 +152,6 @@ test('SIGKILL after publication preserves sealed replay without local payloads',
     }
   }
   const payload = await pool.query(`SELECT a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'sealed-crash'`)
-  expect(payload.rows[0].payload).toBeNull()
+  expect(payload.rows).toEqual([])
   expect(await readAll(server(), 'sealed-crash')).toBe('survives publication process loss')
 })

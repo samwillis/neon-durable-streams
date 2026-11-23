@@ -26,13 +26,14 @@ try {
     || !(await readFile(join(installed, 'NOTICE'), 'utf8')).includes('Copyright 2026 Sam Willis')) throw new Error('Packaged license/notice missing')
   await writeFile(join(temporary, 'consumer.ts'), `
 import { createDurableStreams, type Principal } from '@samwillis/durable-streams-neon'
-import { migrationPlan } from '@samwillis/durable-streams-neon/migrations'
+import { migrationPlan, convertSealedStorage } from '@samwillis/durable-streams-neon/migrations'
 import { createNeonRealtimeNotifier } from '@samwillis/durable-streams-neon/neon'
 import { createS3ChunkStorage } from '@samwillis/durable-streams-neon/s3'
 import { parseSubscriptionKeyring } from '@samwillis/durable-streams-neon/subscriptions'
 import { inspectInstallation, beginRecovery, verifyRecovery, finishRecovery, inspectReclamation, configureReclamation } from '@samwillis/durable-streams-neon/operations'
 import pg from 'pg'
 if ([inspectInstallation, beginRecovery, verifyRecovery, finishRecovery, inspectReclamation, configureReclamation].some((fn) => typeof fn !== 'function')) throw new Error('Operations entrypoint missing')
+if (typeof convertSealedStorage !== 'function') throw new Error('Storage conversion entrypoint missing')
 if (typeof createNeonRealtimeNotifier !== 'function') throw new Error('Realtime entrypoint missing')
 const storage = createS3ChunkStorage({ endpoint: 'https://storage.example.test', region: 'eu-central-1', bucket: 'consumer-tests' })
 storage.close()
@@ -44,7 +45,7 @@ const server = createDurableStreams({ postgres: { pool }, auth: {
 const result = await server.fetch(new Request('https://example.test/v1/stream/test'))
 if (result.status !== 401) throw new Error('Unexpected unauthenticated behavior')
 const plan = await migrationPlan('consumer_schema')
-if (plan.length !== 7 || !plan[0]!.sql.includes('"consumer_schema".streams') || !plan[1]!.sql.includes('"consumer_schema".chunks') || !plan[2]!.sql.includes('fork_source_fk') || !plan[3]!.sql.includes('webhook_signing_keys') || !plan[4]!.sql.includes('serving_epoch') || !plan[5]!.sql.includes('replay_pins') || !plan[6]!.sql.includes('DROP COLUMN recovery_window_ms')) throw new Error('Packaged SQL migrations missing')
+if (plan.length !== 9 || !plan[0]!.sql.includes('"consumer_schema".streams') || !plan[1]!.sql.includes('"consumer_schema".chunks') || !plan[2]!.sql.includes('fork_source_fk') || !plan[3]!.sql.includes('webhook_signing_keys') || !plan[4]!.sql.includes('serving_epoch') || !plan[5]!.sql.includes('replay_pins') || !plan[6]!.sql.includes('DROP COLUMN recovery_window_ms') || !plan[7]!.sql.includes('end_deltas') || !plan[8]!.sql.includes('DROP COLUMN chunk_id')) throw new Error('Packaged SQL migrations missing')
 await server.close()
 await pool.end()
 `)

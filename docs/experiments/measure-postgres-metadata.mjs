@@ -29,7 +29,7 @@ try {
   for (const framesPerChunk of [128, 1024]) {
     const schema = `ds_test_${randomUUID().replaceAll('-', '')}`, sql = quote(schema), streamId = randomUUID()
     schemas.push(schema)
-    await migrate(pool, { schema, storageIdentity: 'synthetic-metadata-measurement', environmentId: env.NEON_TEST_BRANCH_ID })
+    await migrate(pool, { schema, target: '0007_provider_recovery', storageIdentity: 'synthetic-metadata-measurement', environmentId: env.NEON_TEST_BRANCH_ID })
     await pool.query('BEGIN')
     try {
       await pool.query("SET LOCAL statement_timeout='60s'; SET LOCAL lock_timeout='5s'; SET LOCAL transaction_timeout='120s'")
@@ -85,7 +85,7 @@ const output = process.argv[2] ?? '/tmp/neon-postgres-metadata-baseline.json'
 await mkdir(dirname(output), { recursive: true })
 const report = { generatedAt: new Date().toISOString(), sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim(),
   harnessSha256: createHash('sha256').update(await readFile(fileURLToPath(import.meta.url))).digest('hex'),
-  node: process.version, region: env.AWS_REGION, storage: 'Synthetic steady-state metadata in current schema on actual Neon Postgres 18',
+  node: process.version, region: env.AWS_REGION, storage: 'Synthetic sealed baseline in pinned schema 0007 on actual Neon Postgres 18',
   objectUploads: 0, cleanupComplete, samples }
 await writeFile(output, JSON.stringify(report, null, 2)+'\n')
 console.log(JSON.stringify(report))

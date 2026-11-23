@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import pg from 'pg'
 import { afterAll, afterEach, beforeEach, expect, test } from 'vitest'
 import { createDurableStreams } from '../../src/index.js'
@@ -8,6 +8,7 @@ import { beginRecovery, configureReclamation, finishRecovery, inspectInstallatio
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { InstallationGuard } from '../../src/installation.js'
 import { ReclamationManager } from '../../src/reclamation.js'
+import { PostgresStreamStore } from '../../src/store.js'
 import { advanceOffset, ZERO_OFFSET } from '../../src/offset.js'
 import { chunkDigest, encodeChunk } from '../../src/chunk-codec.js'
 import { postgresTestLimits } from '../fixtures/postgres-limits.js'
@@ -179,11 +180,11 @@ test('a deleted HOT parent retained by a live fork can still archive before its 
   expect((await sql('SELECT * FROM ds.chunks')).rows).toHaveLength(0)
   expect((await request(value, 'hot-parent', 'DELETE')).status).toBe(204)
   expect((await phase(0)).reclaimedChunks).toBe(0)
-  const maintained = await value.maintain()
+  const maintained = await value.maintain({ forceHot: true })
   expect(maintained.frozen).toBe(1); expect(maintained.sealed).toBe(1)
   const chunk = (await sql('SELECT * FROM ds.chunks')).rows[0]
   expect(chunk).toMatchObject({ state: 'sealed', retired_at: null })
-  expect((await sql('SELECT payload FROM ds.appends')).rows[0].payload).toBe(null)
+  expect((await sql('SELECT payload FROM ds.appends')).rows).toEqual([])
   expect(await (await request(value, 'hot-child')).text()).toBe(body)
   expect((await request(value, 'hot-parent')).status).toBe(410)
   expect((await request(value, 'hot-child', 'DELETE')).status).toBe(204)
@@ -275,7 +276,7 @@ test('fair durable phase rotation and dependency-ordered pruning remove dead gen
   expect(await (await request(value, 'source')).text()).toBe('new generation')
 })
 
-test('pruned signed and legacy wakes still fence authentic tokens, and recreated subscriptions keep increasing generations', async () => {
+test('pruned signed wakes still fence authentic tokens, and recreated subscriptions keep increasing generations', async () => {
   await enable()
   const keyring = parseSubscriptionKeyring(env.DURABLE_STREAMS_KEYRING!)
   await initializeSubscriptions(direct, { schema, keyring })
@@ -297,22 +298,50 @@ test('pruned signed and legacy wakes still fence authentic tokens, and recreated
     return { ...claim, body }
   }
   const first = await issue()
-  const legacy = `dsw.${first.wake_id.slice(2)}.${randomBytes(32).toString('base64url')}`
-  await sql('UPDATE ds.subscription_wakes SET token_version=1,token_hash=$2 WHERE id=$1', [first.wake_id.slice(2), createHash('sha256').update(legacy).digest()])
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=0'); await phase(5)
   expect((await sql('SELECT * FROM ds.subscription_wakes WHERE id=$1', [first.wake_id.slice(2)])).rows).toHaveLength(0)
-  expect((await sql('SELECT * FROM ds.legacy_wake_tokens WHERE wake_id=$1', [first.wake_id.slice(2)])).rows).toHaveLength(1)
-  expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${legacy}` })).status).toBe(409)
   expect((await request(value, name, 'DELETE')).status).toBe(204)
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=1'); await phase(5)
   expect((await sql('SELECT * FROM ds.subscriptions')).rows).toHaveLength(0)
   expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${first.token}` })).status).toBe(409)
-  expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${legacy}` })).status).toBe(409)
   const next = await issue()
   expect(next.generation).toBeGreaterThan(first.generation)
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=0'); await phase(5)
   expect((await request(value, `${name}/ack`, 'POST', next.body, { ...json, Authorization: `Bearer ${next.token}` })).status).toBe(409)
 }, 120_000)
+
+test('pending inherited ack validation retains ancestor directories after fork deletion and object collection', async () => {
+  await enable()
+  const keyring = parseSubscriptionKeyring(env.DURABLE_STREAMS_KEYRING!)
+  await initializeSubscriptions(direct, { schema, keyring })
+  const value = server(objects, { keyring }), json = { 'Content-Type': 'application/json' }
+  await request(value, 'inherited-source', 'PUT', 'first;')
+  const anchor = (await request(value, 'inherited-source', 'POST', 'second;')).headers.get('Stream-Next-Offset')!
+  await value.maintain()
+  const parent = (await sql("SELECT id FROM ds.streams WHERE path='inherited-source'")).rows[0].id
+  await request(value, 'inherited-child', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/inherited-source' })
+  await request(value, 'inherited-wake', 'PUT', '[]', json)
+  const sub = '__ds/subscriptions/inherited'
+  expect((await request(value, sub, 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['inherited-child'], wake_stream: 'inherited-wake', lease_ttl_ms: 600_000 }), json)).status).toBe(201)
+  await request(value, 'inherited-child', 'POST', 'child;')
+  await value.maintain()
+  const claim = await (await request(value, `${sub}/claim`, 'POST', '{"worker":"fixture"}', json)).json() as { token: string; wake_id: string; generation: number }
+  await request(value, 'inherited-source', 'DELETE'); await request(value, 'inherited-child', 'DELETE')
+  // Finish logical parent detachment without running subscription fanout.
+  const lifecycle = new PostgresStreamStore(pool, schema, { environmentId: 'collection-test', storage: { objects, targetChunkBytes: 4 } })
+  await lifecycle.maintain({ maxChunks: 1 }); lifecycle.close()
+  // Direct collector work deliberately races ahead of outbox invalidation.
+  await phase(0); await phase(0)
+  let deleted = 0
+  for (let i = 0; i < 4; i++) deleted += (await phase(1)).deletedObjects
+  expect(deleted).toBeGreaterThanOrEqual(2)
+  await phase(2)
+  expect((await sql('SELECT end_deltas FROM ds.chunks WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
+  const body = JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, acks: [{ stream: 'inherited-child', offset: anchor }] })
+  expect((await request(value, `${sub}/ack`, 'POST', body, { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
+  await value.maintain()
+  expect((await request(value, `${sub}/ack`, 'POST', body, { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(409)
+})
 
 test('recovery requires every reachable object, skips retired manifests, and fences abandoned delete claims', async () => {
   await enable()

@@ -1,44 +1,33 @@
-# Qualified upgrade boundaries
+# Upgrade boundaries
 
-The package is unreleased and remains `private: true`. Git revisions and artifact hashes identify the tested binaries; both prerelease snapshots call themselves `0.0.1`. A matching package version string alone does not identify a qualified pair.
+The package is unreleased and remains `private: true`. Source revisions and artifact hashes identify tested binaries; the prerelease package version alone does not identify a qualified pair. The current runtime serves only canonical schema 0009 with object format v1.
 
-| Boundary | Procedure and evidence |
+| Boundary | Procedure |
 | --- | --- |
-| Fresh installation | Explicit checksummed migrations 0001–0007, storage format v1, environment/storage binding, and initialization of the external subscription keyring. |
-| Schema 0004 → 0005 | Stop ingress, workers, and old instances. The prior snapshot fixture preserves sealed bytes, fork ranges, offsets, and producer sessions. Pre-0005 binaries have no serving-epoch guard and cannot overlap this upgrade. |
-| Binary overlap on schema 0005 | `b22c1675f7eb5c32b52f39be39279c819ea5f21f` → `01643614c6ba142ef945e5a3c3607731293cf875` passes eight checks through separately deployed Neon Functions built from independently installed package tarballs. Every migration checksum matches. |
-| Binary rollback on the same schema | The pinned baseline reads current-written sealed data and resumes producer sessions. After an epoch change, fresh baseline/current instances can serve the activated installation; the earlier processes remain fenced. |
-| Schema 0006 → 0007 | Stop all runtimes/workers. Migration 0007 fences old epochs, removes application PITR settings, and disables collection pending explicit opt-in under provider-owned historical recovery. Exact retained bytes and old-offset forks pass actual-Neon regressions; current [required CI](https://github.com/samwillis/neon-durable-streams/actions/runs/45131209454) passed. |
-| Other schema/format or binary pairs | Unqualified. Use a stopped-ingress procedure until a specific compatibility pair is tested. Unknown migration history is rejected. Never infer compatibility from a similar API or an unchanged chunk-format number. |
+| Fresh installation | Explicit checksummed migrations 0001–0009, environment/storage binding, and external subscription keyring initialization. |
+| Old layout → 0009 | Stop ingress, workers, instances, timers and possible cold starts. Prepare migration 0008, run bounded `convertSealedStorage()` batches, then finalize 0009. See [compact storage](compact-storage-v2.md). |
+| Old/current binary overlap across this upgrade | Unsupported. Preparation/finalization change serving epochs, and the new runtime rejects old/intermediate migration histories. Pre-0005 binaries lack the epoch guard and must be fully stopped. |
+| Binary downgrade after conversion | Unsupported. Old frame rows have been removed. Restore matching pre-upgrade database/objects if rollback is needed. |
+| Same-schema replacement | Use only a specifically tested artifact pair. Drain old traffic/work and preserve identities, auth policy, external keys, limits, and the common object store. A schema number alone does not qualify arbitrary binaries. |
+| Branch/point-in-time recovery | Use the [quiesced recovery procedure](operations-v1.md) and [in-place restore runbook](inplace-restore-v1.md), restoring every referenced immutable object's original bytes. |
 
-The mixed-binary result qualifies this pair and its recorded dependencies. It does not qualify rolling DDL, a new storage format, destructive GC, or arbitrary older binaries. A future migration must explicitly define which readers/writers may overlap and fence unsupported warm runtimes before changing their storage assumptions.
+Existing migrations 0001–0007 and immutable v1 objects are preserved. Conversion verifies active objects against their old exact indexes before atomically writing directories and deleting rows. Retired metadata with already collected objects can convert from complete retained indexes. Missing/corrupt active objects or incomplete indexes keep the upgrade unfinished. No object network I/O holds SQL locks.
 
-## Rolling a qualified binary pair
+## Packed upgrade qualification
 
-1. Check the exact source/package hashes and migration checksums against the supported matrix. Preserve the existing backup policy, immutable objects, and external wrapping keys. Both versions must use the same installation, environment/storage identities, authentication policy, and persistent keyring.
-2. Start the new binary on the existing schema without changing the schema or format during overlap. Give each deployment a unique rollout identifier. Wait for stable authenticated readiness and representative protocol reads before routing application traffic to it.
-3. Shift traffic in bounded stages while checking append/error latency, reader admission, sealing/outbox backlog, and resource use. Clients retain their producer epoch/sequence and durable offsets across backends. Page boundaries can differ; clients follow the returned checkpoints and `Stream-Up-To-Date` signal.
-4. Both qualified seal/dispatch workers may run during overlap. Their durable claims and publication fences coordinate ownership. A deployment must still budget aggregate pool, Function, and live-reader capacity across versions.
-5. Stop routing new requests to the older version, drain its live reads and work, and stop its instances. Keep the prior artifact until the rollback window closes. Ordinary same-schema rolling deployment does not need an installation epoch change; an administrative recovery changes the epoch and requires fresh runtime instances.
-6. Roll back only within the qualified schema/format boundary. A runtime that pinned an earlier serving epoch remains fenced after recovery. Deploy a fresh instance of the supported older artifact instead of reviving its old process.
+`scripts/neon-test-rolling-artifacts.mjs` builds the pinned schema-0007 baseline `1ba871b2495ceb0a988676c314886384446506a2` and a clean snapshot of the candidate in independent directories. Each is packed and installed into a separate consumer; build processes receive no cloud credentials. Reports retain source, archive, tarball, lockfile, and Function bundle hashes.
 
-For DDL or incompatible storage changes, use the [quiesced operations procedure](operations-v1.md) and [in-place restore runbook](inplace-restore-v1.md). Stopping old ingress/instances is mandatory across a rollback that can restore an old epoch.
+`test/neon/rolling.test.ts` now tests a **stopped layout upgrade**, followed by same-candidate multi-instance behavior. It does not claim old/current rolling compatibility across schemas:
 
-## What the mixed-version test executes
+1. Deploy the actual baseline artifact on schema 0007, write/ seal v1 payloads, retain a fork at an interior frame boundary, preserve exact-number JSON, producer state, and an active scoped wake.
+2. Delete the baseline deployment and stop its possible cold starts. Prepare 0008, convert bounded chunks, finalize 0009, and complete explicit recovery before reopening.
+3. Deploy two candidate instances. Verify exact old bytes/forks/JSON and producer deduplication, rejected old-epoch callbacks, and a fresh increasing signed wake generation.
+4. Run eight additional multi-instance checks: concurrent producers/fencing, concurrent seal workers/cold replay, full/partial inherited JSON forks, subscription coordination, Realtime final-bytes-before-EOF, shared admission/cancellation, tenant/generation isolation, and recovery fencing with fresh candidate deployments.
 
-`scripts/neon-test-rolling-artifacts.mjs` fetches only the pinned baseline commit when necessary, archives its source/assets, installs its frozen dependencies, builds it, and packs it. It also snapshots the current source and builds it in another isolated directory before packing, so stale/shared `dist` output cannot identify the tested candidate. Each tarball is installed into a separate clean consumer. Build subprocesses receive no cloud credentials. Reports retain source, archive, tarball, dependency-lock, and deployed-bundle hashes.
+The fixture records actual Function Node/architecture/memory separately from coordinator Node. It uses a dedicated schema, short SSE rotations, and a two-reader installation limit. Success requires the stopped upgrade, all eight checks, and cleanup. These are correctness checks, not capacity evidence. Required CI preserves the sanitized report and retries recorded cleanup after interruption.
 
-`test/neon/rolling.test.ts` bundles the same test consumer against each installed package, deploys the two Functions against one dedicated schema, and runs:
+## Historical rolling evidence
 
-- Cross-version producer retries, concurrent duplicate appends, exact ordering, and epoch fencing.
-- Concurrent old/new seal workers, exact cold replay, and producer retries after local payload removal.
-- Whole and partial JSON forks in both directions, preserving large-number lexemes and sealed indexes.
-- Registration, dispatch, claims, scoped acks, and stale-token rejection across versions.
-- Actual Realtime/SSE delivery of the other version's final append before EOF.
-- Installation-wide admission across runtimes and prompt cancellation recovery.
-- Tenant isolation and generation isolation across deletion/recreation.
-- Recovery fencing of both running binaries, followed by fresh current/baseline deployments and continued producer state.
+The archived schema-0005 pair `b22c1675f7eb5c32b52f39be39279c819ea5f21f` → `01643614c6ba142ef945e5a3c3607731293cf875` passed eight mixed-version checks through independently packed Neon Functions, including same-schema rollback. Those reports remain in the [qualification index](qualification/README.md). They qualify those artifacts on schema 0005 and do not imply that today's canonical runtime serves that layout.
 
-The test creates four runtime deployments in total, limits its installation to two live readers, and uses short SSE rotations and small chunks to exercise transitions. It records the actual Function Node version, CPU architecture, and memory, separately from the coordinator's Node version. These are correctness checks, not a production capacity benchmark.
-
-The qualification report is successful only if all eight checks pass and cleanup completes. Focused runs cannot satisfy that gate. Cleanup deletes only the recorded Function slugs and dedicated schema, then removes the isolated package consumers; the surrounding test branch and its other Functions remain untouched. Required Neon CI preserves the sanitized report and retries recorded cleanup after runner/test interruption.
+The earlier stopped schema-0006 → 0007 qualification is likewise historical. It removed application PITR windows and disabled collection pending an explicit opt-in under provider/backup-owned object history. The compact layout preserves that recovery contract.

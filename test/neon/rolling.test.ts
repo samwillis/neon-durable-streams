@@ -8,7 +8,7 @@ import { zipSync } from 'fflate'
 import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { migrate, migrationPlan } from '../../src/migrations.js'
+import { convertSealedStorage, migrate, migrationPlan } from '../../src/migrations.js'
 import { beginRecovery, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../../src/subscriptions.js'
@@ -148,14 +148,14 @@ beforeAll(async () => {
   owned = true
   await script('scripts/neon-test-rolling-artifacts.mjs')
   prepared = JSON.parse(await readFile(artifactsFile, 'utf8')) as Artifacts
-  expect(prepared.artifacts.baseline.commit).toBe('b22c1675f7eb5c32b52f39be39279c819ea5f21f')
-  for (const migration of (await migrationPlan(schema)).slice(0, 5)) {
+  expect(prepared.artifacts.baseline.commit).toBe('1ba871b2495ceb0a988676c314886384446506a2')
+  for (const migration of (await migrationPlan(schema)).slice(0, 7)) {
     const prior = await readFile(join(prepared.artifacts.baseline.packageRoot, 'migrations', `${migration.id}.sql`))
     expect(createHash('sha256').update(prior).digest('hex')).toBe(migration.checksum)
   }
-  await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity, maxLiveReaders: 2, target: '0005_operations' })
+  await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity, maxLiveReaders: 2, target: '0007_provider_recovery' })
   await initializeSubscriptions(pool, { schema, keyring })
-  old = await deploy('baseline', 0); current = await deploy('current', 1)
+  old = await deploy('baseline', 0)
 }, 600_000)
 afterAll(async () => {
   await Promise.all([...liveSessions].map((session) => session.close()))
@@ -167,17 +167,65 @@ afterAll(async () => {
   } finally {
     await mkdir('qualification-results', { recursive: true })
     await writeFile('qualification-results/rolling-upgrade.json', JSON.stringify({ passed: cleaned && passed.length === expected && expected === 8 && stoppedUpgrade.passed,
-      checks: { expected, passed: passed.length, names: passed }, cleaned, generatedAt: new Date().toISOString(), testSha256,
+      scope: 'Stopped schema-0007 to schema-0009 packed upgrade, followed by eight same-candidate multi-instance checks; no rolling compatibility across layouts', checks: { expected, passed: passed.length, names: passed }, cleaned, generatedAt: new Date().toISOString(), testSha256,
       baselineSourceArchiveSha256: prepared?.baselineSourceArchiveSha256, node: process.version, region: env.AWS_REGION,
       artifacts: prepared ? Object.fromEntries(Object.entries(prepared.artifacts).map(([key, { packageRoot: _root, consumer: _consumer, ...artifact }]) => [key, artifact])) : {},
       runtimes: runtimes.map(({ url: _url, ...runtime }) => runtime), storageVersion: 1,
-      migrations: (await migrationPlan(schema)).slice(0, 5).map(({ id, checksum }) => ({ id, checksum })),
+      migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })),
       stoppedUpgrade,
     }, null, 2) + '\n')
   }
 }, 180_000)
 
-qualify('both packed versions share producer deduplication, ordering, and fencing during concurrent writes', async () => {
+test('a stopped packed schema-0007 upgrade preserves history and fenced wakes before canonical multi-instance qualification', async () => {
+  const json = { 'Content-Type': 'application/json' }, sub = '__ds/subscriptions/stopped-upgrade'
+  const tuple = { 'Producer-Id': 'upgrade', 'Producer-Epoch': '7', 'Producer-Seq': '0' }
+  expect((await request(old, 'upgrade-source', 'PUT', 'before;')).status).toBe(201)
+  const anchor = (await request(old, 'upgrade-source', 'POST', 'record;', tuple)).headers.get('Stream-Next-Offset')!
+  expect((await request(old, 'upgrade-source', 'POST', 'later;')).status).toBe(204)
+  expect((await request(old, 'upgrade-fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/upgrade-source', 'Stream-Fork-Offset': anchor })).status).toBe(201)
+  await request(old, 'upgrade-json', 'PUT', '[9007199254740993,1e400,-0]', json)
+  await request(old, 'upgrade-wake', 'PUT', '[]', json)
+  expect((await request(old, sub, 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['upgrade-source'], wake_stream: 'upgrade-wake', lease_ttl_ms: 600_000 }), json)).status).toBe(201)
+  const appended = await request(old, 'upgrade-source', 'POST', 'pending;')
+  await maintain(old)
+  const claimed = await request(old, `${sub}/claim`, 'POST', '{"worker":"before-upgrade"}', json)
+  expect(claimed.status).toBe(200)
+  const oldClaim = await claimed.json() as { token: string; wake_id: string; generation: number }
+  mask(oldClaim.token); expect(oldClaim.token).toMatch(/^dsw\.2\./)
+  expect(Number((await pool.query(`SELECT count(*) FROM "${schema}".appends WHERE payload IS NULL`)).rows[0].count)).toBeGreaterThan(0)
+  // Stop the actual old deployment and its possible cold starts before DDL.
+  await neon.functions.delete({ projectId, branchId, slug: slugs[0]! })
+  await new Promise((resolve) => setTimeout(resolve, 6000))
+  expect(await migrate(pool, { schema, target: '0008_compact_prepare', environmentId: branchId, storageIdentity: objects.identity })).toEqual(['0008_compact_prepare'])
+  while (!(await convertSealedStorage(pool, { schema, objects, maxChunks: 8 })).complete) {}
+  expect(await migrate(pool, { schema })).toEqual(['0009_compact_storage'])
+  const identity = await inspectInstallation(pool, { schema })
+  const recovery = await beginRecovery(pool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
+    expectedServingEpoch: identity.serving_epoch, environmentId: branchId, storageIdentity: objects.identity })
+  while (!(await verifyRecovery(pool, { schema, token: recovery.token, objects, keyring, maxChunks: 16 })).complete) {}
+  await finishRecovery(pool, { schema, token: recovery.token })
+  current = await deploy('current', 0); old = await deploy('current', 1)
+  for (const runtime of [old,current]) {
+    expect(await read(runtime, 'upgrade-source')).toBe('before;record;later;pending;')
+    expect(await read(runtime, 'upgrade-fork')).toBe('before;record;')
+    expect(await read(runtime, 'upgrade-json')).toBe('[9007199254740993,1e400,-0]')
+    expect((await request(runtime, 'upgrade-source', 'POST', 'duplicate', tuple)).status).toBe(204)
+  }
+  expect(Number((await pool.query(`SELECT count(*) FROM "${schema}".appends WHERE payload IS NULL`)).rows[0].count)).toBe(0)
+  const oldBody = JSON.stringify({ wake_id: oldClaim.wake_id, generation: oldClaim.generation, done: true })
+  expect((await request(current, `${sub}/ack`, 'POST', oldBody, { ...json, Authorization: `Bearer ${oldClaim.token}` })).status).toBe(409)
+  await maintain(current)
+  const response = await request(current, `${sub}/claim`, 'POST', '{"worker":"after-upgrade"}', json)
+  expect(response.status).toBe(200)
+  const claim = await response.json() as { token: string; wake_id: string; generation: number }; mask(claim.token)
+  expect(claim.token).toMatch(/^dsw\.2\./); expect(claim.generation).toBeGreaterThan(oldClaim.generation)
+  expect((await request(current, `${sub}/ack`, 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true,
+    acks: [{ stream: 'upgrade-source', offset: appended.headers.get('Stream-Next-Offset') }] }), { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
+  stoppedUpgrade = { passed: true, migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })) }
+}, 480_000)
+
+qualify('two packed canonical deployments share producer deduplication, ordering, and fencing', async () => {
   expect((await request(old, 'producer', 'PUT', 'seed;')).status).toBe(201)
   const tuple = { 'Producer-Id': 'mixed', 'Producer-Epoch': '0', 'Producer-Seq': '0' }
   expect((await request(old, 'producer', 'POST', 'old;', tuple)).status).toBe(200)
@@ -192,7 +240,7 @@ qualify('both packed versions share producer deduplication, ordering, and fencin
   for (const runtime of [old, current]) expect(await read(runtime, 'producer')).toBe('seed;old;new;race;epoch;')
 })
 
-qualify('old and new seal workers publish mutually readable chunks and retain producer sessions', async () => {
+qualify('concurrent canonical seal workers publish mutually readable chunks and retain producer sessions', async () => {
   expect((await request(current, 'sealing', 'PUT')).status).toBe(201)
   const parts = Array.from({ length: 20 }, (_, i) => `part-${i.toString().padStart(2, '0')};`)
   for (let i = 0; i < parts.length; i++) expect((await request(i % 2 ? old : current, 'sealing', 'POST', parts[i], { 'Producer-Id': 'sealer', 'Producer-Epoch': '0', 'Producer-Seq': String(i) })).status).toBe(200)
@@ -204,7 +252,7 @@ qualify('old and new seal workers publish mutually readable chunks and retain pr
   }
 })
 
-qualify('cross-version forks preserve exact-number JSON and inherited sealed ranges', async () => {
+qualify('canonical deployments preserve exact-number JSON and inherited sealed fork ranges', async () => {
   const json = '[9007199254740993,1e400,-0]'
   expect((await request(old, 'json', 'PUT', json, { 'Content-Type': 'application/json' })).status).toBe(201)
   await maintain(current)
@@ -225,7 +273,7 @@ qualify('cross-version forks preserve exact-number JSON and inherited sealed ran
   expect(await read(current, 'json-grandchild')).toBe(json)
 })
 
-qualify('subscription registration, dispatch, claims, and scoped acks interoperate across versions', async () => {
+qualify('subscription registration, dispatch, claims, and scoped acks work across canonical deployments', async () => {
   await request(old, 'watched', 'PUT')
   await request(current, 'wake', 'PUT', '[]', { 'Content-Type': 'application/json' })
   expect((await request(old, '__ds/subscriptions/mixed', 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['watched'], wake_stream: 'wake', lease_ttl_ms: 600_000 }), { 'Content-Type': 'application/json' })).status).toBe(201)
@@ -246,7 +294,7 @@ qualify('subscription registration, dispatch, claims, and scoped acks interopera
   expect((await request(current, '__ds/subscriptions/mixed/release', 'POST', JSON.stringify({ wake_id: fresh.wake_id, generation: fresh.generation }), { Authorization: `Bearer ${fresh.token}`, 'Content-Type': 'application/json' })).status).toBe(204)
 })
 
-qualify('both Realtime implementations deliver the other version’s final append before EOF', async () => {
+qualify('both deployed Realtime instances deliver final contiguous bytes before EOF', async () => {
   for (const [readerRuntime, writer, path] of [[old, current, 'old-live'], [current, old, 'new-live']] as const) {
     await request(writer, path, 'PUT')
     const live = await open(readerRuntime, path)
@@ -259,7 +307,7 @@ qualify('both Realtime implementations deliver the other version’s final appen
   }
 }, 30_000)
 
-qualify('installation-wide admission bounds both versions and releases canceled readers', async () => {
+qualify('installation-wide admission bounds both deployments and releases canceled readers', async () => {
   await request(old, 'capacity', 'PUT')
   const one = await open(old, 'capacity'), two = await open(current, 'capacity')
   try {
@@ -271,7 +319,7 @@ qualify('installation-wide admission bounds both versions and releases canceled 
   await expect.poll(async () => Number((await pool.query(`SELECT count(*) FROM "${schema}".live_leases WHERE expires_at>clock_timestamp()`)).rows[0].count), { timeout: 5000, interval: 100 }).toBe(0)
 }, 30_000)
 
-qualify('tenant and generation isolation survive cross-version path deletion and recreation', async () => {
+qualify('tenant and generation isolation survive multi-instance deletion and recreation', async () => {
   await request(old, 'generation', 'PUT', 'old;')
   expect((await request(current, 'generation', 'GET', undefined, { Authorization: `Bearer ${userB}` })).status).toBe(404)
   const live = await open(current, 'generation')
@@ -285,7 +333,7 @@ qualify('tenant and generation isolation survive cross-version path deletion and
   expect(await read(current, 'generation')).toBe('replacement;')
 }, 20_000)
 
-qualify('recovery fences both running binaries and fresh old/current artifacts can resume the installation', async () => {
+qualify('recovery fences both canonical deployments and fresh artifacts resume the installation', async () => {
   await Promise.all([maintain(old), maintain(current)])
   const identity = await inspectInstallation(pool, { schema })
   const recovery = await beginRecovery(pool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
@@ -294,55 +342,9 @@ qualify('recovery fences both running binaries and fresh old/current artifacts c
   while (!(await verifyRecovery(pool, { schema, token: recovery.token, objects, keyring, maxChunks: 8 })).complete) {}
   await finishRecovery(pool, { schema, token: recovery.token })
   for (const runtime of [old, current]) expect((await request(runtime, 'producer', 'POST', 'still fenced;')).status).toBe(503)
-  const freshCurrent = await deploy('current', 2), freshOld = await deploy('baseline', 3)
+  const freshCurrent = await deploy('current', 2), freshOld = await deploy('current', 3)
   for (const runtime of [freshCurrent, freshOld]) expect(await read(runtime, 'producer')).toBe('seed;old;new;race;epoch;')
   expect((await request(freshCurrent, 'producer', 'POST', 'after recovery;', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(200)
   expect((await request(freshOld, 'producer', 'POST', 'duplicate', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(204)
   expect(await read(freshOld, 'producer')).toBe('seed;old;new;race;epoch;after recovery;')
-}, 480_000)
-
-test('a stopped upgrade to schema 0007 preserves packed-consumer state and issues signed fenced wakes', async () => {
-  const before = runtimes.at(-2)!
-  expect(before.kind).toBe('current')
-  const json = { 'Content-Type': 'application/json' }, sub = '__ds/subscriptions/stopped-upgrade'
-  expect((await request(before, sub, 'PUT', JSON.stringify({ type: 'pull-wake', streams: ['watched'], wake_stream: 'wake', lease_ttl_ms: 600_000 }), json)).status).toBe(201)
-  const appended = await request(before, 'watched', 'POST', 'upgrade-pending;')
-  expect(appended.status).toBe(204)
-  await maintain(before)
-  const oldClaim = await (await request(before, `${sub}/claim`, 'POST', '{"worker":"before-upgrade"}', json)).json() as { token: string; wake_id: string; generation: number }
-  mask(oldClaim.token); expect(oldClaim.token).toMatch(/^dsw\.[0-9a-f-]{36}\./)
-  // Stop every actual packed deployment and its possible cold starts before DDL.
-  for (const slug of slugs) await neon.functions.delete({ projectId, branchId, slug: slug! })
-  await new Promise((resolve) => setTimeout(resolve, 6000))
-  expect(await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity })).toEqual(['0006_reclamation', '0007_provider_recovery'])
-  // Complete explicit recovery while stopped, fencing old subscription leases
-  // as well as runtime epochs before reopening ingress.
-  const identity = await inspectInstallation(pool, { schema })
-  const recovery = await beginRecovery(pool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
-    expectedServingEpoch: identity.serving_epoch, environmentId: branchId, storageIdentity: objects.identity })
-  while (!(await verifyRecovery(pool, { schema, token: recovery.token, objects, keyring, maxChunks: 16 })).complete) {}
-  await finishRecovery(pool, { schema, token: recovery.token })
-  const upgraded = await deploy('current', 0)
-  expect(await read(upgraded, 'producer')).toBe('seed;old;new;race;epoch;after recovery;')
-  expect((await request(upgraded, 'producer', 'POST', 'duplicate', { 'Producer-Id': 'mixed', 'Producer-Epoch': '1', 'Producer-Seq': '1' })).status).toBe(204)
-  expect(await read(upgraded, 'json-grandchild')).toBe('[9007199254740993,1e400,-0]')
-  const oldBody = JSON.stringify({ wake_id: oldClaim.wake_id, generation: oldClaim.generation, done: true })
-  expect((await request(upgraded, `${sub}/ack`, 'POST', oldBody, { ...json, Authorization: `Bearer ${oldClaim.token}` })).status).toBe(409)
-  await maintain(upgraded)
-  const response = await request(upgraded, `${sub}/claim`, 'POST', '{"worker":"after-upgrade"}', json)
-  expect(response.status).toBe(200)
-  const claim = await response.json() as { token: string; wake_id: string; generation: number }; mask(claim.token)
-  expect(claim.token).toMatch(/^dsw\.2\./); expect(claim.generation).toBeGreaterThan(oldClaim.generation)
-  expect((await request(upgraded, `${sub}/ack`, 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true,
-    acks: [{ stream: 'watched', offset: appended.headers.get('Stream-Next-Offset') }] }), { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
-  expect((await pool.query(`SELECT enabled FROM "${schema}".reclamation_policy`)).rows[0].enabled).toBe(false)
-  await request(upgraded, 'upgraded-live', 'PUT')
-  const live = await open(upgraded, 'upgraded-live')
-  try {
-    expect((await request(upgraded, 'upgraded-live', 'POST', 'final-after-upgrade;', { 'Stream-Closed': 'true' })).status).toBe(204)
-    const content = await live.until('"streamClosed":true')
-    expect(content).toContain('data:final-after-upgrade;')
-    expect(content.indexOf('final-after-upgrade;')).toBeLessThan(content.indexOf('"streamClosed":true'))
-  } finally { await live.close() }
-  stoppedUpgrade = { passed: true, migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })) }
 }, 480_000)

@@ -43,7 +43,7 @@ const streams = createDurableStreams({
   auth: { authenticate, authorize: () => true },
   allowedOrigins: origins,
   ...(process.env.DS_PUBLIC_BASE_URL ? { publicBaseUrl: process.env.DS_PUBLIC_BASE_URL } : {}),
-  storage: { objects },
+  storage: { objects, maxChunkAgeMs: Number(process.env.DS_MAX_CHUNK_AGE_MS ?? '3600000') },
   subscriptions: { keyring: parseSubscriptionKeyring(required('DS_KEYRING_JSON')) },
   live: { notifier, longPollTimeoutMs: 25_000, fallbackIntervalMs: Number(process.env.DS_LIVE_FALLBACK_MS ?? '5000'),
     validationIntervalMs: Number(process.env.DS_LIVE_VALIDATION_MS ?? '1000') },
@@ -66,7 +66,7 @@ function hintMaintenance(): void {
   hintWork = (async () => {
     for (let pass = 0; pass < 2; pass++) {
       hintRequested = false
-      await streams.maintain({ maxChunks: 2, maxSubscriptionWork: 16, freezeHot: false, timeBudgetMs: 1000 })
+      await streams.maintain({ maxChunks: 2, maxSubscriptionWork: 16, timeBudgetMs: 1000 })
       if (!hintRequested) break
     }
   })().catch(() => console.error('Opportunistic maintenance failed; scheduled recovery remains pending'))
@@ -92,7 +92,7 @@ export default {
     }
     if (path === '/_maintenance') {
       if (request.method !== 'POST' || !maintenanceAuthorized(request)) return new Response(null, { status: 401 })
-      return Response.json(await streams.maintain({ maxChunks: 8, timeBudgetMs: 10_000 }))
+      return Response.json(await streams.maintain({ maxChunks: 8, timeBudgetMs: 10_000, forceHot: true }))
     }
     if (path === '/health') {
       if (!authenticate(request)) return new Response(null, { status: 401 })
