@@ -54,6 +54,54 @@ test('deep capped ancestors are bounded by contributing ordinals, independent of
     expect(plan).toHaveLength(41)
     expect(plan.at(-1)!.end_offset).toBe(leaf.tail)
     expect(plan.reduce((sum, frame) => sum + frame.payload_bytes, 0)).toBe(40 * 4096 + 4)
+
+    // Full physical ends can sort differently from contributing logical spans.
+    const parentId = randomUUID(), childId = randomUUID()
+    const parentHistory = parentId.replaceAll('-', ''), childHistory = childId.replaceAll('-', '')
+    const anchor = ordinalOffset(1n, parentHistory), parentTail = ordinalOffset(9000n, parentHistory), childTail = ordinalOffset(8193n, childHistory)
+    await pool.query(`INSERT INTO ${sql}.paths(tenant_id,path) VALUES('planning','ends-parent'),('planning','ends-child')`)
+    await pool.query(`INSERT INTO ${sql}.streams(id,tenant_id,path,content_type,tail_offset,hot_start_offset,write_epoch,write_history,ref_count)
+      VALUES($1,'planning','ends-parent','application/octet-stream',$2,$2,$3,$1,1)`, [parentId, parentTail, epoch])
+    await pool.query(`INSERT INTO ${sql}.streams(id,tenant_id,path,content_type,tail_offset,hot_start_offset,write_epoch,write_history,source_id,fork_offset,fork_depth,edge_active)
+      VALUES($1,'planning','ends-child','application/octet-stream',$2,$2,$3,$1,$4,$5,1,true)`, [childId, childTail, epoch, parentId, anchor])
+    const packed = (ranges: { firstFrame: number; frameCount: number; payloadBytes: number; byteLength: number; start: string; end: string }[]) => {
+      let position = 68 + ranges.reduce((sum, block) => sum + 56 + block.start.length + block.end.length, 0)
+      const directory = packBlockDirectory(ranges.map((block) => { const byteStart = position; position += block.byteLength; return { ...block, byteStart, sha256: '0'.repeat(64) } }))
+      return { directory: directory.toString('hex'), bytes: position }
+    }
+    const reversed = [
+      { id: randomUUID(), stream: parentId, start: ZERO_OFFSET, end: parentTail, count: 9000, payload: 4198400, ...packed([
+        { firstFrame: 0, frameCount: 1, payloadBytes: 4096, byteLength: 4099, start: ZERO_OFFSET, end: anchor },
+        { firstFrame: 1, frameCount: 8192, payloadBytes: 2097152, byteLength: 2121728, start: anchor, end: ordinalOffset(8193n, parentHistory) },
+        { firstFrame: 8193, frameCount: 807, payloadBytes: 2097152, byteLength: 2099573, start: ordinalOffset(8193n, parentHistory), end: parentTail },
+      ]) },
+      { id: randomUUID(), stream: childId, start: anchor, end: childTail, count: 8192, payload: 8192, ...packed([
+        { firstFrame: 0, frameCount: 8192, payloadBytes: 8192, byteLength: 24576, start: anchor, end: childTail },
+      ]) },
+    ]
+    const insertChunks = (rows: typeof reversed) => pool.query(`INSERT INTO ${sql}.chunks(id,stream_id,start_offset,end_offset,state,frame_count,payload_bytes,block_directory,object_key,sha256,encoded_bytes,sealed_at)
+      SELECT x.id,x.stream,x.start,x.end,'sealed',x.count,x.payload,decode(x.directory,'hex'),'synthetic/'||x.id,repeat('0',64),x.bytes,clock_timestamp()
+      FROM jsonb_to_recordset($1::jsonb) x(id uuid,stream uuid,start text,"end" text,count integer,payload integer,directory text,bytes integer)`, [JSON.stringify(rows)])
+    await insertChunks(reversed)
+    const capped = await store.transaction({ repeatableRead: true }, (client) => internal.framePlan(client, childId, ZERO_OFFSET))
+    expect(capped).toHaveLength(2)
+    expect(capped.at(-1)!.end_offset).toBe(ordinalOffset(8192n, childHistory))
+
+    // Sparse age-sealed history also needs an I/O-work limit independent of bytes.
+    const quietId = randomUUID(), quietHistory = quietId.replaceAll('-', ''), quietTail = ordinalOffset(80n, quietHistory)
+    await pool.query(`INSERT INTO ${sql}.paths(tenant_id,path) VALUES('planning','quiet')`)
+    await pool.query(`INSERT INTO ${sql}.streams(id,tenant_id,path,content_type,tail_offset,hot_start_offset,write_epoch,write_history)
+      VALUES($1,'planning','quiet','application/octet-stream',$2,$2,$3,$1)`, [quietId, quietTail, epoch])
+    await insertChunks(Array.from({ length: 80 }, (_, index) => {
+      const start = index ? ordinalOffset(BigInt(index), quietHistory) : ZERO_OFFSET, end = ordinalOffset(BigInt(index + 1), quietHistory)
+      return { id: randomUUID(), stream: quietId, start, end, count: 1, payload: 4096,
+        ...packed([{ firstFrame: 0, frameCount: 1, payloadBytes: 4096, byteLength: 4099, start, end }]) }
+    }))
+    const firstPage = await store.transaction({ repeatableRead: true }, (client) => internal.framePlan(client, quietId, ZERO_OFFSET))
+    expect(firstPage).toHaveLength(64)
+    const rest = await store.transaction({ repeatableRead: true }, (client) => internal.framePlan(client, quietId, firstPage.at(-1)!.end_offset))
+    expect(rest).toHaveLength(16)
+    expect(rest.at(-1)!.end_offset).toBe(quietTail)
   } finally {
     store.close(); objects.close()
     await pool.query(`DROP SCHEMA IF EXISTS ${sql} CASCADE`)

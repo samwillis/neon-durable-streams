@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Pool, PoolClient, QueryResultRow } from 'pg'
 import { StorageCompatibilityError, StreamError } from './errors.js'
-import { advanceOffset, ordinalOffset, parseOffset, ZERO_OFFSET } from './offset.js'
+import { advanceOffset, MAX_OFFSET_COMPONENT, ordinalOffset, parseOffset, ZERO_OFFSET } from './offset.js'
 import { formatPayloads, mediaType, preparePayload } from './payload.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
@@ -112,6 +112,8 @@ interface ReplayPlan extends Omit<ReadResult, 'body'>, PinnedFrames {
   readonly start: string
   readonly condition: string | null | undefined
 }
+
+const MAX_PAGE_OBJECTS = 64
 
 /** Transactional stream state and bounded replay planning. */
 export class PostgresStreamStore {
@@ -322,34 +324,41 @@ export class PostgresStreamStore {
   }
 
   private async framePlan(client: PoolClient, id: string, start: string, limit = this.maxPageFrames, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
+    const ordinal = parseOffset(start).ordinal
+    const ceiling = (value: bigint) => ordinalOffset(value > MAX_OFFSET_COMPONENT ? MAX_OFFSET_COMPONENT : value, 'f'.repeat(32))
+    const frameHorizon = ceiling(ordinal + BigInt(limit))
+    // A containing chunk can end at most the schema's frame cap beyond this
+    // horizon. Bound index scans even when later chunks remain frozen.
+    const chunkHorizon = ceiling(ordinal + BigInt(limit) + 131072n)
     const result = await client.query<ReplayRow>(`${this.lineage()}, local_sources AS (
       SELECT f.*,l.cap FROM lineage l CROSS JOIN LATERAL (
         SELECT stream_id,start_offset,end_offset,payload_bytes FROM ${this.schema}.appends
-        WHERE stream_id=l.id AND end_offset>$2 AND end_offset<=l.cap ORDER BY end_offset LIMIT $4
-      ) f
+        WHERE stream_id=l.id AND end_offset>$2 AND end_offset<=$5 AND end_offset<=l.cap ORDER BY end_offset LIMIT $4
+      ) f WHERE l.cap>$2 AND (l.fork_offset IS NULL OR l.fork_offset<$5)
     ), local_budget AS (
       SELECT *,sum(payload_bytes) OVER (ORDER BY end_offset)-payload_bytes AS preceding_bytes FROM local_sources
     ), sealed_sources AS (
       SELECT c.*,l.cap FROM lineage l CROSS JOIN LATERAL (
-        SELECT * FROM ${this.schema}.chunks WHERE stream_id=l.id AND state='sealed'
-          AND end_offset>$2 AND start_offset<l.cap ORDER BY end_offset LIMIT $4
-      ) c WHERE l.cap>$2
+        SELECT id,stream_id,start_offset,end_offset,payload_bytes FROM ${this.schema}.chunks WHERE stream_id=l.id AND state='sealed'
+          AND end_offset>$2 AND end_offset<=$6 ORDER BY end_offset LIMIT LEAST($4,${MAX_PAGE_OBJECTS})
+      ) c WHERE l.cap>$2 AND c.start_offset<l.cap AND c.start_offset<$5 AND (l.fork_offset IS NULL OR l.fork_offset<$5)
     ), sealed_ranges AS (
       SELECT *,LEAST(left(end_offset,16)::bigint,left(cap,16)::bigint)
         - GREATEST(left(start_offset,16)::bigint,left($2,16)::bigint) AS contributing_frames FROM sealed_sources
     ), sealed_budget AS (
-      SELECT *,sum(contributing_frames) OVER (ORDER BY end_offset)-contributing_frames AS preceding_frames FROM sealed_ranges
+      SELECT *,sum(contributing_frames) OVER (ORDER BY start_offset)-contributing_frames AS preceding_frames,
+        row_number() OVER (ORDER BY start_offset) AS object_number FROM sealed_ranges
     ), candidates AS (
       SELECT stream_id,start_offset,end_offset,payload_bytes,cap,NULL::uuid AS chunk_id FROM local_budget WHERE preceding_bytes<$3
       UNION ALL
-      SELECT stream_id,start_offset,end_offset,payload_bytes::integer,cap,id AS chunk_id FROM sealed_budget WHERE preceding_frames<$4
+      SELECT stream_id,start_offset,end_offset,payload_bytes::integer,cap,id AS chunk_id FROM sealed_budget WHERE preceding_frames<$4 AND object_number<=${MAX_PAGE_OBJECTS}
       ORDER BY start_offset LIMIT $4
     ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.frame_count,c.block_directory,
         c.start_offset AS chunk_start,c.end_offset AS chunk_end,CASE WHEN c.id IS NOT NULL THEN 1 END AS first_frame,c.frame_count AS last_frame
       FROM candidates s LEFT JOIN ${this.schema}.appends a ON s.chunk_id IS NULL AND a.stream_id=s.stream_id AND a.end_offset=s.end_offset
-      LEFT JOIN ${this.schema}.chunks c ON c.id=s.chunk_id ORDER BY s.start_offset`, [id, start, bytes, limit])
+      LEFT JOIN ${this.schema}.chunks c ON c.id=s.chunk_id ORDER BY s.start_offset`, [id, start, bytes, limit, frameHorizon, chunkHorizon])
     const planned: StoredFrame[] = []
-    let expected = start, count = 0, projected = 0
+    let expected = start, count = 0, projected = 0, objects = 0
     const add = (range: StoredFrame, frames: number) => {
       if (range.start_offset !== expected || range.end_offset <= expected) throw new Error('Durable replay plan has a gap or overlap')
       const previous = planned.at(-1)
@@ -360,12 +369,14 @@ export class PostgresStreamStore {
       expected = range.end_offset; count += frames; projected += range.payload_bytes
     }
     outer: for (const row of result.rows) {
+      if (count >= limit || projected >= bytes || objects >= MAX_PAGE_OBJECTS) break
       const source = decodeReplayRow(row)
       if (source.storage === 'postgres') {
         if (count >= limit || projected >= bytes) break
         add(source, 1)
         continue
       }
+      objects++
       const { manifest } = source
       const directory = unpackBlockDirectory(manifest.blockDirectory, manifest.encodedBytes, manifest.frameCount)
       if (directory[0]!.start !== manifest.start || directory.at(-1)!.end !== manifest.end
