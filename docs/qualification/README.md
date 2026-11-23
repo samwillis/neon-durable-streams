@@ -1,8 +1,18 @@
 # Qualification evidence
 
-The development history is now consolidated into a [four-file baseline](../migrations.md). Its [actual-Neon catalog comparison](2026-11-23-baseline-schema.json) matches the qualified final schema exactly after normalizing schema/generated names, column order, and random installation identity. It compares 22 relations, 259 columns, 225 constraints, 51 indexes, the directory function, generation sequence, and singleton defaults. Full baseline CI qualification is pending; all prior reports below remain unchanged and scoped to their recorded revisions.
+The current [four-file baseline](../migrations.md), clean runtime [`e4ab389`](https://github.com/samwillis/neon-durable-streams/actions/runs/45155917699), passed every required job: **57 unit/property, 95 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**, with zero failed/skipped cases. Subscriptions and collection were enabled. Cleanup completed. The obsolete stopped conversion test is removed; four fresh-baseline safety cases replace the four converter tests. The eight packed checks now use two current candidate deployments.
 
-Canonical **schema 0009** on clean runtime revision [`cdf0fa8`](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790) passed every required CI job: **57 unit/property, 96 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and 338/338 full protocol cases**, with no failed or skipped test cases. Conformance enables subscriptions and collection. Cleanup completed. Sealing now deletes append rows; compact directories preserve exact boundaries, and immutable manifest ranges remove per-frame freeze assignment and two staging indexes. The [current storage contract](../compact-storage-v2.md) defines current ownership and resource bounds.
+| Current baseline evidence | Scope |
+| --- | --- |
+| [Required CI](2026-11-23-baseline-ci.json) | Clean runtime, counts, migration checksums, and cleanup |
+| [Schema equivalence](2026-11-23-baseline-schema.json) | Exact normalized catalog/default match with the qualified nine-step final layout: 22 relations, 259 columns, 225 constraints, 51 indexes, directory function, generation sequence, and singleton defaults |
+| [Packed multi-instance](2026-11-23-baseline-multi-instance.json) | Eight current-candidate checks, independent consumer/Function hashes, and cleanup |
+| [Full conformance](2026-11-23-baseline-conformance.json) | All 338 pinned cases on Neon, with subscriptions and collection |
+| [In-place restore](2026-11-23-baseline-inplace.json) | Real stopped-Function rollback, exact replay, epoch/token fencing, and independent Realtime payload observation |
+
+All earlier reports below retain their original source and artifact scope.
+
+Previous nine-step layout: canonical **schema 0009** on clean runtime revision [`cdf0fa8`](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790) passed every required CI job: **57 unit/property, 96 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and 338/338 full protocol cases**, with no failed or skipped test cases. Conformance enables subscriptions and collection. Cleanup completed. Sealing now deletes append rows; compact directories preserve exact boundaries, and immutable manifest ranges remove per-frame freeze assignment and two staging indexes. The [current storage contract](../compact-storage-v2.md) defines current ownership and resource bounds.
 
 | Schema-0009 evidence | Scope |
 | --- | --- |

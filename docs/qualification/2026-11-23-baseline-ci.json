@@ -1,0 +1,94 @@
+{
+  "runUrl": "https://github.com/samwillis/neon-durable-streams/actions/runs/45155917699",
+  "sourceCommit": "e4ab3898365b2b125704275a9fcca195361ad450",
+  "allJobs": "success",
+  "services": "Actual Neon Functions, Postgres 18, Realtime, Object Storage",
+  "region": "us-east-1",
+  "objectFormat": 1,
+  "migrations": [
+    {
+      "id": "0001_installation",
+      "checksum": "4e616e075de58f97269bdc49eb443d947bdf646e12c5dcfa52c633069f8185ca"
+    },
+    {
+      "id": "0002_streams",
+      "checksum": "07ac100c897b8aef91ee093c1cc5a7ab4f57d7eb4c75ccbc6d9f95982d55fb2f"
+    },
+    {
+      "id": "0003_storage",
+      "checksum": "c4feb55d76fbe8ade145ac11e9e80c5f4783f0ba499b1022aed0d8ca336bbe0a"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "432afd5bf0a7cf1769e054311a23555b0d618fb01f2d61fcdcb16439bd930a88"
+    }
+  ],
+  "schemaComparison": "2026-11-23-baseline-schema.json",
+  "checks": {
+    "unit": 57,
+    "neon": 95,
+    "postgresIntegration": 21,
+    "recovery": 2,
+    "consumerIngressAndWebhooks": 9,
+    "hintsWithoutCron": 2,
+    "sameCandidateMultiInstanceIncludedInNeon": 8
+  },
+  "conformance": {
+    "total": 338,
+    "passed": 338,
+    "failed": 0,
+    "skipped": 0,
+    "subscriptions": true,
+    "collectionEnabled": true,
+    "coordinatorDurationMs": 127593
+  },
+  "cleanup": {
+    "packedConsumerFixture": true,
+    "conformanceFixture": true,
+    "localBaselineBranch": "deleted",
+    "jobs": [
+      {
+        "name": "Neon append-hint delivery",
+        "conclusion": "success",
+        "cleanupSteps": [
+          {
+            "name": "Delete the hint test branch",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Build and unit tests",
+        "conclusion": "success",
+        "cleanupSteps": []
+      },
+      {
+        "name": "Neon qualification",
+        "conclusion": "success",
+        "cleanupSteps": [
+          {
+            "name": "Delete any interrupted recovery drill branch",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete interrupted in-place restore branches",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete interrupted rolling Functions and installed consumers",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete this run's Neon branch",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ]
+  },
+  "scope": "Fresh four-file baseline plus unchanged final storage semantics. Old development histories are rejected; historical conversion fixtures have been removed. Cross-version upgrades are not qualified by these eight same-candidate checks.",
+  "limits": [
+    "Workload capacity and provider Object Storage historical PITR qualification are unchanged by schema consolidation.",
+    "The earlier independent 45-minute Realtime diagnostic remains unresolved and preserved in historical reports."
+  ]
+}
