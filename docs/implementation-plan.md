@@ -1,5 +1,7 @@
 # Implementation plan
 
+The next performance work covers historical replay, Postgres read contention, verified HTTP range reads, response pipelining and the choice of public offsets. Development can restart from empty state with the selected design. See the [replay performance plan](replay-performance-plan.md).
+
 The unpublished development migration history is consolidated into four logical [baseline files](migrations.md). The runner rejects earlier histories and partial targets; new installations use a fresh schema. Historical results below remain scoped to their recorded revisions.
 
 The compact layout implements the [Postgres efficiency review](postgres-efficiency-v2.md): sealed-row deletion, compact boundary arrays, one ordinary head update, size/count/age sealing, bounded verified replay caching, and one canonical serving schema. Immutable manifest ranges and a monotonic hot floor also remove per-frame freeze assignment and its two indexes. See the [current storage contract](compact-storage-v2.md). Qualification below identifies the revision and layout tested; earlier schema-0007 evidence is historical. Clean `cdf0fa8` passed every [required CI job](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790), including all 96 actual-Neon and 338 conformance cases, both recovery drills, and deployed Function/hints checks. [Evidence](qualification/README.md) records the conservative ancestor-retention fix, actual storage comparison, and sustained reader digests.
