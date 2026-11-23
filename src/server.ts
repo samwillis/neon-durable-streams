@@ -1,11 +1,11 @@
 import { observe } from './observer.js'
-import { createHash } from 'node:crypto'
 import type { Pool } from 'pg'
 import { StreamError } from './errors.js'
 import { normalizeBasePath, streamPath } from './path.js'
 import { PostgresStreamStore } from './store.js'
 import type { Producer, StreamMetadata } from './store.js'
 import { LiveReads } from './live.js'
+import { ownedResponseBody } from './response-body.js'
 import type { LiveOptions } from './live.js'
 import type { StorageOptions } from './storage.js'
 import { PostgresSubscriptions } from './subscription-store.js'
@@ -42,7 +42,8 @@ export interface ServerOptions {
   readonly live?: LiveOptions
   readonly storage?: StorageOptions
   readonly subscriptions?: SubscriptionOptions
-  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly maxPageFrames?: number; readonly bodyTimeoutMs?: number; readonly replayTimeoutMs?: number }
+  readonly limits?: { readonly maxAppendBytes?: number; readonly maxStoredBytes?: number; readonly maxPageBytes?: number; readonly maxPageFrames?: number; readonly bodyTimeoutMs?: number; readonly replayTimeoutMs?: number
+    readonly maxReplayMemoryBytes?: number; readonly responseTimeoutMs?: number }
   readonly onError?: (error: unknown) => void
   /** Contains no bodies, credentials, paths, or subscription tokens. */
   readonly onEvent?: (event: ServerEvent) => void
@@ -151,13 +152,16 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   const basePath = normalizeBasePath(options.basePath ?? '/v1/stream')
   const maxAppendBytes = options.limits?.maxAppendBytes ?? 1024 * 1024
   const bodyTimeoutMs = options.limits?.bodyTimeoutMs ?? 30_000
+  const responseTimeoutMs = options.limits?.responseTimeoutMs ?? 300_000
   if (!Number.isSafeInteger(maxAppendBytes) || maxAppendBytes < 1 || maxAppendBytes > 16 * 1024 * 1024
-    || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
+    || !Number.isSafeInteger(bodyTimeoutMs) || bodyTimeoutMs < 1 || bodyTimeoutMs > 300_000
+    || !Number.isSafeInteger(responseTimeoutMs) || responseTimeoutMs < 1 || responseTimeoutMs > 300_000) throw new RangeError('Invalid request limits')
   const canonical = options.publicBaseUrl ? new URL(options.publicBaseUrl) : undefined
   if (canonical && (!['https:', 'http:'].includes(canonical.protocol) || canonical.username || canonical.password || canonical.search || canonical.hash || canonical.pathname !== basePath)) throw new TypeError('publicBaseUrl must match basePath without credentials/query/fragment')
   const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', {
     maxStoredBytes: options.limits?.maxStoredBytes, maxPageBytes: options.limits?.maxPageBytes, maxPageFrames: options.limits?.maxPageFrames,
     replayTimeoutMs: options.limits?.replayTimeoutMs,
+    maxReplayMemoryBytes: options.limits?.maxReplayMemoryBytes,
     storage: options.storage, environmentId: options.postgres.environmentId,
     timeouts: { ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
       ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}) },
@@ -166,6 +170,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   const live = options.live ? new LiveReads(store, options.postgres.schema ?? 'durable_streams', options.live, report) : undefined
   const subscriptions = options.subscriptions ? new PostgresSubscriptions(options.postgres.pool, options.postgres.schema ?? 'durable_streams', store, options.subscriptions, report) : undefined
   const pending = new Set<Promise<unknown>>()
+  const shutdown = new AbortController()
   let closed = false
 
   async function handle(request: Request): Promise<Response> {
@@ -256,21 +261,32 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
         if (url.searchParams.getAll('live').length !== 1 || !['long-poll', 'sse'].includes(url.searchParams.get('live')!)) throw new StreamError(400, 'INVALID_LIVE_MODE', 'Expected live=long-poll or live=sse')
         if (!url.searchParams.has('offset')) throw new StreamError(400, 'MISSING_OFFSET', 'Live reads require an offset')
         if (!live) throw new StreamError(503, 'LIVE_NOT_CONFIGURED', 'Live reads require a configured notifier')
-        const response = await live.serve(request, principal.tenantId, path, offset, principal.expiresAt)
+        const liveRequest = new Request(request, { signal: AbortSignal.any([request.signal, shutdown.signal]) })
+        const response = await live.serve(liveRequest, principal.tenantId, path, offset, principal.expiresAt)
         return respond(response.body, response.status, response.headers)
       }
-      const result = await store.read(principal.tenantId, path, offset)
-      const headers = metadataHeaders(result.stream)
-      headers.set('Stream-Next-Offset', result.next)
-      if (!result.upToDate) headers.delete('Stream-Closed')
-      else headers.set('Stream-Up-To-Date', 'true')
-      if (offset !== 'now') {
-        const etag = `"${createHash('sha256').update(`${result.stream.id}:${offset}:${result.next}:${result.stream.closed}`).update(result.body).digest('hex')}"`
-        headers.set('ETag', etag)
-        const matches = request.headers.get('if-none-match')?.split(',').map((v) => v.trim()) ?? []
-        if (matches.some((v) => v === '*' || v.replace(/^W\//, '') === etag)) return respond(null, 304, headers)
+      const release = store.reserveRead()
+      let releaseBody: (() => void) | undefined
+      const remainingAuth = principal.expiresAt === undefined ? 300000 : Math.max(1, Math.ceil(principal.expiresAt - Date.now()))
+      const signal = AbortSignal.any([request.signal, shutdown.signal, AbortSignal.timeout(Math.min(responseTimeoutMs, remainingAuth))])
+      try {
+        const result = await store.read(principal.tenantId, path, offset, request.headers.get('if-none-match'), signal)
+        const headers = metadataHeaders(result.stream)
+        headers.set('Stream-Next-Offset', result.next)
+        if (!result.upToDate) headers.delete('Stream-Closed')
+        else headers.set('Stream-Up-To-Date', 'true')
+        if (offset !== 'now') headers.set('ETag', result.etag!)
+        if (result.notModified) { release(); return respond(null, 304, headers) }
+        release()
+        releaseBody = store.reserveBody(result.body.byteLength)
+        headers.set('Content-Length', String(result.body.byteLength))
+        return respond(ownedResponseBody(result.body, { signal, release: releaseBody, timeoutMs: responseTimeoutMs,
+          ...(principal.expiresAt === undefined ? {} : { expiresAt: principal.expiresAt }) }), 200, headers)
+      } catch (error) {
+        release()
+        releaseBody?.()
+        throw error
       }
-      return respond(new Uint8Array(result.body.buffer, result.body.byteOffset, result.body.byteLength), 200, headers)
     } catch (error) {
       if (error instanceof StreamError) return respond(JSON.stringify({ error: { code: error.code, message: error.message } }), error.status,
         { 'Content-Type': 'application/json', ...error.headers })
@@ -325,6 +341,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
     async close({ deadlineMs = 4000 } = {}) {
       if (!Number.isSafeInteger(deadlineMs) || deadlineMs < 0 || deadlineMs > 300_000) throw new RangeError('Invalid shutdown deadline')
       closed = true
+      shutdown.abort(new StreamError(503, 'SERVER_CLOSED', 'Server is shutting down'))
       live?.close()
       subscriptions?.close()
       let timer: ReturnType<typeof setTimeout> | undefined

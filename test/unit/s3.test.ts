@@ -98,3 +98,28 @@ test('canceling queued and active downloads frees capacity for another reader', 
     expect(await replacement).toEqual(payload)
   } finally { bounded.close() }
 })
+
+
+test('streamed ranges await fragment consumers and validate exact lengths', async () => {
+  const collected: Buffer[] = []
+  let consuming = false
+  await storage.readRange('range', { start: 1023, end: payload.length, totalBytes: payload.length }, async (bytes) => {
+    expect(consuming).toBe(false)
+    consuming = true
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    collected.push(Buffer.from(bytes))
+    consuming = false
+  })
+  expect(Buffer.concat(collected)).toEqual(payload.subarray(1023))
+  await expect(storage.readRange('wrong-range', { start: 0, end: 12, totalBytes: payload.length }, () => {})).rejects.toBeInstanceOf(ChunkIntegrityError)
+})
+
+test('streamed ranges propagate consumer errors and cancellation', async () => {
+  const cancel = new AbortController()
+  await expect(storage.readRange('range', { start: 0, end: payload.length, totalBytes: payload.length }, () => {
+    cancel.abort(new Error('stopped consumer'))
+    cancel.signal.throwIfAborted()
+  }, cancel.signal)).rejects.toThrow('stopped consumer')
+  await expect(storage.readRange('range', { start: 0, end: 12, totalBytes: payload.length }, () => { throw new Error('bad consumer') })).rejects.toThrow('bad consumer')
+  expect(await storage.getRange('range', { start: 0, end: 12, totalBytes: payload.length })).toEqual(payload.subarray(0, 12))
+})

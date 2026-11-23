@@ -6,7 +6,7 @@ import { encodeBlockObject, decodeBlock, unpackBlockDirectory } from './block-co
 import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
-import { assertReplayDeadline } from './replay.js'
+import { assertReplayDeadline, replayPipeline } from './replay.js'
 import { boundaryDirectory, equalDirectory } from './boundary-directory.js'
 import { VerifiedChunkCache } from './chunk-cache.js'
 import { advanceOffset } from './offset.js'
@@ -32,6 +32,8 @@ export interface ChunkStorage {
   /** Transfers ownership of a buffer that the adapter will never mutate or reuse. */
   readonly get: (key: string, maxBytes: number, signal?: AbortSignal) => Promise<Buffer>
   readonly getRange: (key: string, range: ChunkByteRange, signal?: AbortSignal) => Promise<Buffer>
+  /** Delivers ordered fragments under backpressure without buffering the range. */
+  readonly readRange?: ((key: string, range: ChunkByteRange, consume: (bytes: Uint8Array) => void | Promise<void>, signal?: AbortSignal) => Promise<void>) | undefined
   readonly delete?: (key: string) => Promise<void>
   readonly list?: (prefix: string, cursor: string | null, limit: number) => Promise<ChunkInventoryPage>
 }
@@ -46,6 +48,8 @@ export interface StorageOptions {
   readonly cacheBytes?: number
   /** Encoded byte target for independently verified object ranges. */
   readonly blockBytes?: number
+  /** At most one following object/range may overlap the current read. */
+  readonly readAhead?: 0 | 1
 }
 interface FrozenClaim {
   readonly id: string
@@ -74,6 +78,7 @@ export class ChunkManager {
   private readonly target: number
   private readonly maximumFrames: number
   private readonly blockBytes: number
+  private readonly readAhead: 0 | 1
   private readonly lease: number
   readonly maxAgeMs: number
   private readonly cache: VerifiedChunkCache
@@ -84,12 +89,14 @@ export class ChunkManager {
     this.target = options.targetChunkBytes ?? 4 * 1024 * 1024
     this.maximumFrames = options.maxChunkFrames ?? 1024
     this.blockBytes = options.blockBytes ?? 65536
+    this.readAhead = options.readAhead ?? 1
     this.lease = options.workerLeaseMs ?? 120_000
     this.maxAgeMs = options.maxChunkAgeMs ?? 3_600_000
     this.cache = new VerifiedChunkCache(options.cacheBytes ?? 32 * 1024 * 1024)
     if (!Number.isSafeInteger(this.target) || this.target < 1 || this.target > 16 * 1024 * 1024
       || !Number.isSafeInteger(this.maximumFrames) || this.maximumFrames < 1 || this.maximumFrames > 1024
       || !Number.isSafeInteger(this.blockBytes) || this.blockBytes < 4096 || this.blockBytes > 16 * 1024 * 1024
+      || (this.readAhead !== 0 && this.readAhead !== 1)
       || !Number.isSafeInteger(this.lease) || this.lease < 1000 || this.lease > 300_000
       || !Number.isSafeInteger(this.maxAgeMs) || this.maxAgeMs < 1 || this.maxAgeMs > 604_800_000
       || !options.objects.identity || options.objects.identity.length > 2048) throw new RangeError('Invalid storage options')
@@ -223,23 +230,22 @@ export class ChunkManager {
   }
 
   /** The replay owner holds its pins; object I/O holds no SQL transaction. */
-  async materialize(frames: readonly StoredFrame[], deadline: number): Promise<readonly ChunkFrame[]> {
-    const result: ChunkFrame[] = []
-    for (const frame of frames) {
+  async materialize(frames: readonly StoredFrame[], deadline: number, signal?: AbortSignal): Promise<readonly ChunkFrame[]> {
+    const pages = await replayPipeline(frames, async (frame, readSignal) => {
       assertReplayDeadline(deadline)
-      if (frame.storage === 'postgres') { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
-      const selected = await this.readObjectRange(frame)
+      if (frame.storage === 'postgres') return [{ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }]
+      const selected = await this.readObjectRange(frame, readSignal)
       assertReplayDeadline(deadline)
       if (selected.length !== frame.lastFrame - frame.firstFrame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
         || selected.reduce((sum, value) => sum + value.payload.length, 0) !== frame.payload_bytes) throw new Error('Sealed object differs from planned range')
       // The store copies these private views into its response or fork prefix.
       // Avoid a temporary payload copy between verification and that boundary.
-      result.push(...selected)
-    }
-    return result
+      return selected
+    }, this.readAhead, signal)
+    return pages.flat()
   }
 
-  private async readObjectRange(frame: ObjectRange): Promise<readonly ChunkFrame[]> {
+  private async readObjectRange(frame: ObjectRange, signal: AbortSignal): Promise<readonly ChunkFrame[]> {
     const { manifest } = frame
     const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: manifest.id }
     const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), manifest.sha256, manifest.encodedBytes, chunkDigest(manifest.blockDirectory)])
@@ -256,33 +262,67 @@ export class ChunkManager {
     const cached = this.cache.peek(key)
     if (cached) return cached.frames.slice(frame.firstFrame - 1, frame.lastFrame)
     if (blocks.length === directory.length) {
-      const whole = await this.cache.get(key, async () => {
-        const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes)
+      const whole = await this.cache.get(key, async (sharedSignal) => {
+        const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes, sharedSignal)
         if (bytes.length !== manifest.encodedBytes) throw new Error('Sealed object length differs from manifest')
         const decoded = decodeChunk(bytes, identity, manifest.sha256)
         const packedLength = bytes.readUInt32BE(64)
         if (!bytes.subarray(68, 68 + packedLength).equals(manifest.blockDirectory)
           || !equalDirectory(boundaryDirectory(manifest.start, decoded.frames), manifest.endDeltas)) throw new Error('Sealed object differs from its manifest')
         return decoded
-      }, manifest.encodedBytes)
+      }, manifest.encodedBytes, signal)
       return whole.frames.slice(frame.firstFrame - 1, frame.lastFrame)
     }
     if (!blocks.length) throw new Error('Replay selected no object blocks')
-    const start = blocks[0]!.byteStart, end = blocks.at(-1)!.byteStart + blocks.at(-1)!.byteLength
-    let download: Promise<Buffer> | undefined
-    const decoded = await Promise.all(blocks.map((block) => this.cache.get(`${key}:${block.byteStart}:${block.sha256}`, async () => {
-      // Every missing block in this contiguous selection shares one Range GET.
-      download ??= this.options.objects.getRange(manifest.key, { start, end, totalBytes: manifest.encodedBytes }).then((bytes) => {
+    const requests = blocks.map((block) => ({ key: `${key}:${block.byteStart}:${block.sha256}`, encodedBytes: block.byteLength, block }))
+    const byKey = new Map(requests.map((request) => [request.key, request.block]))
+    const decoded = await this.cache.getMany(requests, async (missing, sharedSignal) => {
+      const groups: (typeof blocks)[] = []
+      for (const request of missing) {
+        const block = byKey.get(request.key)!
+        const current = groups.at(-1)
+        const previous = current?.at(-1)
+        if (previous && previous.byteStart + previous.byteLength === block.byteStart) current!.push(block)
+        else groups.push([block])
+      }
+      const loaded = await replayPipeline(groups, async (group, groupSignal) => {
+        const start = group[0]!.byteStart, end = group.at(-1)!.byteStart + group.at(-1)!.byteLength
+        if (this.options.objects.readRange) {
+          const chunks: { installationId: string; streamId: string; chunkId: string; frames: readonly ChunkFrame[] }[] = []
+          let index = 0, position = 0
+          let owned: Buffer | undefined
+          await this.options.objects.readRange(manifest.key, { start, end, totalBytes: manifest.encodedBytes }, (part) => {
+            let consumed = 0
+            while (consumed < part.byteLength) {
+              const block = group[index]
+              if (!block) throw new ChunkIntegrityError('Range returned bytes beyond its last block')
+              owned ??= Buffer.allocUnsafe(block.byteLength)
+              const length = Math.min(part.byteLength - consumed, owned.length - position)
+              owned.set(part.subarray(consumed, consumed + length), position)
+              consumed += length
+              position += length
+              if (position === owned.length) {
+                chunks.push({ ...identity, frames: decodeBlock(owned, block) })
+                owned = undefined
+                position = 0
+                index++
+              }
+            }
+          }, groupSignal)
+          if (index !== group.length || position !== 0) throw new ChunkIntegrityError('Range ended inside a block')
+          return chunks
+        }
+        const bytes = await this.options.objects.getRange(manifest.key, { start, end, totalBytes: manifest.encodedBytes }, groupSignal)
         if (bytes.length !== end - start) throw new ChunkIntegrityError('Range length differs from requested blocks')
-        return bytes
-      })
-      const bytes = await download
-      const localStart = block.byteStart - start
-      // Each retained block owns its allocation, so one survivor cannot retain
-      // an entire evicted multi-block download outside the cache accounting.
-      const owned = blocks.length === 1 ? bytes : Buffer.from(bytes.subarray(localStart, localStart + block.byteLength))
-      return { ...identity, frames: decodeBlock(owned, block) }
-    }, block.byteLength)))
+        return group.map((block) => {
+          const localStart = block.byteStart - start
+          // A retained block must own its allocation independently of the group.
+          const owned = group.length === 1 ? bytes : Buffer.from(bytes.subarray(localStart, localStart + block.byteLength))
+          return { ...identity, frames: decodeBlock(owned, block) }
+        })
+      }, 0, sharedSignal)
+      return loaded.flat()
+    }, signal)
     const selected: ChunkFrame[] = []
     for (const [index, chunk] of decoded.entries()) {
       const block = blocks[index]!

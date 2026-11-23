@@ -10,6 +10,36 @@ export function assertReplayDeadline(deadline: number): void {
   if (performance.now() >= deadline) throw new StreamError(503, 'REPLAY_DEADLINE', 'Replay deadline exceeded; retry from the durable checkpoint', { 'Retry-After': '1' })
 }
 
+/** Keeps at most the current read and one following read in flight. */
+export async function replayPipeline<T, R>(values: readonly T[], load: (value: T, signal: AbortSignal) => Promise<R>, readAhead: 0 | 1, signal?: AbortSignal): Promise<readonly R[]> {
+  const stopped = new AbortController()
+  const combined = signal ? AbortSignal.any([signal, stopped.signal]) : stopped.signal
+  const pending = new Map<number, Promise<R>>()
+  const results: R[] = []
+  const start = (index: number) => {
+    if (index >= values.length) return
+    const work = Promise.resolve().then(() => { combined.throwIfAborted(); return load(values[index]!, combined) })
+    pending.set(index, work)
+    void work.catch(() => {})
+  }
+  start(0)
+  if (readAhead) start(1)
+  try {
+    for (let index = 0; index < values.length; index++) {
+      const result = await pending.get(index)!
+      combined.throwIfAborted()
+      pending.delete(index)
+      results.push(result)
+      start(index + 1 + readAhead)
+    }
+    return results
+  } catch (error) {
+    stopped.abort(error)
+    await Promise.allSettled(pending.values())
+    throw error
+  }
+}
+
 /** Acquire under the replay snapshot; object I/O never holds its SQL locks. */
 export class ReplayPins {
   constructor(private readonly schema: string, private readonly guard: InstallationGuard) {}

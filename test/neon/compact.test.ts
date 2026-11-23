@@ -61,7 +61,7 @@ afterAll(async () => {
   expect(errors).toEqual([])
 })
 
-test('1024 variable-size frames seal without retained rows; eight replay pages fetch one verified object', async () => {
+test('1024 variable-size frames seal without retained rows; one replay page fetches one verified object', async () => {
   const writer = server()
   expect((await request(writer, 'packed', 'PUT')).status).toBe(201)
   const id = (await pool.query(`SELECT id FROM "${schema}".streams WHERE path='packed'`)).rows[0].id
@@ -111,7 +111,7 @@ test('1024 variable-size frames seal without retained rows; eight replay pages f
     if (response.headers.has('Stream-Up-To-Date')) break
   } while (pages < 10)
   expect(actual).toBe(parts.join('') + 'last')
-  expect(pages).toBe(8)
+  expect(pages).toBe(1)
   expect(gets).toBe(1)
   const invalid = advanceOffset(ZERO_OFFSET, 2)
   expect(offsets).not.toContain(invalid)

@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import { DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
-import type { GetObjectCommandOutput } from '@aws-sdk/client-s3'
+import type { GetObjectCommandInput, GetObjectCommandOutput } from '@aws-sdk/client-s3'
 import { ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-codec.js'
 import { StreamError } from './errors.js'
-import type { ChunkStorage } from './storage.js'
+import type { ChunkStorage, ChunkByteRange } from './storage.js'
 import { ChunkNotFoundError } from './storage.js'
 
 const UUID_KEY = '[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'
@@ -30,6 +30,28 @@ async function readObjectBody(response: GetObjectCommandOutput, maximum: number,
   } finally { body.destroy() }
 }
 
+async function consumeRangeBody(response: GetObjectCommandOutput, length: number, consume: (part: Uint8Array) => void | Promise<void>): Promise<void> {
+  if (!response.Body) throw new ChunkIntegrityError('Object storage returned no range body')
+  const body = response.Body as AsyncIterable<Uint8Array> & { destroy(error?: Error): void }
+  let size = 0
+  try {
+    if (response.ContentLength !== undefined && response.ContentLength !== length) throw new ChunkIntegrityError('Range length differs')
+    for await (const part of body) {
+      size += part.byteLength
+      if (size > length) throw new ChunkIntegrityError('Range exceeds requested size')
+      await consume(part)
+    }
+    if (size !== length) throw new ChunkIntegrityError('Range ended before its declared size')
+  } finally { body.destroy() }
+}
+
+function validateRange(range: ChunkByteRange): void {
+  const { start, end, totalBytes } = range
+  if (![start, end, totalBytes].every(Number.isSafeInteger) || start < 0 || start >= end || end > totalBytes || totalBytes > MAX_CHUNK_BYTES) {
+    throw new RangeError('Invalid immutable object range')
+  }
+}
+
 export interface S3StorageOptions {
   readonly endpoint: string
   readonly region: string
@@ -44,6 +66,7 @@ export interface S3StorageOptions {
 /** Consumer-owned adapter; call close after all servers/workers have stopped. */
 export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & {
   close(): void; delete: NonNullable<ChunkStorage['delete']>; list: NonNullable<ChunkStorage['list']>
+  readRange: NonNullable<ChunkStorage['readRange']>
 } {
   const endpoint = new URL(options.endpoint)
   if ((!options.allowHttp && endpoint.protocol !== 'https:') || !['https:', 'http:'].includes(endpoint.protocol)
@@ -62,6 +85,20 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
   let active = 0, closed = false
   const waiters = new Set<{ grant(): void; reject(error: unknown): void }>()
   const controllers = new Set<AbortController>()
+  async function getObject(input: GetObjectCommandInput, signal: AbortSignal): Promise<GetObjectCommandOutput> {
+    return client.send(new GetObjectCommand(input), { abortSignal: signal }).catch((error: unknown) => {
+      if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
+      throw error
+    })
+  }
+  async function rangeObject(key: string, range: ChunkByteRange, signal: AbortSignal): Promise<GetObjectCommandOutput> {
+    const response = await getObject({ Bucket: options.bucket, Key: key, Range: `bytes=${range.start}-${range.end - 1}` }, signal)
+    if (response.$metadata.httpStatusCode !== 206 || response.ContentRange !== `bytes ${range.start}-${range.end - 1}/${range.totalBytes}`) {
+      ;(response.Body as { destroy?(): void } | undefined)?.destroy?.()
+      throw new ChunkIntegrityError('Object storage returned a different range')
+    }
+    return response
+  }
   async function run<T>(work: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (closed) throw new Error('Object storage adapter is closed')
     signal?.throwIfAborted()
@@ -113,28 +150,23 @@ export function createS3ChunkStorage(options: S3StorageOptions): ChunkStorage & 
     get(key, maxBytes, signal) {
       if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > MAX_CHUNK_BYTES) throw new RangeError('Invalid encoded chunk limit')
       return run(async (abortSignal) => {
-        const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key }), { abortSignal }).catch((error: unknown) => {
-          if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
-          throw error
-        })
+        const response = await getObject({ Bucket: options.bucket, Key: key }, abortSignal)
         return readObjectBody(response, maxBytes)
       }, signal)
     },
     getRange(key, range, signal) {
       const { start, end, totalBytes } = range
-      if (![start, end, totalBytes].every(Number.isSafeInteger) || start < 0 || start >= end || end > totalBytes || totalBytes > MAX_CHUNK_BYTES) {
-        throw new RangeError('Invalid immutable object range')
-      }
+      validateRange(range)
       return run(async (abortSignal) => {
-        const response = await client.send(new GetObjectCommand({ Bucket: options.bucket, Key: key, Range: `bytes=${start}-${end - 1}` }), { abortSignal }).catch((error: unknown) => {
-          if (typeof error === 'object' && error !== null && '$metadata' in error && (error.$metadata as { httpStatusCode?: number })?.httpStatusCode === 404) throw new ChunkNotFoundError('Immutable chunk not found')
-          throw error
-        })
-        if (response.$metadata.httpStatusCode !== 206 || response.ContentRange !== `bytes ${start}-${end - 1}/${totalBytes}`) {
-          ;(response.Body as { destroy?(): void } | undefined)?.destroy?.()
-          throw new ChunkIntegrityError('Object storage returned a different range')
-        }
+        const response = await rangeObject(key, { start, end, totalBytes }, abortSignal)
         return readObjectBody(response, end - start, end - start)
+      }, signal)
+    },
+    readRange(key, range, consume, signal) {
+      validateRange(range)
+      return run(async (abortSignal) => {
+        const response = await rangeObject(key, range, abortSignal)
+        await consumeRangeBody(response, range.end - range.start, consume)
       }, signal)
     },
     delete(key) {

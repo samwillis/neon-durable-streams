@@ -59,11 +59,19 @@ async function objectRead(method, args) {
     return bytes
   } finally { if (metrics) metrics.objectMs += performance.now() - started }
 }
-const objects = { ...rawObjects, get: (...args) => objectRead('get', args), getRange: (...args) => objectRead('getRange', args) }
+async function rangeRead(key, range, consume, signal) {
+  const metrics = context.getStore(), started = performance.now()
+  if (metrics) { metrics.objectGets++; metrics.objectRangeGets++ }
+  try { return await rawObjects.readRange(key, range, async (bytes) => {
+    if (metrics) metrics.objectBytes += bytes.byteLength
+    await consume(bytes)
+  }, signal) } finally { if (metrics) metrics.objectMs += performance.now() - started }
+}
+const objects = { ...rawObjects, readRange: rangeRead, get: (...args) => objectRead('get', args), getRange: (...args) => objectRead('getRange', args) }
 function server(cacheBytes = settings.cacheBytes) {
   return createDurableStreams({ postgres: { pool, schema, environmentId: required('DS_ENVIRONMENT_ID') },
     auth: { authenticate: () => ({ tenantId: 'replay', subject: 'benchmark' }), authorize: () => true },
-    storage: { objects, targetChunkBytes: settings.targetChunkBytes, maxChunkFrames: settings.maxChunkFrames, blockBytes: settings.blockBytes, cacheBytes },
+    storage: { objects, targetChunkBytes: settings.targetChunkBytes, maxChunkFrames: settings.maxChunkFrames, blockBytes: settings.blockBytes, readAhead: settings.readAhead ?? 1, cacheBytes },
     subscriptions: { keyring: parseSubscriptionKeyring(required('DS_KEYRING_JSON')) },
     live: { notifier, maxReaders: 64, maxSseDurationMs: 10000, heartbeatMs: 1000 },
   })
@@ -114,12 +122,27 @@ async function handle(request) {
   const before = process.memoryUsage()
   let response
   try { response = await context.run(metrics, () => handler.fetch(request)) }
-  finally { if (cold) await handler.close() }
+  catch (error) { if (cold) await handler.close(); throw error }
+  if (cold && !response.body) await handler.close()
   const headers = new Headers(response.headers)
   headers.set('x-replay-metrics', JSON.stringify({ ...metrics, handlerMs: performance.now() - started,
     instanceId, cache: cold ? 'disabled' : 'shared', memoryBefore: before, memoryAfter: process.memoryUsage(),
     pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount } }))
-  return new Response(response.body, { status: response.status, headers })
+  let body = response.body
+  if (cold && body) {
+    const reader = body.getReader()
+    body = new ReadableStream({
+      async pull(controller) {
+        try {
+          const next = await reader.read()
+          if (next.done) { controller.close(); await handler.close() }
+          else controller.enqueue(next.value)
+        } catch (error) { controller.error(error); await handler.close() }
+      },
+      async cancel(reason) { try { await reader.cancel(reason) } finally { await handler.close() } },
+    }, { highWaterMark: 0 })
+  }
+  return new Response(body, { status: response.status, headers })
 }
 
 process.once('SIGINT', () => { void shared.close().finally(async () => { notifier.close(); rawObjects.close(); await pool.end() }) })

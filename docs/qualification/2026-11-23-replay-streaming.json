@@ -1,0 +1,31 @@
+{
+  "date": "2026-11-23",
+  "unitTests": 95,
+  "neonTests": 13,
+  "neonReportSha256": "d7f98fc68800d5022d3c4ecfaee02b0d0f92608b317ec7b8438684e72cc733e5",
+  "checks": [
+    "build",
+    "typecheck",
+    "example typecheck",
+    "unit/property tests"
+  ],
+  "coverage": [
+    "a cold interior seek downloads one verified block and reuses it for another frame",
+    "adjacent selected blocks coalesce into one partial HTTP request",
+    "concurrent readers share the same block download",
+    "a corrupt later block fails the complete response before any selected data is returned",
+    "streaming corruption in a later block fails before returning data",
+    "invalid physical manifest bounds are rejected before issuing object requests",
+    "a verified full-object cache entry also serves subsequent interior reads",
+    "partial JSON replay across a fork cap preserves exact numbers and UTF-8",
+    "a cold matching conditional GET acquires no pins and downloads no objects",
+    "validators survive hot-to-sealed publication and change when closure becomes visible",
+    "canceling one shared reader preserves the other reader and releases all pins",
+    "last-reader cancellation settles adapter I/O before releasing its replay pin",
+    "a rewritten position under a fresh serving epoch cannot reuse the discarded validator"
+  ],
+  "limitations": [
+    "Deployed performance comparison still pending.",
+    "Object block corruption fails before page headers. Response bodies retain verified pages under backpressure; they do not forward unverified bytes."
+  ]
+}

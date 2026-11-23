@@ -8,6 +8,8 @@ import { InstallationGuard } from './installation.js'
 import type { TransactionOptions } from './transaction.js'
 import { MIGRATION_IDS, STORAGE_VERSION } from './migrations.js'
 import { streamPresence, unavailableGenerationStatus } from './stream-lifecycle.js'
+import { replayEtag, matchesEtag } from './etag.js'
+import { ReplayBudget } from './replay-budget.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions } from './storage.js'
 import { decodeReplayRow } from './replay-plan.js'
@@ -85,18 +87,25 @@ export interface ReadResult {
   readonly hasData: boolean
   readonly validatedAt: number
   readonly validUntil: number
+  readonly etag?: string
+  readonly notModified?: boolean
+  readonly release?: () => void
 }
 interface StoreOptions {
   readonly maxStoredBytes?: number | undefined
   readonly maxPageBytes?: number | undefined
   readonly maxPageFrames?: number | undefined
   readonly replayTimeoutMs?: number | undefined
+  readonly maxReplayMemoryBytes?: number | undefined
   readonly storage?: StorageOptions | undefined
   readonly environmentId?: string | undefined
   readonly timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'> | undefined
 }
 interface PinnedFrames { readonly frames: readonly StoredFrame[]; readonly lease: ReplayLease | undefined; readonly deadline: number }
-interface ReplayPlan extends Omit<ReadResult, 'body'>, PinnedFrames {}
+interface ReplayPlan extends Omit<ReadResult, 'body'>, PinnedFrames {
+  readonly etag: string
+  readonly notModified: boolean
+}
 
 /** Transactional stream state and bounded replay planning. */
 export class PostgresStreamStore {
@@ -110,14 +119,19 @@ export class PostgresStreamStore {
   private readonly replayTimeout: number
   private readonly pins: ReplayPins
   private readonly reclamation: ReclamationManager
-  close(): void { this.chunks?.close() }
+  private readonly replayBudget: ReplayBudget
+  private readonly reservationBytes: number
+  close(): void { this.replayBudget.close(); this.chunks?.close() }
+  reserveRead(): () => void { return this.replayBudget.acquire(this.reservationBytes) }
+  reserveBody(bytes: number): () => void { return this.replayBudget.acquire(Math.max(1, bytes)) }
 
   constructor(
     private readonly pool: Pool,
     schema: string,
     options: StoreOptions = {},
   ) {
-    const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 128, replayTimeoutMs = 60_000, storage, environmentId, timeouts } = options
+    const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 8192, replayTimeoutMs = 60_000,
+      maxReplayMemoryBytes = 256 * 1024 * 1024, storage, environmentId, timeouts } = options
     this.maxStoredBytes = maxStoredBytes
     this.maxPageBytes = maxPageBytes
     this.maxPageFrames = maxPageFrames
@@ -126,10 +140,13 @@ export class PostgresStreamStore {
     this.pins = new ReplayPins(this.schema, this.guard)
     this.reclamation = new ReclamationManager(this.schema, this.guard, storage?.objects)
     this.replayTimeout = replayTimeoutMs
+    this.reservationBytes = Math.max(1024 * 1024, maxPageBytes * 3 + maxPageFrames * 512)
+    this.replayBudget = new ReplayBudget(maxReplayMemoryBytes)
     this.chunks = storage ? new ChunkManager(pool, schema, storage, this.guard) : undefined
     if (!Number.isSafeInteger(maxStoredBytes) || maxStoredBytes < 1 || maxStoredBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(maxPageBytes) || maxPageBytes < maxStoredBytes + 2 || maxPageBytes > 64 * 1024 * 1024
-      || !Number.isSafeInteger(maxPageFrames) || maxPageFrames < 1 || maxPageFrames > 1024
+      || !Number.isSafeInteger(maxPageFrames) || maxPageFrames < 1 || maxPageFrames > 131072
+      || !Number.isSafeInteger(maxReplayMemoryBytes) || maxReplayMemoryBytes < this.reservationBytes || maxReplayMemoryBytes > 1024 * 1024 * 1024
       || !Number.isSafeInteger(replayTimeoutMs) || replayTimeoutMs < 1 || replayTimeoutMs > 300_000) {
       throw new RangeError('Invalid payload/page limits')
     }
@@ -336,19 +353,26 @@ export class PostgresStreamStore {
     return result.rows.map(decodeReplayRow)
   }
 
-  private async materialize(plan: PinnedFrames): Promise<readonly ChunkFrame[]> {
+  private async materialize(plan: PinnedFrames, signal?: AbortSignal): Promise<readonly ChunkFrame[]> {
     const { frames, deadline, lease } = plan
     let result: readonly ChunkFrame[]
     let completed = false
     try {
+      signal?.throwIfAborted()
       assertReplayDeadline(deadline)
-      result = this.chunks ? await this.chunks.materialize(frames, deadline) : frames.map((frame) => {
+      const timeout = AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now())))
+      const combined = signal ? AbortSignal.any([signal, timeout]) : timeout
+      result = this.chunks ? await this.chunks.materialize(frames, deadline, combined) : frames.map((frame) => {
         if (frame.storage !== 'postgres') throw new StorageCompatibilityError('Sealed replay requires object storage')
         return { start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }
       })
       await this.pins.complete(lease)
       completed = true
       assertReplayDeadline(deadline)
+      signal?.throwIfAborted()
+    } catch (error) {
+      assertReplayDeadline(deadline)
+      throw error
     } finally { if (!completed) await this.pins.release(lease) }
     assertReplayDeadline(deadline)
     return result
@@ -555,7 +579,8 @@ export class PostgresStreamStore {
     )`
   }
 
-  async read(tenant: string, path: string, offset: string): Promise<ReadResult> {
+  async read(tenant: string, path: string, offset: string, condition?: string | null, signal?: AbortSignal): Promise<ReadResult> {
+    signal?.throwIfAborted()
     const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     await this.assertReady()
@@ -570,14 +595,14 @@ export class PostgresStreamStore {
       // Lifecycle transitions and sliding TTL renewal require the writer path.
       // Ordinary readers use one MVCC snapshot without locking the stream head.
       if (stream.ttl_seconds !== null || streamPresence(stream) !== 'available') return undefined
-      return this.planRead(client, stream, offset, observedAt)
+      return this.planRead(client, stream, offset, observedAt, condition)
     }).catch((error: unknown) => {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === '40001') {
         throw new StreamError(503, 'REPLAY_RETRY', 'Replay snapshot changed; retry from the durable checkpoint', { 'Retry-After': '1' })
       }
       throw error
     })
-    if (snapshot) return this.materializeRead(snapshot)
+    if (snapshot) return this.materializeRead(snapshot, signal)
     const plan = await this.withStream(tenant, path, async (client, stream) => {
       if (stream.ttl_seconds !== null) {
         const renewed = await client.query<{ accessed_at: Date; valid_for_ms: string }>(`UPDATE ${this.schema}.streams SET accessed_at = clock_timestamp() WHERE id = $1
@@ -589,30 +614,41 @@ export class PostgresStreamStore {
       // The generation/tail are locked and lineage ranges are immutable.
       // The frame query captures local bytes or a sealed reference atomically,
       // including concurrent publication, before releasing these locks.
-      return this.planRead(client, stream, offset, observedAt)
+      return this.planRead(client, stream, offset, observedAt, condition)
     })
-    return this.materializeRead(plan)
+    return this.materializeRead(plan, signal)
   }
 
-  private async planRead(client: PoolClient, stream: StreamMetadata, offset: string, observedAt: number): Promise<ReplayPlan> {
+  private async planRead(client: PoolClient, stream: StreamMetadata, offset: string, observedAt: number, condition?: string | null): Promise<ReplayPlan> {
     const deadline = observedAt + this.replayTimeout
     assertReplayDeadline(deadline)
     const start = offset === '-1' ? ZERO_OFFSET : offset === 'now' ? stream.tail_offset : offset
     await this.boundary(client, stream, start)
-    const frames = await this.framePlan(client, stream.id, start)
+    const overhead = mediaType(stream.content_type) === 'application/json' ? 1 : 0
+    const frames = await this.framePlan(client, stream.id, start, this.maxPageFrames, this.maxPageBytes - overhead)
     assertReplayDeadline(deadline)
-    const lease = await this.pins.acquire(client, frames)
     const next = frames.at(-1)?.end_offset ?? start
-    return { stream, frames, lease, deadline, next, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
+    const installation = await this.guard.snapshot()
+    const etag = replayEtag({ generationId: stream.id, servingEpoch: installation.serving_epoch,
+      start, end: next, contentType: stream.content_type, closed: stream.closed })
+    const notModified = offset !== 'now' && matchesEtag(condition, etag)
+    const lease = notModified ? undefined : await this.pins.acquire(client, frames)
+    return { stream, frames, lease, deadline, next, etag, notModified, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
       validatedAt: observedAt, validUntil: observedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
   }
 
-  private async materializeRead(plan: ReplayPlan): Promise<ReadResult> {
-    const frames = await this.materialize(plan)
+  private async materializeRead(plan: ReplayPlan, signal?: AbortSignal): Promise<ReadResult> {
+    if (plan.notModified) {
+      await this.guard.check()
+      assertReplayDeadline(plan.deadline)
+      signal?.throwIfAborted()
+      return { ...plan, body: Buffer.alloc(0) }
+    }
+    const frames = await this.materialize(plan, signal)
     if (plan.frames.some((frame) => frame.storage === 'object')) await this.guard.check()
     const body = formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type)
     assertReplayDeadline(plan.deadline)
-    return { stream: plan.stream, body, next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData,
+    return { stream: plan.stream, body, next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData, etag: plan.etag,
       validatedAt: plan.validatedAt, validUntil: plan.validUntil }
   }
 
@@ -634,16 +670,17 @@ export class PostgresStreamStore {
     return { stream, validatedAt, validUntil: validatedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
   }
 
-  get replayLimits(): { maxBytes: number; maxFrames: number } { return { maxBytes: this.maxPageBytes - 2, maxFrames: this.maxPageFrames } }
+  get replayLimits(): { maxBytes: number; maxFrames: number } { return { maxBytes: this.maxPageBytes, maxFrames: this.maxPageFrames } }
 
   /** An active live read must never switch to a recreated path generation. */
-  async readGeneration(tenant: string, id: string, offset: string): Promise<ReadResult> {
+  async readGeneration(tenant: string, id: string, offset: string, signal?: AbortSignal): Promise<ReadResult> {
+    signal?.throwIfAborted()
     const observedAt = performance.now()
     if (!['-1', 'now'].includes(offset)) parseOffset(offset)
     const plan = await this.transaction({ repeatableRead: true }, async (client) => {
       return this.planRead(client, await this.generation(client, tenant, id), offset, observedAt)
     })
-    return this.materializeRead(plan)
+    return this.materializeRead(plan, signal)
   }
 
   async maintain(options: { readonly maxChunks?: number; readonly forceHot?: boolean } = {}): Promise<{ frozen: number; sealed: number; retired: number; reclamationWorked: boolean } & ReclamationResult> {

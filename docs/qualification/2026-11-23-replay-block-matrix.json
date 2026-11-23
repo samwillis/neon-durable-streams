@@ -1,0 +1,1564 @@
+{
+  "date": "2026-11-23",
+  "sourceCommit": "22d7a68384ec07dae1f98c87ed6cadbe692a776c",
+  "decision": {
+    "blockBytes": 65536,
+    "targetChunkBytes": 4194304,
+    "reason": "64 KiB minimizes cold range overfetch; 4 MiB bounds publication/recovery working sets. Coalescing makes smaller blocks use the same GET for consecutive selected blocks. 16 MiB remains configurable for sequential-heavy streams. Latency varied across routed instances and is not a reliable ranking here."
+  },
+  "limits": [
+    "All four have the old 128-frame page and 1024-frame chunk work limits. Tiny profiles therefore do not qualify the final byte-oriented paging or final metadata density.",
+    "Three repetitions per dataset, not an open-loop capacity test. Larger-object variants reduce GETs in several profiles; there is no uniformly faster latency winner.",
+    "Instrumentation is through headers, not retained response-body lifetime."
+  ],
+  "variants": [
+    {
+      "sourceCommit": "22d7a68384ec07dae1f98c87ed6cadbe692a776c",
+      "bundleSha256": "bf72f1b5f0b721b34de02182f7702bef6a6a55fb3f0279c1a383dd5272ffa497",
+      "deploymentId": "1",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "region": "us-east-1",
+      "harnessSha256": "ba2216d987ef85c86d98c55ac125e800fc770863dfb858e8c3b5292862b0e4b0",
+      "inputsSha256": "965950d9551e8bbe9102b3295eaf0ea874dd5dea84d5a323b80c9c62f39d26c2",
+      "settings": {
+        "targetChunkBytes": 16777216,
+        "maxChunkFrames": 1024,
+        "blockBytes": 262144,
+        "cacheBytes": 33554432
+      },
+      "summary": [
+        {
+          "mode": "cold-seek",
+          "latencyMs": {
+            "count": 39,
+            "p50": 171.42787499999395,
+            "p95": 759.5236250000016,
+            "p99": 912.4935420000111
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 20,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 39
+        },
+        {
+          "mode": "repeat-seek",
+          "latencyMs": {
+            "count": 78,
+            "p50": 118.07858400000259,
+            "p95": 389.45020900000236,
+            "p99": 949.8918749999866
+          },
+          "sqlCalls": {
+            "count": 78,
+            "p50": 11,
+            "p95": 12,
+            "p99": 21
+          },
+          "objectGets": 19
+        },
+        {
+          "mode": "conditional",
+          "latencyMs": {
+            "count": 39,
+            "p50": 112.88704199998756,
+            "p95": 161.6215419999935,
+            "p99": 202.9280410000065
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "sequential",
+          "latencyMs": {
+            "count": 117,
+            "p50": 118.52962499999558,
+            "p95": 348.37774999999965,
+            "p99": 419.07420800000546
+          },
+          "sqlCalls": {
+            "count": 117,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 7
+        },
+        {
+          "mode": "slow-reader",
+          "latencyMs": {
+            "count": 13,
+            "p50": 127.31083299999591,
+            "p95": 382.3589159999974,
+            "p99": 382.3589159999974
+          },
+          "sqlCalls": {
+            "count": 13,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "fanout",
+          "latencyMs": {
+            "count": 104,
+            "p50": 178.29449999998906,
+            "p95": 1775.903416000001,
+            "p99": 2252.0388329999987
+          },
+          "sqlCalls": {
+            "count": 104,
+            "p50": 11,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 80
+        },
+        {
+          "mode": "deep-fork-cold",
+          "latencyMs": {
+            "count": 3,
+            "p50": 385.7798329999787,
+            "p95": 394.34170799999265,
+            "p99": 394.34170799999265
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 20,
+            "p95": 20,
+            "p99": 20
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "deep-fork-warm",
+          "latencyMs": {
+            "count": 3,
+            "p50": 332.3414160000102,
+            "p95": 391.7552910000086,
+            "p99": 391.7552910000086
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "canceled-sse",
+          "latencyMs": {
+            "count": 8,
+            "p50": 310.38241699998616,
+            "p95": 647.3557919999876,
+            "p99": 647.3557919999876
+          },
+          "sqlCalls": {
+            "count": 8,
+            "p50": 16,
+            "p95": 16,
+            "p99": 16
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "catchup-to-live",
+          "latencyMs": {
+            "count": 1,
+            "p50": 485.85008299999754,
+            "p95": 485.85008299999754,
+            "p99": 485.85008299999754
+          },
+          "sqlCalls": {
+            "count": 1,
+            "p50": 17,
+            "p95": 17,
+            "p99": 17
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "writer-shared-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 185.22758299999987,
+            "p95": 303.4000839999935,
+            "p99": 419.4955000000191
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-shared-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 450.6321670000034,
+            "p95": 2822.1920420000097,
+            "p99": 5735.926000000007
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 2
+        },
+        {
+          "mode": "writer-separate-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 159.05141699998057,
+            "p95": 230.9503749999858,
+            "p99": 235.25266600001487
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-separate-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 394.8196250000037,
+            "p95": 1185.1342920000025,
+            "p99": 1502.1867090000014
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 2
+        }
+      ],
+      "reportSha256": "3047401bd3af96263b2ffa431584327cf659eb388b36da54b5c0195097f5a9d2",
+      "samples": 517,
+      "errors": [],
+      "coldSeek": {
+        "deliveredBytes": 11745354,
+        "downloadedBytes": 13459208,
+        "amplification": 1.145917611338066
+      },
+      "storageAfter": {
+        "relations": [
+          {
+            "relname": "appends",
+            "heap_bytes": "32768",
+            "index_bytes": "245760",
+            "total_bytes": "335872"
+          },
+          {
+            "relname": "chunk_objects",
+            "heap_bytes": "8192",
+            "index_bytes": "49152",
+            "total_bytes": "65536"
+          },
+          {
+            "relname": "chunks",
+            "heap_bytes": "24576",
+            "index_bytes": "73728",
+            "total_bytes": "196608"
+          },
+          {
+            "relname": "hot_chunks",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "installation",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "live_capacity",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "live_leases",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "migrations",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "paths",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "producers",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "reclamation_policy",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "replay_pins",
+            "heap_bytes": "49152",
+            "index_bytes": "106496",
+            "total_bytes": "188416"
+          },
+          {
+            "relname": "stream_changes",
+            "heap_bytes": "393216",
+            "index_bytes": "393216",
+            "total_bytes": "827392"
+          },
+          {
+            "relname": "stream_expirations",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "streams",
+            "heap_bytes": "581632",
+            "index_bytes": "98304",
+            "total_bytes": "720896"
+          },
+          {
+            "relname": "subscription_members",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_pending_links",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_wake_streams",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "subscription_wakes",
+            "heap_bytes": "0",
+            "index_bytes": "24576",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "subscriptions",
+            "heap_bytes": "0",
+            "index_bytes": "40960",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "webhook_signing_keys",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          }
+        ],
+        "counts": {
+          "appends": "49",
+          "frozen": "0",
+          "sealed": "14",
+          "object_bytes": "19103468",
+          "replay_pins": "0"
+        }
+      },
+      "peakObservedRssBytes": 199049216
+    },
+    {
+      "sourceCommit": "22d7a68384ec07dae1f98c87ed6cadbe692a776c",
+      "bundleSha256": "bf72f1b5f0b721b34de02182f7702bef6a6a55fb3f0279c1a383dd5272ffa497",
+      "deploymentId": "1",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "region": "us-east-1",
+      "harnessSha256": "ba2216d987ef85c86d98c55ac125e800fc770863dfb858e8c3b5292862b0e4b0",
+      "inputsSha256": "965950d9551e8bbe9102b3295eaf0ea874dd5dea84d5a323b80c9c62f39d26c2",
+      "settings": {
+        "targetChunkBytes": 4194304,
+        "maxChunkFrames": 1024,
+        "blockBytes": 262144,
+        "cacheBytes": 33554432
+      },
+      "summary": [
+        {
+          "mode": "cold-seek",
+          "latencyMs": {
+            "count": 39,
+            "p50": 205.7105000000156,
+            "p95": 745.5356670000037,
+            "p99": 924.8617919999961
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 20,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 41
+        },
+        {
+          "mode": "repeat-seek",
+          "latencyMs": {
+            "count": 78,
+            "p50": 137.96299999998882,
+            "p95": 380.85425000000396,
+            "p99": 939.0149999999994
+          },
+          "sqlCalls": {
+            "count": 78,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 20
+        },
+        {
+          "mode": "conditional",
+          "latencyMs": {
+            "count": 39,
+            "p50": 136.26004100000137,
+            "p95": 152.30079199999454,
+            "p99": 195.89816700000665
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "sequential",
+          "latencyMs": {
+            "count": 117,
+            "p50": 141.71658399999433,
+            "p95": 365.625291999997,
+            "p99": 534.6440839999996
+          },
+          "sqlCalls": {
+            "count": 117,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 7
+        },
+        {
+          "mode": "slow-reader",
+          "latencyMs": {
+            "count": 13,
+            "p50": 149.6311660000065,
+            "p95": 407.6707919999899,
+            "p99": 407.6707919999899
+          },
+          "sqlCalls": {
+            "count": 13,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "fanout",
+          "latencyMs": {
+            "count": 104,
+            "p50": 183.5512919999892,
+            "p95": 1496.2974169999943,
+            "p99": 2041.2353329999896
+          },
+          "sqlCalls": {
+            "count": 104,
+            "p50": 11,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 86
+        },
+        {
+          "mode": "deep-fork-cold",
+          "latencyMs": {
+            "count": 3,
+            "p50": 471.95912499999395,
+            "p95": 472.33808399998816,
+            "p99": 472.33808399998816
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 20,
+            "p95": 20,
+            "p99": 20
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "deep-fork-warm",
+          "latencyMs": {
+            "count": 3,
+            "p50": 349.3051250000135,
+            "p95": 467.17304200000945,
+            "p99": 467.17304200000945
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "canceled-sse",
+          "latencyMs": {
+            "count": 8,
+            "p50": 327.7480000000214,
+            "p95": 486.10833300001104,
+            "p99": 486.10833300001104
+          },
+          "sqlCalls": {
+            "count": 8,
+            "p50": 16,
+            "p95": 16,
+            "p99": 16
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "catchup-to-live",
+          "latencyMs": {
+            "count": 1,
+            "p50": 672.2487079999992,
+            "p95": 672.2487079999992,
+            "p99": 672.2487079999992
+          },
+          "sqlCalls": {
+            "count": 1,
+            "p50": 17,
+            "p95": 17,
+            "p99": 17
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "writer-shared-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 226.55883399999584,
+            "p95": 320.5801250000077,
+            "p99": 325.2234579999931
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-shared-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 335.4806669999962,
+            "p95": 1138.1171670000185,
+            "p99": 1741.1467499999853
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "writer-separate-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 160.268167000002,
+            "p95": 213.32479199999943,
+            "p99": 224.92112500002258
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-separate-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 327.9580410000053,
+            "p95": 534.9064589999907,
+            "p99": 624.4036659999983
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 1
+        }
+      ],
+      "reportSha256": "a914bf2a7d875f0ae54fe3caa7980cc1bd4ca92e2191f5b90a876f31663e72f5",
+      "samples": 517,
+      "errors": [],
+      "coldSeek": {
+        "deliveredBytes": 11745354,
+        "downloadedBytes": 13459208,
+        "amplification": 1.145917611338066
+      },
+      "storageAfter": {
+        "relations": [
+          {
+            "relname": "appends",
+            "heap_bytes": "761856",
+            "index_bytes": "245760",
+            "total_bytes": "1073152"
+          },
+          {
+            "relname": "chunk_objects",
+            "heap_bytes": "8192",
+            "index_bytes": "49152",
+            "total_bytes": "65536"
+          },
+          {
+            "relname": "chunks",
+            "heap_bytes": "24576",
+            "index_bytes": "73728",
+            "total_bytes": "196608"
+          },
+          {
+            "relname": "hot_chunks",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "installation",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "live_capacity",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "live_leases",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "migrations",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "paths",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "producers",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "reclamation_policy",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "replay_pins",
+            "heap_bytes": "65536",
+            "index_bytes": "114688",
+            "total_bytes": "212992"
+          },
+          {
+            "relname": "stream_changes",
+            "heap_bytes": "393216",
+            "index_bytes": "434176",
+            "total_bytes": "868352"
+          },
+          {
+            "relname": "stream_expirations",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "streams",
+            "heap_bytes": "540672",
+            "index_bytes": "98304",
+            "total_bytes": "679936"
+          },
+          {
+            "relname": "subscription_members",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_pending_links",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_wake_streams",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "subscription_wakes",
+            "heap_bytes": "0",
+            "index_bytes": "24576",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "subscriptions",
+            "heap_bytes": "0",
+            "index_bytes": "40960",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "webhook_signing_keys",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          }
+        ],
+        "counts": {
+          "appends": "49",
+          "frozen": "0",
+          "sealed": "16",
+          "object_bytes": "19103604",
+          "replay_pins": "0"
+        }
+      },
+      "peakObservedRssBytes": 234872832
+    },
+    {
+      "sourceCommit": "22d7a68384ec07dae1f98c87ed6cadbe692a776c",
+      "bundleSha256": "bf72f1b5f0b721b34de02182f7702bef6a6a55fb3f0279c1a383dd5272ffa497",
+      "deploymentId": "1",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "region": "us-east-1",
+      "harnessSha256": "ba2216d987ef85c86d98c55ac125e800fc770863dfb858e8c3b5292862b0e4b0",
+      "inputsSha256": "965950d9551e8bbe9102b3295eaf0ea874dd5dea84d5a323b80c9c62f39d26c2",
+      "settings": {
+        "targetChunkBytes": 16777216,
+        "maxChunkFrames": 1024,
+        "blockBytes": 65536,
+        "cacheBytes": 33554432
+      },
+      "summary": [
+        {
+          "mode": "cold-seek",
+          "latencyMs": {
+            "count": 39,
+            "p50": 185.88550000000396,
+            "p95": 499.643333,
+            "p99": 921.2490830000024
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 20,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 39
+        },
+        {
+          "mode": "repeat-seek",
+          "latencyMs": {
+            "count": 78,
+            "p50": 126.1785419999942,
+            "p95": 403.85987499999464,
+            "p99": 896.9019580000022
+          },
+          "sqlCalls": {
+            "count": 78,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 21
+        },
+        {
+          "mode": "conditional",
+          "latencyMs": {
+            "count": 39,
+            "p50": 122.53295799999614,
+            "p95": 137.57304200000362,
+            "p99": 163.86154099999112
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "sequential",
+          "latencyMs": {
+            "count": 117,
+            "p50": 129.83958300000086,
+            "p95": 379.63874999999825,
+            "p99": 473.5815839999923
+          },
+          "sqlCalls": {
+            "count": 117,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 21
+        },
+        {
+          "mode": "slow-reader",
+          "latencyMs": {
+            "count": 13,
+            "p50": 134.88633399999526,
+            "p95": 401.8088749999879,
+            "p99": 401.8088749999879
+          },
+          "sqlCalls": {
+            "count": 13,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "fanout",
+          "latencyMs": {
+            "count": 104,
+            "p50": 203.11687500000698,
+            "p95": 1917.7930840000045,
+            "p99": 2189.036917000005
+          },
+          "sqlCalls": {
+            "count": 104,
+            "p50": 11,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 72
+        },
+        {
+          "mode": "deep-fork-cold",
+          "latencyMs": {
+            "count": 3,
+            "p50": 549.9230000000098,
+            "p95": 556.2518750000017,
+            "p99": 556.2518750000017
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 20,
+            "p95": 20,
+            "p99": 20
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "deep-fork-warm",
+          "latencyMs": {
+            "count": 3,
+            "p50": 323.19174999999814,
+            "p95": 329.22354100001394,
+            "p99": 329.22354100001394
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "canceled-sse",
+          "latencyMs": {
+            "count": 8,
+            "p50": 310.2207919999928,
+            "p95": 507.5698749999865,
+            "p99": 507.5698749999865
+          },
+          "sqlCalls": {
+            "count": 8,
+            "p50": 16,
+            "p95": 16,
+            "p99": 16
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "catchup-to-live",
+          "latencyMs": {
+            "count": 1,
+            "p50": 489.4775410000002,
+            "p95": 489.4775410000002,
+            "p99": 489.4775410000002
+          },
+          "sqlCalls": {
+            "count": 1,
+            "p50": 17,
+            "p95": 17,
+            "p99": 17
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "writer-shared-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 223.0070410000044,
+            "p95": 310.9770830000052,
+            "p99": 461.8982920000126
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-shared-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 503.72287500000675,
+            "p95": 2276.735084,
+            "p99": 6284.909958000004
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "writer-separate-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 169.3829159999732,
+            "p95": 283.5297919999866,
+            "p99": 391.7119160000002
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-separate-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 462.1633750000037,
+            "p95": 1146.0234169999894,
+            "p99": 1148.0604590000003
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 0
+        }
+      ],
+      "reportSha256": "a47128f9ad39457c4d492aac4a5965641e62a7d447118a70d4fb661f95cac0da",
+      "samples": 517,
+      "errors": [],
+      "coldSeek": {
+        "deliveredBytes": 11745354,
+        "downloadedBytes": 12079525,
+        "amplification": 1.0284513348852662
+      },
+      "storageAfter": {
+        "relations": [
+          {
+            "relname": "appends",
+            "heap_bytes": "761856",
+            "index_bytes": "262144",
+            "total_bytes": "1089536"
+          },
+          {
+            "relname": "chunk_objects",
+            "heap_bytes": "8192",
+            "index_bytes": "49152",
+            "total_bytes": "65536"
+          },
+          {
+            "relname": "chunks",
+            "heap_bytes": "16384",
+            "index_bytes": "73728",
+            "total_bytes": "196608"
+          },
+          {
+            "relname": "hot_chunks",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "installation",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "live_capacity",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "live_leases",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "migrations",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "paths",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "producers",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "reclamation_policy",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "replay_pins",
+            "heap_bytes": "24576",
+            "index_bytes": "114688",
+            "total_bytes": "172032"
+          },
+          {
+            "relname": "stream_changes",
+            "heap_bytes": "393216",
+            "index_bytes": "376832",
+            "total_bytes": "811008"
+          },
+          {
+            "relname": "stream_expirations",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "streams",
+            "heap_bytes": "770048",
+            "index_bytes": "98304",
+            "total_bytes": "909312"
+          },
+          {
+            "relname": "subscription_members",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_pending_links",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_wake_streams",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "subscription_wakes",
+            "heap_bytes": "0",
+            "index_bytes": "24576",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "subscriptions",
+            "heap_bytes": "0",
+            "index_bytes": "40960",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "webhook_signing_keys",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          }
+        ],
+        "counts": {
+          "appends": "49",
+          "frozen": "0",
+          "sealed": "14",
+          "object_bytes": "19120426",
+          "replay_pins": "0"
+        }
+      },
+      "peakObservedRssBytes": 183095296
+    },
+    {
+      "sourceCommit": "22d7a68384ec07dae1f98c87ed6cadbe692a776c",
+      "bundleSha256": "bf72f1b5f0b721b34de02182f7702bef6a6a55fb3f0279c1a383dd5272ffa497",
+      "deploymentId": "1",
+      "branchId": "br-restless-brook-bb70ytrf",
+      "region": "us-east-1",
+      "harnessSha256": "ba2216d987ef85c86d98c55ac125e800fc770863dfb858e8c3b5292862b0e4b0",
+      "inputsSha256": "965950d9551e8bbe9102b3295eaf0ea874dd5dea84d5a323b80c9c62f39d26c2",
+      "settings": {
+        "targetChunkBytes": 4194304,
+        "maxChunkFrames": 1024,
+        "blockBytes": 65536,
+        "cacheBytes": 33554432
+      },
+      "summary": [
+        {
+          "mode": "cold-seek",
+          "latencyMs": {
+            "count": 39,
+            "p50": 176.91099999999278,
+            "p95": 982.6282499999943,
+            "p99": 1232.2318749999977
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 20,
+            "p95": 21,
+            "p99": 21
+          },
+          "objectGets": 41
+        },
+        {
+          "mode": "repeat-seek",
+          "latencyMs": {
+            "count": 78,
+            "p50": 123.09983300001477,
+            "p95": 493.04133300000103,
+            "p99": 891.9635829999897
+          },
+          "sqlCalls": {
+            "count": 78,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 21
+        },
+        {
+          "mode": "conditional",
+          "latencyMs": {
+            "count": 39,
+            "p50": 113.39087500001187,
+            "p95": 204.68366599999717,
+            "p99": 209.52370799999335
+          },
+          "sqlCalls": {
+            "count": 39,
+            "p50": 11,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "sequential",
+          "latencyMs": {
+            "count": 117,
+            "p50": 125.10899999999674,
+            "p95": 432.3609160000051,
+            "p99": 518.7969160000066
+          },
+          "sqlCalls": {
+            "count": 117,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 13
+        },
+        {
+          "mode": "slow-reader",
+          "latencyMs": {
+            "count": 13,
+            "p50": 124.35908399999607,
+            "p95": 439.71629199999734,
+            "p99": 439.71629199999734
+          },
+          "sqlCalls": {
+            "count": 13,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "fanout",
+          "latencyMs": {
+            "count": 104,
+            "p50": 181.91920799997752,
+            "p95": 1829.6766669999924,
+            "p99": 3103.7780000000057
+          },
+          "sqlCalls": {
+            "count": 104,
+            "p50": 11,
+            "p95": 20,
+            "p99": 21
+          },
+          "objectGets": 78
+        },
+        {
+          "mode": "deep-fork-cold",
+          "latencyMs": {
+            "count": 3,
+            "p50": 327.6926669999957,
+            "p95": 481.5749589999905,
+            "p99": 481.5749589999905
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 20,
+            "p95": 20,
+            "p99": 20
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "deep-fork-warm",
+          "latencyMs": {
+            "count": 3,
+            "p50": 323.0047079999931,
+            "p95": 556.486292000016,
+            "p99": 556.486292000016
+          },
+          "sqlCalls": {
+            "count": 3,
+            "p50": 12,
+            "p95": 12,
+            "p99": 12
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "canceled-sse",
+          "latencyMs": {
+            "count": 8,
+            "p50": 316.60954199999105,
+            "p95": 560.5143329999992,
+            "p99": 560.5143329999992
+          },
+          "sqlCalls": {
+            "count": 8,
+            "p50": 16,
+            "p95": 16,
+            "p99": 16
+          },
+          "objectGets": 1
+        },
+        {
+          "mode": "catchup-to-live",
+          "latencyMs": {
+            "count": 1,
+            "p50": 936.3047920000099,
+            "p95": 936.3047920000099,
+            "p99": 936.3047920000099
+          },
+          "sqlCalls": {
+            "count": 1,
+            "p50": 17,
+            "p95": 17,
+            "p99": 17
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "writer-shared-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 164.3919590000005,
+            "p95": 284.6580829999875,
+            "p99": 404.71812500001397
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-shared-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 339.26545799997984,
+            "p95": 1132.7020409999823,
+            "p99": 1513.4957090000098
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 3
+        },
+        {
+          "mode": "writer-separate-stream",
+          "latencyMs": {
+            "count": 24,
+            "p50": 175.88474999999744,
+            "p95": 240.20179200000712,
+            "p99": 275.5117920000048
+          },
+          "sqlCalls": {
+            "count": 24,
+            "p50": 9,
+            "p95": 9,
+            "p99": 9
+          },
+          "objectGets": 0
+        },
+        {
+          "mode": "reader-separate-stream",
+          "latencyMs": {
+            "count": 32,
+            "p50": 406.85170800000196,
+            "p95": 728.5109579999989,
+            "p99": 899.9653749999998
+          },
+          "sqlCalls": {
+            "count": 32,
+            "p50": 11,
+            "p95": 11,
+            "p99": 11
+          },
+          "objectGets": 1
+        }
+      ],
+      "reportSha256": "77124b8ff050e35817d3c464261ac38a062c3a890b417244eca44500b385add7",
+      "samples": 517,
+      "errors": [],
+      "coldSeek": {
+        "deliveredBytes": 11745354,
+        "downloadedBytes": 12079525,
+        "amplification": 1.0284513348852662
+      },
+      "storageAfter": {
+        "relations": [
+          {
+            "relname": "appends",
+            "heap_bytes": "40960",
+            "index_bytes": "253952",
+            "total_bytes": "352256"
+          },
+          {
+            "relname": "chunk_objects",
+            "heap_bytes": "8192",
+            "index_bytes": "49152",
+            "total_bytes": "65536"
+          },
+          {
+            "relname": "chunks",
+            "heap_bytes": "16384",
+            "index_bytes": "73728",
+            "total_bytes": "196608"
+          },
+          {
+            "relname": "hot_chunks",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "installation",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "live_capacity",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "live_leases",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "40960"
+          },
+          {
+            "relname": "migrations",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "paths",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "producers",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "reclamation_policy",
+            "heap_bytes": "8192",
+            "index_bytes": "16384",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "replay_pins",
+            "heap_bytes": "40960",
+            "index_bytes": "114688",
+            "total_bytes": "180224"
+          },
+          {
+            "relname": "stream_changes",
+            "heap_bytes": "393216",
+            "index_bytes": "376832",
+            "total_bytes": "811008"
+          },
+          {
+            "relname": "stream_expirations",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "streams",
+            "heap_bytes": "57344",
+            "index_bytes": "98304",
+            "total_bytes": "188416"
+          },
+          {
+            "relname": "subscription_members",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_pending_links",
+            "heap_bytes": "0",
+            "index_bytes": "16384",
+            "total_bytes": "24576"
+          },
+          {
+            "relname": "subscription_wake_streams",
+            "heap_bytes": "0",
+            "index_bytes": "8192",
+            "total_bytes": "16384"
+          },
+          {
+            "relname": "subscription_wakes",
+            "heap_bytes": "0",
+            "index_bytes": "24576",
+            "total_bytes": "32768"
+          },
+          {
+            "relname": "subscriptions",
+            "heap_bytes": "0",
+            "index_bytes": "40960",
+            "total_bytes": "49152"
+          },
+          {
+            "relname": "webhook_signing_keys",
+            "heap_bytes": "8192",
+            "index_bytes": "32768",
+            "total_bytes": "49152"
+          }
+        ],
+        "counts": {
+          "appends": "49",
+          "frozen": "0",
+          "sealed": "16",
+          "object_bytes": "19120562",
+          "replay_pins": "0"
+        }
+      },
+      "peakObservedRssBytes": 195104768
+    }
+  ]
+}

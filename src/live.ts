@@ -5,6 +5,8 @@ import type { HeadWatch, StreamNotifier, StreamHead } from './neon.js'
 import { mediaType, formatPayloads } from './payload.js'
 import type { PostgresStreamStore, ReadResult } from './store.js'
 import { PayloadWindow } from './live-payload.js'
+import { ownedResponseBody } from './response-body.js'
+import { encodeSsePage } from './sse.js'
 
 export interface LiveOptions {
   /** Consumer-owned notifier. Production Neon servers use createNeonRealtimeNotifier. */
@@ -82,7 +84,7 @@ export class LiveReads {
     const key = JSON.stringify([tenant, id])
     let channel = this.channels.get(key)
     if (!channel) {
-      const current: Channel = { version: initial.stream.change_version, revision: 0, references: 0, disposed: false, waiters: new Set(), head: undefined, validation: initial }
+      const current: Channel = { version: initial.stream.change_version, revision: 0, references: 0, disposed: false, waiters: new Set(), head: undefined, validation: { stream: initial.stream, validatedAt: initial.validatedAt, validUntil: initial.validUntil } }
       this.channels.set(key, current)
       const update = (next: string | null) => {
         if (current.disposed || next === current.version) return
@@ -118,7 +120,7 @@ export class LiveReads {
       head: () => watched.head,
       wake: () => { if (!watched.disposed) { watched.revision++; for (const wake of [...watched.waiters]) wake() } },
       observe: (value: Pick<ReadResult, 'stream' | 'validatedAt' | 'validUntil'>) => {
-        if (value.validatedAt >= watched.validation.validatedAt) watched.validation = value
+        if (value.validatedAt >= watched.validation.validatedAt) watched.validation = { stream: value.stream, validatedAt: value.validatedAt, validUntil: value.validUntil }
       },
       validate: async () => {
         const previous = watched.validation
@@ -172,11 +174,30 @@ export class LiveReads {
     let subscription: ReturnType<LiveReads['channel']> | undefined
     let payload: PayloadWindow | undefined
     let released = false
+    const pageLeases = new Set<() => void>()
     const inFlight = new Set<Promise<unknown>>()
     const track = <T>(work: Promise<T>): Promise<T> => {
       const pending = work.finally(() => { inFlight.delete(pending) })
       inFlight.add(pending)
       return pending
+    }
+    const budgeted = async (work: () => Promise<ReadResult>): Promise<ReadResult> => {
+      let give = this.store.reserveRead()
+      let returned = false
+      const release = () => {
+        if (returned) return
+        returned = true
+        pageLeases.delete(release)
+        give()
+      }
+      pageLeases.add(release)
+      try {
+        const result = await work()
+        give()
+        if (!result.hasData) { release(); return result }
+        give = this.store.reserveBody(result.body.byteLength + 65536)
+        return { ...result, release }
+      } catch (error) { release(); throw error }
     }
     const release = () => {
       if (released) return
@@ -191,6 +212,7 @@ export class LiveReads {
       subscription?.release()
       const work = (async () => {
         await Promise.allSettled([...inFlight])
+        for (const give of [...pageLeases]) give()
         await releaseAdmission?.()
       })().catch((error: unknown) => {
         if (!(error instanceof StreamError && error.code === 'INSTALLATION_FENCED')) this.report(error)
@@ -202,7 +224,7 @@ export class LiveReads {
       assertActive()
       releaseAdmission = await admitLive(this.store.guard, this.schema, lifetime + 5000)
       assertActive()
-      const initial = await this.store.read(tenant, path, offset)
+      const initial = await track(budgeted(() => this.store.read(tenant, path, offset, undefined, abort.signal)))
       assertActive()
       const id = initial.stream.id
       const isSse = new URL(request.url).searchParams.get('live') === 'sse'
@@ -214,8 +236,11 @@ export class LiveReads {
       if (initial.stream.expires_at) headers.set('Stream-Expires-At', initial.stream.expires_at.toISOString())
       if (!isSse && (initial.hasData || initial.stream.closed)) {
         headers.set('Stream-Cursor', responseCursor(cursor))
+        if (initial.release) pageLeases.delete(initial.release)
         release()
-        return new Response(initial.hasData ? new Uint8Array(initial.body.buffer, initial.body.byteOffset, initial.body.byteLength) : null, { status: initial.hasData ? 200 : 204, headers })
+        return new Response(initial.hasData ? ownedResponseBody(initial.body, { signal: request.signal, release: initial.release!,
+          timeoutMs: Math.max(1, hardDeadline - performance.now()), ...(expiresAt === undefined ? {} : { expiresAt }) }) : null,
+        { status: initial.hasData ? 200 : 204, headers })
       }
       subscription = this.channel(tenant, id, initial)
       const channel = subscription
@@ -224,24 +249,25 @@ export class LiveReads {
         installation: await this.store.guard.snapshot(), maxBytes: this.bufferBytes, maxFrames: this.bufferFrames, windowMs: this.windowMs, wake: channel.wake, report: this.report }, initial)
       const replay = async (at: string) => {
         const revision = payload?.revision ?? -1
-        const result = await this.store.readGeneration(tenant, id, at)
+        const result = await this.store.readGeneration(tenant, id, at, abort.signal)
         channel.observe(result); payload?.reconcile(result, revision)
         return result
       }
-      const page = async (at: string): Promise<ReadResult> => {
+      const page = (at: string): Promise<ReadResult> => budgeted(async () => {
         if (!payload || payload.needsReplay || !payload.verified) return replay(at)
         const head = channel.head()
         if (head === null || head?.deleted) return replay(at)
         const validation = await channel.validate()
         const metadata = head && BigInt(head.version) >= BigInt(validation.stream.change_version)
           ? { ...validation.stream, tail_offset: head.offset, change_version: head.version, closed: head.closed } : validation.stream
-        const batch = payload.take(at, this.store.replayLimits.maxBytes, this.store.replayLimits.maxFrames, metadata.tail_offset)
+        const overhead = mediaType(metadata.content_type) === 'application/json' ? 1 : 0
+        const batch = payload.take(at, this.store.replayLimits.maxBytes - overhead, this.store.replayLimits.maxFrames, metadata.tail_offset)
         if (!batch && payload.needsReplay) return replay(at)
         const next = batch?.next ?? at
         if (metadata.closed && next < metadata.tail_offset && !batch?.frames.length) return replay(at)
         return { stream: metadata, body: formatPayloads((batch?.frames ?? []).map((frame) => frame.payload), metadata.content_type),
           next, upToDate: !batch?.ahead && next >= metadata.tail_offset, hasData: Boolean(batch?.frames.length), validatedAt: validation.validatedAt, validUntil: validation.validUntil }
-      }
+      })
       const waitForPage = async (at: string, deadline: number): Promise<ReadResult> => {
         let awaitingPayload: number | undefined
         for (;;) {
@@ -252,7 +278,7 @@ export class LiveReads {
           if (result.hasData || result.stream.closed || Date.now() >= deadline) return result
           if (!result.upToDate) {
             awaitingPayload ??= performance.now()
-            if (performance.now() - awaitingPayload >= 50) return track(replay(at))
+            if (performance.now() - awaitingPayload >= 50) return track(budgeted(() => replay(at)))
           } else awaitingPayload = undefined
           const wait = Math.min(deadline - Date.now(), payload ? this.validationMs : Infinity, Math.max(1, result.validUntil - performance.now()),
             awaitingPayload === undefined ? Infinity : Math.max(1, 50 - (performance.now() - awaitingPayload)))
@@ -268,8 +294,11 @@ export class LiveReads {
         if (result.upToDate) headers.set('Stream-Up-To-Date', 'true')
         else headers.delete('Stream-Up-To-Date')
         if (result.stream.closed && result.upToDate) headers.set('Stream-Closed', 'true')
+        if (result.release) pageLeases.delete(result.release)
         release()
-        return new Response(result.hasData ? new Uint8Array(result.body.buffer, result.body.byteOffset, result.body.byteLength) : null, { status: result.hasData ? 200 : 204, headers })
+        return new Response(result.hasData ? ownedResponseBody(result.body, { signal: request.signal, release: result.release!,
+          timeoutMs: Math.max(1, hardDeadline - performance.now()), ...(expiresAt === undefined ? {} : { expiresAt }) }) : null,
+        { status: result.hasData ? 200 : 204, headers })
       }
 
       const binary = !mediaType(initial.stream.content_type).startsWith('text/') && mediaType(initial.stream.content_type) !== 'application/json'
@@ -280,6 +309,9 @@ export class LiveReads {
       let next = initial.next
       let first: ReadResult | undefined = initial
       let ending = false
+      let output: Generator<Uint8Array> | undefined
+      let releaseOutput: (() => void) | undefined
+      let eofPending = false
       let rotation: ReturnType<typeof setTimeout>
       const thisDuration = this.duration
       const body = new ReadableStream<Uint8Array>({
@@ -289,7 +321,12 @@ export class LiveReads {
             ending = true
             clearTimeout(rotation)
             abort.signal.removeEventListener('abort', end)
-            controller.close()
+            const complete = eofPending && output === undefined
+            first = undefined
+            output?.return(undefined)
+            output = undefined
+            if (complete) controller.close()
+            else controller.error(abort.signal.reason)
             release()
           }
           abort.signal.addEventListener('abort', end, { once: true })
@@ -299,6 +336,14 @@ export class LiveReads {
         pull: async (controller) => {
           try {
             assertActive()
+            if (output) {
+              const part = output.next()
+              if (!part.done) { controller.enqueue(part.value); return }
+              output = undefined
+              releaseOutput?.()
+              releaseOutput = undefined
+              if (eofPending) { abort.abort(); return }
+            }
             let result = first
             first = undefined
             if (!result) {
@@ -312,15 +357,11 @@ export class LiveReads {
             next = result.next
             const eof = result.stream.closed && result.upToDate
             cursor = responseCursor(cursor)
-            let frame = ''
-            if (result.hasData) {
-              const data = binary ? result.body.toString('base64') : result.body.toString('utf8').replace(/\r\n|\r/g, '\n')
-              frame += `event: data\n${data.split('\n').map((line) => `data:${line}`).join('\n')}\n\n`
-            }
-            frame += `event: control\ndata:${JSON.stringify({ streamNextOffset: next, ...(eof ? { streamClosed: true } : { streamCursor: cursor }), ...(result.upToDate ? { upToDate: true } : {}) })}\n\n`
-            // Data and its checkpoint occupy a single bounded queue element.
-            controller.enqueue(Buffer.from(frame))
-            if (eof) abort.abort()
+            output = encodeSsePage(result.body, result.hasData, binary,
+              { streamNextOffset: next, ...(eof ? { streamClosed: true } : { streamCursor: cursor }), ...(result.upToDate ? { upToDate: true } : {}) })
+            releaseOutput = result.release
+            eofPending = eof
+            controller.enqueue(output.next().value!)
           } catch (error) {
             if (!ending) { if (!(error instanceof StreamError)) this.report(error); abort.abort(error) }
           }
@@ -329,6 +370,9 @@ export class LiveReads {
           // The stream is already canceled before this callback runs. Prevent
           // the abort listener from trying to close its controller a second time.
           ending = true
+          first = undefined
+          output?.return(undefined)
+          output = undefined
           clearTimeout(rotation)
           abort.abort()
           release()
