@@ -68,10 +68,11 @@ async function rangeRead(key, range, consume, signal) {
   }, signal) } finally { if (metrics) metrics.objectMs += performance.now() - started }
 }
 const objects = { ...rawObjects, readRange: rangeRead, get: (...args) => objectRead('get', args), getRange: (...args) => objectRead('getRange', args) }
-function server(cacheBytes = settings.cacheBytes) {
+function server(cacheBytes = settings.cacheBytes, pageBytes) {
   return createDurableStreams({ postgres: { pool, schema, environmentId: required('DS_ENVIRONMENT_ID') },
     auth: { authenticate: () => ({ tenantId: 'replay', subject: 'benchmark' }), authorize: () => true },
     storage: { objects, targetChunkBytes: settings.targetChunkBytes, maxChunkFrames: settings.maxChunkFrames, blockBytes: settings.blockBytes, readAhead: settings.readAhead ?? 1, cacheBytes },
+    ...(pageBytes ? { limits: { maxPageBytes: pageBytes, maxStoredBytes: pageBytes - 2 } } : {}),
     subscriptions: { keyring: parseSubscriptionKeyring(required('DS_KEYRING_JSON')) },
     live: { notifier, maxReaders: 64, maxSseDurationMs: 10000, heartbeatMs: 1000 },
   })
@@ -116,20 +117,22 @@ async function handle(request) {
   }
   if (!url.pathname.startsWith('/v1/stream/replay-')) return new Response(null, { status: 404 })
   const cold = request.headers.get('x-replay-cache') === 'cold'
-  const handler = cold ? server(0) : shared
+  const firstBlock = request.headers.get('x-replay-first-block') === '1'
+  const isolated = cold || firstBlock
+  const handler = isolated ? server(0, firstBlock ? settings.blockBytes : undefined) : shared
   const metrics = { sqlCalls: 0, transactions: 0, pinInsertCalls: 0, pinDeleteCalls: 0, sqlMs: 0, objectGets: 0, objectRangeGets: 0, objectBytes: 0, objectMs: 0 }
   const started = performance.now()
   const before = process.memoryUsage()
   let response
   try { response = await context.run(metrics, () => handler.fetch(request)) }
-  catch (error) { if (cold) await handler.close(); throw error }
-  if (cold && !response.body) await handler.close()
+  catch (error) { if (isolated) await handler.close(); throw error }
+  if (isolated && !response.body) await handler.close()
   const headers = new Headers(response.headers)
   headers.set('x-replay-metrics', JSON.stringify({ ...metrics, handlerMs: performance.now() - started,
     instanceId, cache: cold ? 'disabled' : 'shared', memoryBefore: before, memoryAfter: process.memoryUsage(),
     pool: { total: pool.totalCount, idle: pool.idleCount, waiting: pool.waitingCount } }))
   let body = response.body
-  if (cold && body) {
+  if (isolated && body) {
     const reader = body.getReader()
     body = new ReadableStream({
       async pull(controller) {

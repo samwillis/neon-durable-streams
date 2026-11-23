@@ -1,0 +1,129 @@
+{
+  "sourceCommit": "9a888422d662ca43cd27f902f097c9bee170894b",
+  "controlCommit": "366768286d504072b5af3fd6309ae317eccc9b1a",
+  "branchId": "br-spring-hat-bbj2h0gy",
+  "harnessSha256": "ee646a11d4782db676de37073b75227d8d51b6f74173997b377d11a47c6c389e",
+  "scope": "Synthetic immutable manifests in actual constrained Neon schemas, 1048576 sealed appends of 32 bytes, after ordinary VACUUM ANALYZE. No object uploads or replay. Relation totals include heap/index/TOAST; excludes fixed installation, producer, subscription state, dead-tuple churn and provider history. WAL includes other branch activity and is not a per-append cost measurement.",
+  "cleanupComplete": true,
+  "samples": [
+    {
+      "kind": "byte-control",
+      "framesPerChunk": 1024,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 2,
+      "chunks": 1024,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 1024,
+          "tupleBytes": 4800512,
+          "heap_bytes": 647168,
+          "index_bytes": 262144,
+          "total_bytes": 6660096
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 1024,
+          "tupleBytes": 360448,
+          "heap_bytes": 385024,
+          "index_bytes": 409600,
+          "total_bytes": 835584
+        }
+      ],
+      "observedBranchWalBytes": 6597288,
+      "directoryBytes": 124928,
+      "rawPerAppendDirectoryBytes": 4194304,
+      "totalBytesAfterVacuum": 7512064
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 1024,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 1024,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 1024,
+          "tupleBytes": 647168,
+          "heap_bytes": 704512,
+          "index_bytes": 270336,
+          "total_bytes": 1015808
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 1024,
+          "tupleBytes": 360448,
+          "heap_bytes": 385024,
+          "index_bytes": 409600,
+          "total_bytes": 835584
+        }
+      ],
+      "observedBranchWalBytes": 1959488,
+      "directoryBytes": 157696,
+      "rawPerAppendDirectoryBytes": 0,
+      "totalBytesAfterVacuum": 1867776
+    },
+    {
+      "kind": "ordinal",
+      "framesPerChunk": 131072,
+      "sealedAppends": 1048576,
+      "payloadBytes": 32,
+      "storageVersion": 3,
+      "chunks": 8,
+      "relations": [
+        {
+          "name": "appends",
+          "rows": 0,
+          "tupleBytes": 0,
+          "heap_bytes": 0,
+          "index_bytes": 8192,
+          "total_bytes": 16384
+        },
+        {
+          "name": "chunks",
+          "rows": 8,
+          "tupleBytes": 16832,
+          "heap_bytes": 8192,
+          "index_bytes": 65536,
+          "total_bytes": 172032
+        },
+        {
+          "name": "chunk_objects",
+          "rows": 8,
+          "tupleBytes": 2816,
+          "heap_bytes": 8192,
+          "index_bytes": 49152,
+          "total_bytes": 98304
+        }
+      ],
+      "observedBranchWalBytes": 28056,
+      "directoryBytes": 83776,
+      "rawPerAppendDirectoryBytes": 0,
+      "totalBytesAfterVacuum": 286720
+    }
+  ],
+  "interpretation": {
+    "matchedFrameCapReduction": 4.021929824561403,
+    "selectedDefaultReduction": 26.2,
+    "note": "The matched 1024-frame comparison isolates removal of sealed per-append boundary arrays. The 131072-frame profile additionally reduces object/manifest/ledger count from 1024 to 8. This synthetic retained-footprint result is separate from actual sealing, replay and writer-latency qualification. The first harness attempt hit an SQL parameter inference error, cleaned up its owned schemas and was corrected with explicit UUID casts before this successful run."
+  }
+}
