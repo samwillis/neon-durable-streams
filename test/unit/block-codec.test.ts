@@ -56,6 +56,13 @@ test('JSON message deltas preserve exact numbers, UTF-8 and batch boundaries acr
   expect(decodeBlockObject(encoded.bytes, identity, chunkDigest(encoded.bytes))).toEqual({ ...identity, frames })
 })
 
+test('framing overhead does not halve blocks containing half-target payloads', () => {
+  const frames = framesFrom([Buffer.alloc(32768), Buffer.alloc(32768), Buffer.alloc(32768)])
+  const encoded = encodeBlockObject({ ...identity, frames }, 65536)
+  expect(encoded.directory.map((block) => block.frameCount)).toEqual([2, 1])
+  expect(decodeBlockObject(encoded.bytes, identity, chunkDigest(encoded.bytes)).frames).toEqual(frames)
+})
+
 test('manifest gaps, overlaps, wrong identity and truncated data fail before frames are returned', () => {
   const frames = framesFrom([Buffer.from('hello'), Buffer.from('world')])
   const encoded = encodeBlockObject({ ...identity, frames }, 1)

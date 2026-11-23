@@ -75,7 +75,7 @@ export function encodeBlockObject(chunk: Chunk, targetBlockBytes = 65536): Block
     if (frame.start !== previous || !frame.payload.length || frame.end !== advanceOffset(frame.start, frame.payload.length)) throw new ChunkIntegrityError('Noncontiguous block frame')
     previous = frame.end
     const length = encodedFrameLength(frame)
-    if (current.frames.length && current.encodedBytes + length > targetBlockBytes) {
+    if (current.frames.length && current.encodedBytes >= targetBlockBytes) {
       blocks.push(current)
       current = { frames: [], encodedBytes: 0, payloadBytes: 0, firstFrame: index }
     }
