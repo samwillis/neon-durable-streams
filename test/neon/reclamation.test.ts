@@ -101,7 +101,7 @@ test('partial fork preparation pins sealed bytes but cannot publish an edge onto
   const parent = await sealed('partial-source')
   const block = blockedStorage(), reader = server(block.storage)
   const response = request(reader, 'partial-child', 'PUT', undefined, {
-    'Stream-Forked-From': '/v1/stream/partial-source', 'Stream-Fork-Offset': '0000000000000000_00000000000000000000000000000000', 'Stream-Fork-Sub-Offset': '3',
+    'Stream-Forked-From': '/v1/stream/partial-source', 'Stream-Fork-Offset': '0000000000000000_0000000000000000', 'Stream-Fork-Sub-Offset': '3',
   })
   try {
     await Promise.race([block.entered.promise, response.then((value) => { throw new Error(`Fork returned HTTP ${value.status} before object I/O`) })])

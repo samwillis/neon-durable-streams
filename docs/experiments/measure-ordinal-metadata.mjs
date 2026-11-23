@@ -52,11 +52,13 @@ try {
     const example = encodeBlockObject({ installationId: installation.id, streamId: stream, chunkId: randomUUID(), frames })
     for (let chunk = 0; chunk < appends / framesPerChunk; chunk++) {
       const id = randomUUID(), first = chunk * framesPerChunk, last = first + framesPerChunk
+      const directoryGrowth = kind === 'ordinal' && first > 0 ? 16 : 0
       let directory
       if (kind === 'ordinal') {
         // Rewrite logical directory endpoints while retaining codec block checksums.
         const { packBlockDirectory } = await import('../../dist/block-codec.js')
         directory = packBlockDirectory(example.directory.map((block) => ({ ...block,
+          byteStart: block.byteStart + directoryGrowth,
           start: first + block.firstFrame === 0 ? zero : token(first + block.firstFrame),
           end: token(first + block.firstFrame + block.frameCount),
         })))
@@ -71,7 +73,7 @@ try {
         directory.write(start, 56); directory.write(end, 89)
       }
       inserts.push({ id, start: first === 0 ? zero : token(first), end: token(last), directory: directory.toString('hex'),
-        sha: createHash('sha256').update(id).digest('hex'), encoded: kind === 'ordinal' ? example.bytes.length : 190 + framesPerChunk * 34 })
+        sha: createHash('sha256').update(id).digest('hex'), encoded: kind === 'ordinal' ? example.bytes.length + directoryGrowth : 190 + framesPerChunk * 34 })
     }
     const before = (await pool.query('SELECT pg_current_wal_insert_lsn() AS lsn')).rows[0].lsn
     await pool.query(`INSERT INTO ${sql}.chunks(id,stream_id,start_offset,end_offset,state,frame_count,payload_bytes,block_directory,object_key,sha256,encoded_bytes,sealed_at${kind === 'byte-control' ? ',end_deltas' : ''})

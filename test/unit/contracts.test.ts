@@ -5,6 +5,13 @@ import { formatPayloads, preparePayload } from '../../src/payload.js'
 import { streamPath } from '../../src/path.js'
 
 describe('persistent offset contract', () => {
+  test('preserves the protocol zero token while nonzero checkpoints carry history', () => {
+    expect(ZERO_OFFSET).toBe('0000000000000000_0000000000000000')
+    expect(parseOffset(ZERO_OFFSET)).toEqual({ ordinal: 0n, history: '0'.repeat(32) })
+    const next = advanceOffset(ZERO_OFFSET, 'f'.repeat(32))
+    expect(next).toBe(`0000000000000001_${'f'.repeat(32)}`)
+    expect(() => parseOffset(`0000000000000000_${'0'.repeat(32)}`)).toThrow()
+  })
   test('increments exactly above the JavaScript safe integer range', () => {
     const history = 'a'.repeat(32)
     expect(advanceOffset(`9007199254740992_${history}`)).toBe(`9007199254740993_${history}`)
@@ -22,7 +29,7 @@ describe('persistent offset contract', () => {
       }
     }))
   })
-  test.each(['', 'now', '-1', '1_2', '0000000000000000_00000000000000000000000000000000x'])('sentinels/invalid tokens are not stored offsets: %j', (value) => {
+  test.each(['', 'now', '-1', '1_2', '0000000000000000_0000000000000000x'])('sentinels/invalid tokens are not stored offsets: %j', (value) => {
     expect(() => parseOffset(value)).toThrow()
   })
 })

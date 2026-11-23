@@ -20,7 +20,7 @@ CREATE TABLE __SCHEMA__.chunks (
   UNIQUE (stream_id, id),
   UNIQUE (stream_id, end_offset),
   CHECK (start_offset < end_offset),
-  CHECK (start_offset ~ '^[0-9]{16}_[0-9a-f]{32}$' AND end_offset ~ '^[0-9]{16}_[0-9a-f]{32}$'),
+  CHECK (__SCHEMA__.valid_offset(start_offset) AND __SCHEMA__.valid_offset(end_offset)),
   CHECK ((state = 'frozen' AND object_key IS NULL AND sha256 IS NULL AND encoded_bytes IS NULL AND sealed_at IS NULL)
     OR (state = 'sealed' AND object_key IS NOT NULL AND sha256 ~ '^[0-9a-f]{64}$' AND encoded_bytes > 0 AND sealed_at IS NOT NULL)),
   retired_at timestamptz,

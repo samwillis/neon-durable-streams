@@ -34,7 +34,7 @@ test('Postgres rejects partial recovery operations and ownerless claims/leases',
   expect((await request('constraint-chunk', 'PUT', 'x')).status).toBe(201)
   const stream = (await sql("SELECT id FROM ds.streams WHERE path='constraint-chunk'")).rows[0].id
   await expect(sql(`INSERT INTO ds.chunks(id,stream_id,start_offset,end_offset,state,frame_count,payload_bytes,claim_token)
-    VALUES($1,$2,'0000000000000000_00000000000000000000000000000000','0000000000000000_0000000000000006','frozen',1,1,$1)`, [randomUUID(), stream])).rejects.toMatchObject({ code: '23514' })
+    VALUES($1,$2,'0000000000000000_0000000000000000','0000000000000000_0000000000000006','frozen',1,1,$1)`, [randomUUID(), stream])).rejects.toMatchObject({ code: '23514' })
   const removed = await sql(`SELECT column_name FROM information_schema.columns
     WHERE table_schema=$1 AND column_name IN ('processed','pull_published')`, [schema])
   expect(removed.rows).toEqual([])

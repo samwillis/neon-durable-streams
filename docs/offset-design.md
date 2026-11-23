@@ -1,6 +1,6 @@
 # Durable offset and replay layout
 
-Offsets use a 16-digit append ordinal, an underscore, and a 32-character lowercase hexadecimal history identifier. The ordinal advances once per committed nonempty stored frame. Payload size does not change it. A retry, rolled-back append or close-only request consumes no ordinal. Fixed widths preserve lexical ordering within every valid stream history. Clients treat the whole token as opaque.
+Nonzero offsets use a 16-digit append ordinal, an underscore, and a 32-character lowercase hexadecimal history identifier. The ordinal advances once per committed nonempty stored frame. Payload size does not change it. A retry, rolled-back append or close-only request consumes no ordinal. Fixed widths preserve lexical ordering within every valid stream history. The protocol zero token is `0000000000000000_0000000000000000`; it is the reserved beginning of every stream. Clients treat nonzero tokens as opaque.
 
 Each generation starts its own write history. Forks inherit tokens through their anchor. Any partial source prefix is a new child frame with the child's history identifier. A new serving epoch lazily starts a fresh write history on the first subsequent append; surviving prefix tokens remain valid. Existing hot data rotates before new history is sealed, and a chunk contains only one write history. A chunk's first start token can belong to the preceding span or inherited parent.
 

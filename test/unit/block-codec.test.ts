@@ -18,10 +18,10 @@ const framesFrom = (payloads: readonly Uint8Array[]) => {
 test('block binary encoding has explicit compact lengths and a packed physical directory', () => {
   const frames = framesFrom([Buffer.from('hi')])
   const encoded = encodeBlockObject({ ...identity, frames })
-  // Header 68, directory 56 + two 49-byte offsets, one 4-byte binary frame.
-  expect(encoded.bytes.length).toBe(226)
-  expect(encoded.directory[0]).toMatchObject({ firstFrame: 0, frameCount: 1, payloadBytes: 2, byteStart: 222, byteLength: 4 })
-  expect(encoded.bytes.subarray(222).toString('hex')).toBe('02006869')
+  // Header 68, directory 56 + a 33-byte zero and 49-byte end offset, one 4-byte binary frame.
+  expect(encoded.bytes.length).toBe(210)
+  expect(encoded.directory[0]).toMatchObject({ firstFrame: 0, frameCount: 1, payloadBytes: 2, byteStart: 206, byteLength: 4 })
+  expect(encoded.bytes.subarray(206).toString('hex')).toBe('02006869')
   expect(encoded.bytes.toString('ascii', 0, 8)).toBe('NDSBLK03')
   expect(unpackBlockDirectory(encoded.packedDirectory, encoded.bytes.length, 1)).toEqual(encoded.directory)
   expect(decodeBlockObject(encoded.bytes, identity, chunkDigest(encoded.bytes))).toEqual({ ...identity, frames })
