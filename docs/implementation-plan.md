@@ -23,7 +23,7 @@ The full pinned protocol and the operational mechanisms below are implemented as
 
 ## M0 — Executable foundation and persistent contracts
 
-Create the package skeleton, test harness, local Postgres 18/S3-compatible environment, migration runner, consumer fixture, and CI commands. Unit/property tests run without a Neon account. Required integration and conformance CI uses real Neon Postgres 18 and Realtime on isolated ephemeral branches; local Postgres and scripted notifiers supplement qualification. Missing Neon credentials must fail the qualification job explicitly. Establish a failure-injection mechanism that cannot be enabled through a production request.
+The package skeleton, test harness, migration runner, consumer fixture, and CI commands are implemented. Unit/property tests run without a database or Neon account. Database-backed integration and conformance use real Neon Postgres 18, Realtime, and Object Storage on isolated ephemeral branches; scripted notifiers support deterministic unit coverage. Missing Neon credentials must fail the qualification job explicitly. Establish a failure-injection mechanism that cannot be enabled through a production request.
 
 Before finalizing migration 0001 and format v1, write short, executable contract tests/decision records for:
 
@@ -82,12 +82,12 @@ Validate the packed npm artifact in a separate consumer project using documented
 
 | When | Checks |
 | --- | --- |
-| Every code change | Typecheck/build, relevant unit/model tests, local database integration, affected protocol cases, and package export checks |
+| Every code change | Typecheck/build, relevant unit/model tests, relevant Neon integration, affected protocol cases, and package export checks |
 | Before merging storage/transaction changes | Relevant crash/ambiguity/concurrency tests, persisted format fixtures, and migration compatibility |
 | Neon adapter or deployment changes | Real-service transaction, notifier, object, trigger, and Function-ingress tests |
 | Scheduled/pre-release qualification | Full pinned conformance, all fault/upgrade/restore suites, consumer tarball installation, deployed HTTPS webhook fixture, and recorded load/soak runs |
 
-Map every safety invariant to a test or drill. Record suite commit, package/dependency versions, configuration, workload, failure point, and random seed where relevant. Local Postgres/S3 tests provide repeatable development evidence; they do not certify provider-specific behavior.
+Map every safety invariant to a test or drill. Record suite commit, package/dependency versions, configuration, workload, failure point, and random seed where relevant. Unit/property tests provide fast deterministic feedback; integration and deployment tests exercise the actual Neon services.
 
 ## Capacity qualification findings
 

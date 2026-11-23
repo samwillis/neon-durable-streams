@@ -1,74 +1,58 @@
-# Development and current validation
+# Development and testing
 
-Install the complete [four-file database baseline](migrations.md) in a fresh schema. Earlier unreleased migration histories and partial targets are unsupported; historical qualification below identifies the versions tested.
+Use Node.js 24 (pinned in `.node-version` and `mise.toml`) and pnpm 10.32.1. Database-backed tests use actual Neon Postgres 18, Realtime, and Object Storage on disposable branches. Docker is not required.
 
-Before consolidation, the compact layout passed [all required CI jobs](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790) at clean `cdf0fa8`: 57 unit/property, 96 actual-Neon, 21 transaction/process-loss, nine Function/webhook, two hints-only, both recovery drills, and 338/338 full conformance, with zero failed/skipped cases. See the [compact storage contract](compact-storage-v2.md), [measurement method](experiments/README.md), and [qualification evidence](qualification/README.md). The current packed fixture runs eight same-candidate multi-instance checks on a fresh baseline. Historical upgrade reports remain scoped to their archived packages.
-
-Earlier revision evidence follows. Its source/layout scope is retained.
-
-Schema-0007 development removes the application PITR retention layer and delegates historical object recovery to the provider or matching backups. The updated full fixture enables immediate eligible collection; new regressions cover old-offset forks and the stopped 0006 → 0007 upgrade. Earlier [required CI](https://github.com/samwillis/neon-durable-streams/actions/runs/45131209454) passed on clean `59c3b85`: 53 unit/property, 88 Neon, 21 transaction/process-loss, nine public Function/webhook, two hints-only, both recovery drills, and 338/338 conformance cases, with no failed or skipped test cases. The post-restore startup gate recorded a 30-second initial snapshot timeout followed by a fresh ready observer at 31.79 seconds; independent payload and public SSE assertions passed. Earlier failed attempts and all exact artifacts remain in the qualification index. Previous revision evidence below is historical.
-
-The previous schema-0006 required CI passed on clean [`ee0b181`](https://github.com/samwillis/neon-durable-streams/actions/runs/45089891876): **53 unit/property, 86 Neon, 21 transaction/process-loss, nine deployed Function/webhook, two hints-only, both recovery drills, and 338/338 full conformance cases**. There were no failed or skipped test cases. The full fixture enabled subscriptions and collection with real fifteen-minute holds. Exact artifacts and the separate failed long-run Realtime diagnostic are recorded in the [qualification index](qualification/README.md).
-
-Use Node.js 24 (pinned in `.node-version` and `mise.toml`) and pnpm 10.32.1. Integration and conformance qualification runs on **real Neon Postgres 18, Realtime, and Object Storage**. Local Postgres is an optional development fixture.
-
-GitHub Actions uses project `bitter-water-06585105` (`durable-streams-ci-us-east-1`) in the personal Sam organization, region `aws-us-east-1`. Frankfurt project `weathered-base-83674772` remains available for local development and regional Function qualification. CI uses a project-scoped `NEON_API_KEY` secret, plus `NEON_PROJECT_ID` and `NEON_PARENT_BRANCH_ID` repository variables. The US CI location reduces runner-to-database network delay for upstream assertions with short internal SSE/TTL/lease deadlines; no upstream assertions or samples are changed. Qualification of each region still needs its own evidence. Each run provisions an isolated branch with a 24-hour expiry, enables Realtime, creates a private Object Storage bucket and expiring branch-scoped storage credentials, uses its pooled application and direct migration connections, and deletes the branch in an `always()` cleanup step. The point-in-time recovery drill temporarily removes expiry from that disposable parent because Neon forbids children of expiring branches; it restores expiry after removing its one-hour child. A scheduled janitor removes recognized CI test branches older than 26 hours if the runner disappears during that window. Expiry provides a fallback after runner loss. The parent branch is never a test target.
-
-For a local run, place the project-scoped management credential and project/parent IDs in the ignored `.env.neon.local`, then:
+## Fast checks
 
 ```sh
 mise exec node@24 -- pnpm install --frozen-lockfile
+mise exec node@24 -- pnpm check
+mise exec node@24 -- pnpm test:package
+```
+
+`pnpm test` runs the unit/property suite without a database or cloud credentials. `pnpm check` adds the build, typecheck, and consumer example typecheck. `pnpm test:package` installs a packed tarball in a temporary consumer and verifies public declarations, runtime exports, SQL assets, and licensing; it can fetch missing dependencies from the registry.
+
+## Neon tests from a development machine
+
+Copy [.env.example](../.env.example) to `.env.neon.local` and fill in a project-scoped `NEON_API_KEY`, `NEON_PROJECT_ID`, and non-expiring `NEON_PARENT_BRANCH_ID`. Provisioning creates a fresh branch and writes `.env.neon.test`; deployment also writes `.env.neon.function`. These files contain generated credentials and are ignored by Git.
+
+```sh
 mise exec node@24 -- pnpm neon:test:create
 mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run neon:test:deploy
 mise exec node@24 -- node --env-file=.env.neon.test --env-file=.env.neon.function --run test:function
 mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:neon
 mise exec node@24 -- node --env-file=.env.neon.test --run test:integration
 mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:recovery
-mise exec node@24 -- node --env-file=.env.neon.test --run test:conformance
+mise exec node@24 -- node --env-file=.env.neon.local --env-file=.env.neon.test --run test:conformance:neon
 mise exec node@24 -- pnpm neon:test:delete
 ```
 
-Always run cleanup even when tests fail. The script writes credentials to ignored, owner-readable files and refuses to overwrite an existing environment. The direct connection is required for migrations and tests of persistent session settings. Production requests use the pooled connection. Missing Realtime or Object Storage credentials fail the Neon tests; they never silently skip or switch to polling.
+Always run cleanup after a failure too. Provisioning records ownership before fetching credentials, refuses to overwrite an existing environment, and creates a branch with a 24-hour expiry. Cleanup deletes the recorded branch and its matching generated environment files. Do not use the parent branch as a test target.
 
-Fork PRs do not receive the management secret and cannot pass Neon qualification until a maintainer reviews the change and runs it on a trusted branch. The workflow does not use `pull_request_target` to execute fork code with secrets.
+Tests create random `ds_test_*` schemas and remove them during teardown. They use explicit test connection strings, never an application's `DATABASE_URL`. Pooled connections serve requests; direct connections run migrations and tests of persistent session settings. The complete [four-file baseline](migrations.md) is installed before serving; earlier development histories require a fresh schema.
 
-Optional local development:
+| Command | Coverage |
+| --- | --- |
+| `test:integration` | Postgres transactions, concurrency, producer semantics, and child-process loss before/after commit |
+| `test:neon` | Real Realtime and Object Storage, replay, forks, subscriptions, collection, migration safety, operations, and eight packed multi-instance checks |
+| `test:function` | Deployed consumer ingress, authenticated streaming, sealed replay, public HTTPS webhooks, and cron recovery |
+| `test:recovery` | Point-in-time child-branch adoption and stopped-Function in-place restore |
+| `test:conformance:neon` | All 338 pinned upstream cases colocated on Neon, with subscriptions and collection enabled |
 
-```sh
-mise exec node@24 -- pnpm install --frozen-lockfile
-docker compose up -d --wait
-export TEST_DATABASE_URL=postgresql://streams@127.0.0.1:55432/streams
-export PGPASSWORD=local-only
-mise exec node@24 -- pnpm check
-mise exec node@24 -- pnpm test:integration
-mise exec node@24 -- pnpm test:package
-```
+`pnpm test:conformance` runs the same full suite from the coordinator on your machine against Neon services. Cross-region SQL latency can exceed deadlines inside upstream cases; the colocated command is the CI qualification gate. Use Vitest's file or test-name filters for focused debugging, then run the full suite for qualification. See [colocated conformance](neon-conformance-v1.md) for packaging and provenance.
 
-If Node.js 24 is already on PATH, omit `mise exec node@24 --`. `TEST_DATABASE_URL` must identify a disposable database. Tests create random `ds_test_*` schemas and remove those schemas during teardown. They never fall back to an application's `DATABASE_URL`. `docker compose down` stops local services; its volume remains available for the next run.
+The loopback HTTP adapter and webhook receivers are active test fixtures. They run beside the test coordinator, including inside the conformance Neon Function, while Postgres, Realtime, and Object Storage remain actual Neon services. Separate deployed-ingress tests use a public HTTPS receiver. These fixtures are excluded from the library build.
 
-The default `pnpm test` runs unit/property tests without a database. Integration tests exercise real PostgreSQL transactions and start test-only child processes that are killed before/after commit. The conformance fixture starts a loopback HTTP adapter around the actual Fetch handler and uses explicitly anonymous authentication on an isolated test schema. Neither that adapter nor its process barriers are part of the shipped library. CI runs the unchanged full Vitest coordinator inside a Neon Function beside the data services; its upstream webhook fixtures use loopback there. The original local coordinator command remains available. Separate required ingress tests exercise the deployed consumer's public HTTP path. See [colocated conformance](neon-conformance-v1.md) for packaging, credentials, runtime limits, and evidence.
+## CI and qualification
 
-`test:conformance:hot` explicitly selects the implemented core groups from upstream `@durable-streams/server-conformance-tests@0.3.7`. Its source hash matches pinned upstream commit `461b40267aabd644558f9b19dbb9507dd5f691cf`. This remains an optional focused development command. The fixture already sets `subscriptions: true`; `pnpm test:conformance` runs the entire suite and is the full required gate. A passing hot-log subset is not full protocol certification. The original local Postgres baseline was **338 tests: 198 passed, 140 failed, none skipped**. The first remote-Neon baseline was **196 passed, 142 failed, none skipped**, including two 30-second property-test timeouts; the Neon harness now allows 600 seconds per test across runner regions without changing samples or assertions. Those baseline counts predate live modes and forks; they are not the current combined result. The first combined full run is now **338 passed, 0 failed, 0 skipped**, with subscriptions enabled; the original baselines are retained here as history.
+[Required CI](../.github/workflows/ci.yml) has separate build/unit/package, Neon qualification, and append-hint jobs. Provisioning supplies generated credentials to later steps. Missing required credentials fail qualification. Fork PRs need review and a trusted maintainer run; the workflow does not execute fork code with secrets through `pull_request_target`.
 
-`test:package` builds/packs the library, installs the tarball in a clean temporary consumer, checks its public types, imports the runtime and migration entrypoints, and validates that SQL assets are included. It prefers the pnpm cache and can fetch missing package metadata, so it also works on a clean CI runner after a frozen-lockfile install. The package remains protected from publication by `private: true` while implementation and release qualification are incomplete.
+The ordinary Function profile disables append hints and tests scheduled recovery. The separate hints job uses a fresh branch with hints enabled and no cron: `test:hints` verifies Realtime pull wakes, full-chunk sealing, and smaller tails remaining in Postgres. It requires that profile's Function environment.
 
-GitHub Actions has separate build/unit/package and required Neon qualification jobs. The latter deploys a consumer Neon Function and its scheduled recovery trigger, checks actual ingress, and runs real Realtime delivery/isolation tests, transaction/process-loss tests on Neon, and the **entire unfiltered upstream conformance suite with subscriptions enabled**. The 127-case live/lifecycle/offset/browser/TTL group passes against Neon; the other 211 cases are excluded only in that focused development run. Full-suite failure makes CI red; the complete JSON report is retained as an artifact. Selected-group success does not qualify a release.
+The packed multi-instance fixture installs the current tarball into an independent consumer and deploys two Functions on a dedicated schema. It records four reserved Function slugs, including fresh deployments after recovery, before allocation. All eight checks and cleanup must pass. This tests coordination between instances; it does not establish cross-version compatibility. See the [compatibility contract](upgrade-compatibility-v1.md).
 
-An earlier revision passed **75 integration/Neon tests** against an actual isolated Neon branch. They cover transaction/process loss, real Realtime append/close delivery, cancellation and tenant filtering, seven Object Storage fault/replay cases, six fork race/security cases, thirteen subscription cases, six operations cases, two maintenance/paging cases, a stopped-server schema upgrade, and thirteen committed-payload delivery/fencing cases. All 82 upstream fork cases also pass in a focused real-Neon run. Separate qualification adds eight packed mixed-version checks, real point-in-time child-branch adoption and stopped-Function in-place restore drills, plus **nine tests through deployed Neon Functions**, including public HTTPS webhooks, streaming, sealed replay, tenant isolation, forged-trigger rejection, and scheduled recovery. See [operations](operations-v1.md) for recovery scope. The current revision adds reclamation and physical-collection restore evidence. Larger restore/fault profiles, other version/schema boundaries, and broader deployment qualification remain outside the tested profile.
+Recovery tests allocate additional recorded branches. The child-branch drill temporarily removes its disposable parent's expiry because Neon forbids children of expiring branches, then restores it after cleanup. The in-place drill stops its Function/cron, drains SSE, restores a recorded WAL point, reconciles HOT/SEALED data, and deploys a fresh instance before checking replay, Realtime payloads, and token fencing. CI retries interrupted cleanup, and the [scheduled janitor](../.github/workflows/test-janitor.yml) removes recognized stale test branches after runner loss. See the [in-place runbook](inplace-restore-v1.md) for diagnostic preservation and cleanup.
 
-Thirteen subscription tests cover real SQL concurrency barriers, commit reordering, persisted retries, lease/token fencing, atomic ack validation, quota recovery, Realtime wakes, signing-key rotation, inherited sealed offsets, independent membership modes, destination authorization, bounded prefix coalescing, and resumed fan-out with new registrations. Unit/property coverage includes bounded glob matching, encrypted envelopes, and webhook address policy. Passing conformance does not close restore, reclamation, capacity, or remaining operational gates.
+Remote coordinator tests allow explicit 120-second transaction/90-second lock budgets; deployed Function tests retain production defaults. Realtime delivery cases keep their shorter deadlines below the SQL fallback interval. The opt-in `test/fixtures/sql-latency.mjs` can delay SQL sends to reproduce distant-coordinator contention against real Neon; it is not shipped or enabled by default.
 
-The required Function deployment also provisions a separate test-only HTTPS receiver on the same isolated branch. Three public-network cases verify Ed25519 over the exact body bytes, synchronous completion, scoped asynchronous callbacks, duplicate fencing, and a persisted retry after HTTP 500. The receiver is warmed and authenticated before qualification and is removed with the branch. It is never bundled into the consumer example.
-
-Qualification runs are serialized per ref without canceling an in-flight run when a newer commit arrives. Full remote property tests retain every sample/assertion and have a 600-second case budget; the Neon job has a 90-minute ceiling to account for CI runner regions. Load/soak runs use the separate manual qualification workflow and always delete their own branch.
-
-The test coordinator uses explicit 120-second transaction/90-second lock budgets and a 120-second pool wait for concurrency bursts over long-distance SQL connections. Actual deployed Function tests retain the default 10-second transaction/five-second lock limits. The pull-wake Realtime case allows 45 seconds for its entire setup/dispatch/assertion sequence, still below its 60-second SQL fallback. `test/fixtures/sql-latency.mjs` can inject 150 ms before every SQL send to reproduce the remote coordinator's contention while using real Neon. No protocol sample or assertion is removed.
-
-A separate required `Neon append-hint delivery` job provisions its own labeled branch with hints enabled and **no cron trigger**. Two tests verify hinted pull wakes through real Realtime and full 4 MiB chunk publication to Object Storage; they also verify that smaller tails stay in Postgres. The ordinary Function qualification uses hints disabled and proves actual scheduled recovery. Both profiles use the same consumer code.
-
-`test:recovery` also allocates a separate `ds-test-inplace-<UUID>` branch directly from the non-expiring test parent. It stops the deployed Function/cron, drains an actual SSE reader, restores at a flushed WAL LSN, reconciles HOT/SEALED state, and redeploys with a fresh deployment ID before validating public replay and Realtime. It records `.neon-test-state-inplace.json` before allocation/restore so cleanup can resolve both exact names even after an ambiguous API response. `scripts/neon-test-inplace-cleanup.mjs` deletes leaves before the preserved parent; CI always invokes it when a ledger remains. The scheduled janitor recognizes both reserved names. See the [in-place runbook](inplace-restore-v1.md). A local diagnostic run can set `NEON_TEST_KEEP_INPLACE=1`; GitHub Actions ignores that flag. Run the cleanup script with the same project-scoped management environment afterward.
-
-The Neon project includes eight mixed-binary checks in `test/neon/rolling.test.ts`. They independently build/pack/install the pinned pre-payload baseline and current library, then deploy the same test consumer against each package on the recorded test branch. Four exact reserved Function slugs and one random schema are recorded before allocation; `scripts/neon-test-rolling-cleanup.mjs` removes only those resources and the temporary consumers. CI preserves `qualification-results/rolling-upgrade.json` and always retries remaining recorded cleanup. All eight cases must pass, with no filtering, for the report to say `passed: true`. The [upgrade matrix](upgrade-compatibility-v1.md) lists the supported boundary and the separate stopped-schema upgrade requirement.
-
-
-Schema-0006 qualification adds replay pins, policy-gated reclamation, signed stale-token fencing, collector/metadata races, and actual stopped schema upgrade coverage. The final verified project counts are 53 unit/property tests, 86 Neon cases (including eight same-schema rolling cases and one stopped upgrade), 21 transaction/process-loss cases, nine deployed Function cases, two hints-only cases, both recovery drills, and 338 full conformance cases. The full conformance fixture now explicitly enables collection before serving with real fifteen-minute holds. Remote Neon coordinator cases have a 120-second default budget; cases used to demonstrate Realtime before a 60-second fallback retain explicit shorter bounds. The restored-branch fixture independently observes the committed raw Realtime append after awaiting subscription readiness, as well as testing public SSE delivery. See [current qualification](qualification/README.md) for exact revision evidence and the unresolved long-run head diagnostic; the final-source CI evidence records these completed counts.
+[Load qualification](../.github/workflows/load-qualification.yml) is a separate manual workflow. Run it for capacity and sustained delivery evidence. Current test counts, exact source revisions, historical measurements, and unresolved qualification limits belong in the [qualification index](qualification/README.md).

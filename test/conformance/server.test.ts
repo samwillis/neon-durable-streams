@@ -13,7 +13,7 @@ import { createS3ChunkStorage } from '../../src/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../../src/subscriptions.js'
 import { beginRecovery, configureReclamation, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
 
-if (!process.env.TEST_DATABASE_URL) throw new Error('Set TEST_DATABASE_URL to disposable Postgres 18')
+if (!process.env.TEST_DATABASE_URL) throw new Error('Provision an isolated Neon test environment; see docs/development.md')
 if (!process.env.NEON_REALTIME_URL || !process.env.NEON_REALTIME_SECRET) throw new Error('Full conformance requires real Neon Realtime credentials')
 if (!process.env.AWS_ENDPOINT_URL_S3 || !process.env.AWS_REGION || !process.env.NEON_TEST_BUCKET) throw new Error('Full conformance requires real Neon Object Storage credentials')
 if (!process.env.DURABLE_STREAMS_KEYRING) throw new Error('Full conformance requires a persistent subscription keyring')

@@ -11,7 +11,7 @@ import { MIGRATION_IDS, migrate } from '../../src/migrations.js'
 import { transaction } from '../../src/transaction.js'
 
 const database = process.env.TEST_DATABASE_URL
-if (!database) throw new Error('Set TEST_DATABASE_URL to a disposable Postgres 18 database; see .env.example')
+if (!database) throw new Error('Provision an isolated Neon test environment; see docs/development.md')
 const pool = new pg.Pool({ connectionString: database, max: 8, connectionTimeoutMillis: 120_000 })
 const migrationPool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL_UNPOOLED ?? database, max: 6, connectionTimeoutMillis: 15000 })
 pool.on('error', () => {})

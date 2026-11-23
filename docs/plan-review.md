@@ -14,7 +14,7 @@ The [transaction requirements](production-library.md#storage-and-transaction-inv
 
 **Impact:** acknowledging after COMMIT does not establish the intended durability if that transaction uses asynchronous commit. Uncontrolled transaction settings can also undermine resource bounds.
 
-**Decision added:** every write transaction explicitly sets transaction-local synchronous commit on and bounded timeout settings, using a single checked-out client. All queries qualify schema objects. Writes use explicit READ COMMITTED plus the relevant row locks; multi-statement replay planning uses an explicit REPEATABLE READ snapshot. Do not leak session-level SET state. Verify this through the real Neon pooler as well as local Postgres. The library still relies on the provider's documented durability underneath synchronous commit.
+**Decision added:** every write transaction explicitly sets transaction-local synchronous commit on and bounded timeout settings, using a single checked-out client. All queries qualify schema objects. Writes use explicit READ COMMITTED plus the relevant row locks; multi-statement replay planning uses an explicit REPEATABLE READ snapshot. Do not leak session-level SET state. Verify this through real Neon pooled and direct connections. The library still relies on the provider's documented durability underneath synchronous commit.
 
 ### R2 — P1: GC requires an atomic acquisition/deletion protocol
 
@@ -78,7 +78,7 @@ Lease expiry can be enforced lazily on the next operation using database time; i
 
 The current release gates are comprehensive, but there is no executable local test strategy, CI selection policy, or first integrated deliverable. The prior sequence also implemented the full hot-only fork behavior before qualifying the sealed-data path.
 
-**Decision added:** establish Node.js 24/ESM, a lockfile, migration fixtures, a test runner, controlled fault points, and a local Postgres 18 + S3-compatible test environment first. Polling/scripted notifications support local deterministic tests; real Neon CI/deployment tests qualify provider-specific semantics. Testcontainers or Compose are reasonable development mechanisms. A local S3 implementation cannot certify Neon behavior.
+**Decision added:** establish Node.js 24/ESM, a lockfile, migration fixtures, a test runner, and controlled fault points. Database-free unit/property tests and scripted notifications provide fast deterministic checks; integration and deployment tests use isolated real Neon Postgres 18, Realtime, and Object Storage. See the [development guide](development.md) for the current workflow.
 
 The first durable integration slice should cross append, rotation, upload, manifest publication, process restart, and replay, including one idempotent retry. This tests the requested tiered architecture early. Full live modes, forks, subscriptions, upgrades, recovery, and release qualification then build on that foundation. No partial stage is the production release.
 

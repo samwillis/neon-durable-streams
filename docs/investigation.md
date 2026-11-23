@@ -302,7 +302,7 @@ The server's configured long-poll timeout must fit the harness budget. `longPoll
 
 The six gated cases cover webhook creation/reconfirmation and JWKS, unsafe URL rejection, signed synchronous completion, callback fencing, explicit membership, and pull-wake claim/ack/release. They do not exhaust crash recovery and scheduler behavior. Upstream README pass counts are historical claims, not results for this server.
 
-The webhook fixtures bind `127.0.0.1` on the **test runner's machine**. They work with a local Function, even when its backing database/storage are remote, but a deployed Function cannot call that loopback address. Run the unchanged full suite against `neon dev`; separately test deployed webhooks with a reachable HTTPS fixture or an upstream-supported configurable fixture. Do not misdiagnose this topology issue as a server protocol failure.
+The webhook fixtures bind `127.0.0.1` on the **test runner's machine**. The unchanged full suite now runs its coordinator and webhook fixtures together inside a Neon Function beside the real data services. Separate deployed ingress tests use a reachable HTTPS receiver. See [colocated conformance](neon-conformance-v1.md) for the implemented workflow.
 
 The suite also issues unauthenticated requests and does not expose a general auth-header option. Run it against a disposable isolated test deployment/local handler configured for the harness; keep deployed authorization tests separate. It must not require making a production endpoint open.
 
