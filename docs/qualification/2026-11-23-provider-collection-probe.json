@@ -1,0 +1,325 @@
+{
+  "generatedAt": "2026-11-23T06:55:16.328Z",
+  "startedAt": "2026-11-23T06:54:20.968Z",
+  "harnessCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+  "harnessSha256": "5a49d70c16799c68309f6ac5ccda72cc080d249e1def9c3683527ba168e2e97e",
+  "deployedSourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+  "deployedSourceDirty": "no",
+  "bundleSha256": "d8a1f1ff6603ac76139847b6e877398632475a5d385cd20b64b3b5d32966e9e2",
+  "deploymentId": "73294ea9-055c-4451-8bf4-1dccbeb02fb9",
+  "profile": {
+    "seconds": 30,
+    "intervalMs": 10000,
+    "recovery": "provider-owned",
+    "sourceBytes": 65536,
+    "forksPerSource": 1,
+    "explicitMaintenance": true
+  },
+  "run": "reclaim-fa324280-46a6-4eed-b5f0-5169cd42859f",
+  "elapsedSeconds": 55.358681624999996,
+  "created": 3,
+  "verifiedMissing": 3,
+  "records": [
+    {
+      "sequence": 0,
+      "path": "reclaim-fa324280-46a6-4eed-b5f0-5169cd42859f/0",
+      "streamId": "fb39bf05-5957-4b35-bb9f-c16a552a46a4",
+      "chunkId": "600c4b90-4d59-4e37-a608-f73635e90999",
+      "objectKey": "v1/e3ac79ec-da86-4209-98bf-01de6a45bc50/fb39bf05-5957-4b35-bb9f-c16a552a46a4/600c4b90-4d59-4e37-a608-f73635e90999/df5918ac7497660ff87fa8b06eaaebd229489e13d639d4f77592984996666ac0.ndsc",
+      "encodedBytes": 65670,
+      "collectedAt": "2026-11-23T06:54:52.288Z"
+    },
+    {
+      "sequence": 1,
+      "path": "reclaim-fa324280-46a6-4eed-b5f0-5169cd42859f/1",
+      "streamId": "dbd107bd-0cc6-45fb-967f-380c6e96ae8b",
+      "chunkId": "bcc00f0e-88dd-4e5a-95a1-0c9b40d72f1d",
+      "objectKey": "v1/e3ac79ec-da86-4209-98bf-01de6a45bc50/dbd107bd-0cc6-45fb-967f-380c6e96ae8b/bcc00f0e-88dd-4e5a-95a1-0c9b40d72f1d/011950ef38656552503ae3c254750df90c5e9b25fc4592931fd9361403e0ae3f.ndsc",
+      "encodedBytes": 65670,
+      "collectedAt": "2026-11-23T06:54:52.319Z"
+    },
+    {
+      "sequence": 2,
+      "path": "reclaim-fa324280-46a6-4eed-b5f0-5169cd42859f/2",
+      "streamId": "b709db4d-4c5a-4cd6-96fb-ce54f7a6aa5b",
+      "chunkId": "586f8a7d-f666-44f3-9b4c-36d81c2b454e",
+      "objectKey": "v1/e3ac79ec-da86-4209-98bf-01de6a45bc50/b709db4d-4c5a-4cd6-96fb-ce54f7a6aa5b/586f8a7d-f666-44f3-9b4c-36d81c2b454e/825d7d622ce94b5ca453386e769f828db4f4dc79a2d7deb887bff322d01d068c.ndsc",
+      "encodedBytes": 65670,
+      "collectedAt": "2026-11-23T06:54:52.348Z"
+    }
+  ],
+  "samples": [
+    {
+      "elapsedSeconds": 3.366778417,
+      "created": 1,
+      "verifiedMissing": 0,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 1,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 31.402226125000002,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 5,
+      "namespaces": 5,
+      "chunks": 0,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 32.345835709,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 5,
+      "namespaces": 5,
+      "chunks": 0,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 33.23203374999999,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 5,
+      "namespaces": 5,
+      "chunks": 0,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 34.139847084,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 5,
+      "chunks": 0,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 35.026605124999996,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 1
+    },
+    {
+      "elapsedSeconds": 35.908245416999996,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 36.734509833999994,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 37.61470275,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 38.546583209,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 4,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 39.449341792,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 4,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 40.297605959,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 41.124402374999995,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 42.134421834,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 42.849419624999996,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 43.737601292,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 3,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 44.642549083999995,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 3,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 45.553596667,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 46.441069875000004,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 47.328242667,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 48.044698583999995,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 48.76264675,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 2,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 49.659683208999994,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 2,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 50.558160209,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 51.476797584,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 52.354754166999996,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 53.234178209,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 53.94057675,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 1,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 54.656675292,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 0,
+      "namespaces": 1,
+      "chunks": 0,
+      "objectReceipts": 0
+    },
+    {
+      "elapsedSeconds": 55.358039833999996,
+      "created": 3,
+      "verifiedMissing": 3,
+      "generations": 0,
+      "namespaces": 0,
+      "chunks": 0,
+      "objectReceipts": 0
+    }
+  ],
+  "errors": [],
+  "passed": true
+}

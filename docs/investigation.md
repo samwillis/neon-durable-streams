@@ -1,5 +1,7 @@
 # Investigation: a Durable Streams server on Neon
 
+Implementation update, 23 November: this document records the original investigation. The current [collection contract](reclamation-v1.md) delegates historical object recovery to Neon or matching backups and removes the application's PITR window and safety margin. Current stream offsets, fork references, replay pins, and publication barriers remain protected by the library.
+
 Research date: **2026-11-22**. Status: proposed architecture, based on documentation and source inspection; no deployed experiments yet.
 
 The delivery target is a **production-grade library that users embed in their own Neon-hosted servers**. The [production library design](production-library.md) develops that requirement into a package contract, operating model, and release criteria. This document supplies the protocol and platform analysis underneath it.

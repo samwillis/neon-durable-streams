@@ -1,0 +1,50 @@
+{
+  "runUrl": "https://github.com/samwillis/neon-durable-streams/actions/runs/45127190711/attempts/2",
+  "sourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+  "attempt": 2,
+  "allJobsPassed": false,
+  "checks": {
+    "neon": 88,
+    "postgresIntegration": 21
+  },
+  "recovery": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "pending": 0,
+    "suites": [
+      {
+        "file": "branch.test.ts",
+        "status": "passed",
+        "message": "",
+        "tests": [
+          {
+            "name": "a real point-in-time branch adopts sealed objects, fences restored tokens, and isolates new writes",
+            "status": "passed",
+            "durationMs": 32729.173361,
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "inplace.test.ts",
+        "status": "failed",
+        "message": "",
+        "tests": [
+          {
+            "name": "a stopped deployed Function restores its own branch, reconciles sealed bytes, and resumes in a fresh epoch",
+            "status": "failed",
+            "durationMs": 152530.990423,
+            "failures": [
+              "Error: Timed out waiting for live-query rows\n    at Timeout.<anonymous> (file:///home/runner/work/neon-durable-streams/neon-durable-streams/node_modules/.pnpm/@neon+realtime@0.2.1_ws@8.23.0/node_modules/@neon/realtime/dist/client/row-waiter.js:38:73)\n    at listOnTimeout (node:internal/timers:685:17)\n    at process.processTimers (node:internal/timers:618:7)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "Same post-restore raw Realtime startup-row timeout before the new append.",
+    "The subsequent fixture change bounds startup readiness separately, retries only initial snapshot timeouts with fresh clients, and retains independent 30-second payload and 45-second public SSE delivery bounds."
+  ]
+}

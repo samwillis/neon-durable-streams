@@ -1,0 +1,91 @@
+{
+  "runUrl": "https://github.com/samwillis/neon-durable-streams/actions/runs/45127190711/attempts/1",
+  "sourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+  "attempt": 1,
+  "allJobsPassed": false,
+  "conformance": {
+    "target": "linux/arm64/glibc",
+    "testCompiler": "rolldown-wasi",
+    "nativeFiles": [
+      "native/630753f910bd6235aad7d702a984c109aa723563342b8057b88f34306702b626.node",
+      "native/90bd269553d258e80b19e3ccab4f98f0831f87442a2f056510ce24fd1b425fc2.bin"
+    ],
+    "sourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+    "sourceDirty": false,
+    "sourceSnapshotSha256": "73e3f681334caa4a610f1ba5b0d73219d7b42ecd6c383bc3ad1a878d47a18728",
+    "payloadSha256": "350519a4c15fd069abbd444c21866c3e9d7c3cbe26c926b2accce2106cdddf8d",
+    "payloadBytes": 13122493,
+    "expandedBytes": 43206691,
+    "lockSha256": "0a7a9b1c8a7c80f82b410f3c01904bebc7b8b3c9ca3cbaa5f091e0a97a8d9572",
+    "fixtureSha256": "31c1f939a8724653223c98b0bcc2cefa07ac53f9b45c43435ed6529cc1f7cc84",
+    "upstreamVersion": "0.3.7",
+    "upstreamSha256": "947661c1ed02be223f7f85c7a5f9babdfe859095717a7e368d926ad14b63b3d7",
+    "subscriptions": true,
+    "reclamation": {
+      "enabled": true,
+      "recovery": "provider-owned"
+    },
+    "expectedTests": 338,
+    "launcherSha256": "06539cb740e6da234efb53417532e023d81e69d3a323c4a3dc6d9dc0e0ca14be",
+    "deploymentZipSha256": "25eaf527fcdf77c56674629b292f9b36e39490bf25c2ae76f18e49dfa11265e7",
+    "deploymentZipBytes": 8092301,
+    "generatedAt": "2026-11-23T07:01:42.719Z",
+    "passed": true,
+    "runtime": {
+      "ready": true,
+      "payloadSha256": "350519a4c15fd069abbd444c21866c3e9d7c3cbe26c926b2accce2106cdddf8d",
+      "node": "v24.22.1",
+      "arch": "arm64",
+      "platform": "linux",
+      "glibc": "2.39"
+    },
+    "exitCode": 0,
+    "signal": null,
+    "durationMs": 123331,
+    "total": 338,
+    "passedTests": 338,
+    "failedTests": 0,
+    "skippedTests": 0,
+    "cleanupComplete": true
+  },
+  "recovery": {
+    "total": 2,
+    "passed": 1,
+    "failed": 1,
+    "pending": 0,
+    "suites": [
+      {
+        "file": "branch.test.ts",
+        "status": "passed",
+        "message": "",
+        "tests": [
+          {
+            "name": "a real point-in-time branch adopts sealed objects, fences restored tokens, and isolates new writes",
+            "status": "passed",
+            "durationMs": 8534.973591,
+            "failures": []
+          }
+        ]
+      },
+      {
+        "file": "inplace.test.ts",
+        "status": "failed",
+        "message": "",
+        "tests": [
+          {
+            "name": "a stopped deployed Function restores its own branch, reconciles sealed bytes, and resumes in a fresh epoch",
+            "status": "failed",
+            "durationMs": 150572.81324500003,
+            "failures": [
+              "Error: Timed out waiting for live-query rows\n    at Timeout.<anonymous> (file:///home/runner/work/neon-durable-streams/neon-durable-streams/node_modules/.pnpm/@neon+realtime@0.2.1_ws@8.23.0/node_modules/@neon/realtime/dist/client/row-waiter.js:38:73)\n    at listOnTimeout (node:internal/timers:685:17)\n    at process.processTimers (node:internal/timers:618:7)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "notes": [
+    "Collection, old-offset forks, upgrades, and all 338 protocol cases passed.",
+    "The in-place restore failed waiting for raw Realtime installation rows after redeployment; no runtime change or assertion relaxation was made before retry."
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "passed": true,
+  "stages": [
+    "deploy initial Function and cron",
+    "seed binary, JSON, fork, and subscription state",
+    "observe live future bytes before rollback",
+    "stop scheduling, quiesce, and drain the active reader",
+    "restore only the recorded disposable branch at its own WAL position",
+    "verify rollback and reconcile before exposing ingress",
+    "redeploy fresh instances and validate public protocol continuity",
+    "verify restored Realtime before resuming workers",
+    "verify restored token fencing and resumed subscription work",
+    "resume scheduling after public validation"
+  ],
+  "stageTimes": [
+    {
+      "stage": "deploy initial Function and cron",
+      "elapsedMs": 4830
+    },
+    {
+      "stage": "seed binary, JSON, fork, and subscription state",
+      "elapsedMs": 16406
+    },
+    {
+      "stage": "observe live future bytes before rollback",
+      "elapsedMs": 20259
+    },
+    {
+      "stage": "stop scheduling, quiesce, and drain the active reader",
+      "elapsedMs": 22823
+    },
+    {
+      "stage": "restore only the recorded disposable branch at its own WAL position",
+      "elapsedMs": 30700
+    },
+    {
+      "stage": "verify rollback and reconcile before exposing ingress",
+      "elapsedMs": 36195
+    },
+    {
+      "stage": "redeploy fresh instances and validate public protocol continuity",
+      "elapsedMs": 44571
+    },
+    {
+      "stage": "verify restored Realtime before resuming workers",
+      "elapsedMs": 140283
+    },
+    {
+      "stage": "verify restored token fencing and resumed subscription work",
+      "elapsedMs": 144177
+    },
+    {
+      "stage": "resume scheduling after public validation",
+      "elapsedMs": 145535
+    }
+  ],
+  "durationMs": 146133,
+  "verifiedChunks": 3,
+  "generatedAt": "2026-11-23T07:06:06.346Z",
+  "testSha256": "6aa5fb457b60f280fb3c0d53484feb04a8398b4fdb64c68003264711648c0abd",
+  "node": "v24.22.2",
+  "region": "us-east-1",
+  "branchId": "br-wild-snow-bb1yzvyv",
+  "preservedBranchId": "br-dry-thunder-bbs3cyyw",
+  "endpointPreserved": true,
+  "originalEpoch": "74ffd064-2eb5-4d44-9565-c095d5319d47",
+  "recoveryEpoch": "5f7a4c72-65fe-446a-9274-11573a2b5793",
+  "hotReplayAcrossSealing": true,
+  "restoredRealtime": true,
+  "restoredRealtimePayloadObserved": true,
+  "restoredRealtimeObservedOffset": "0000000000000000_0000000000008238",
+  "discardedOffsetRejected": true,
+  "unexpiredTokenFenced": true,
+  "cronResumedAfterValidation": true,
+  "sourceCommit": "e69bd93e9019aec33f97e87e974913cab2cdf72c",
+  "sourceDirty": "no",
+  "deploymentId": "53d15569-c032-4514-876a-09313c3b3691",
+  "previousDeploymentId": "a9eeeaf8-b702-42a8-9ff5-106fd304a060",
+  "memoryMiB": 2048,
+  "deployedBundle": "d8a1f1ff6603ac76139847b6e877398632475a5d385cd20b64b3b5d32966e9e2"
+}

@@ -7,7 +7,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { beginRecovery, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
 import { createNeonRealtimeNotifier } from '../../src/neon.js'
-import type { RealtimeAppend } from '../../src/neon.js'
+import type { HeadWatch, RealtimeAppend } from '../../src/neon.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { parseSubscriptionKeyring } from '../../src/subscriptions.js'
 
@@ -236,17 +236,38 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
   // with the raw subscription ready before the public append is issued.
   const currentStream = (await pool!.query<{ id: string; tenant_id: string; tail_offset: string }>(
     `SELECT id,tenant_id,tail_offset FROM "${schema}".streams WHERE path='data/binary' AND deleted_at IS NULL`)).rows[0]!
-  realtimeObserver = createNeonRealtimeNotifier({ url: data.NEON_REALTIME_URL!, secret: data.NEON_REALTIME_SECRET!,
-    database: new URL(data.TEST_DATABASE_URL_UNPOOLED!).pathname.slice(1), readyTimeoutMs: 30_000 })
   let observedAppend: RealtimeAppend | undefined
   const restoredPayload = Buffer.from(' new timeline')
-  const appendWatch = realtimeObserver.watchAppends!({ schema, tenantId: currentStream.tenant_id, streamId: currentStream.id,
-    after: currentStream.tail_offset, installation: activated }, (update) => {
-    if (update.type === 'invalidate') return
-    observedAppend ??= update.rows.find((row) => row.streamId === currentStream.id && row.start === currentStream.tail_offset
-      && row.payload !== null && Buffer.from(row.payload).equals(restoredPayload))
-  })
-  await appendWatch.ready
+  // Function HTTP readiness and Realtime query readiness recover separately.
+  // Bound startup before reopening the live fixture; the append/delivery
+  // deadlines below start only AFTER an authoritative raw watch is ready.
+  const realtimeStarted = performance.now(), realtimeDeadline = realtimeStarted + 180_000
+  const realtimeReadiness: { elapsedMs: number; ready: boolean; reason?: string }[] = []
+  let appendWatch: HeadWatch | undefined
+  for (;;) {
+    const remaining = realtimeDeadline - performance.now()
+    if (remaining <= 0) throw new Error('Restored Realtime readiness exceeded its 180-second startup budget')
+    realtimeObserver = createNeonRealtimeNotifier({ url: data.NEON_REALTIME_URL!, secret: data.NEON_REALTIME_SECRET!,
+      database: new URL(data.TEST_DATABASE_URL_UNPOOLED!).pathname.slice(1), readyTimeoutMs: Math.min(30_000, Math.max(1, Math.floor(remaining / 2))) })
+    appendWatch = realtimeObserver.watchAppends!({ schema, tenantId: currentStream.tenant_id, streamId: currentStream.id,
+      after: currentStream.tail_offset, installation: activated }, (update) => {
+      if (update.type === 'invalidate') return
+      observedAppend ??= update.rows.find((row) => row.streamId === currentStream.id && row.start === currentStream.tail_offset
+        && row.payload !== null && Buffer.from(row.payload).equals(restoredPayload))
+    })
+    try {
+      await appendWatch.ready
+      realtimeReadiness.push({ elapsedMs: Math.round(performance.now() - realtimeStarted), ready: true })
+      break
+    } catch (error) {
+      appendWatch.close(); realtimeObserver.close(); realtimeObserver = undefined
+      // Identity/authorization/SQL failures are not a reason to keep waiting.
+      if (!(error instanceof Error) || !['Timed out waiting for live-query rows', 'Realtime append snapshot deadline exceeded'].includes(error.message)) throw error
+      realtimeReadiness.push({ elapsedMs: Math.round(performance.now() - realtimeStarted), ready: false, reason: error.message })
+      if (performance.now() >= realtimeDeadline) throw new Error('Restored Realtime readiness exceeded its 180-second startup budget', { cause: error })
+      console.info(`In-place restore: Realtime startup snapshot not ready after ${realtimeReadiness.at(-1)!.elapsedMs}ms; retrying a fresh subscription`)
+    }
+  }
   const resumed = await request(`${stream('data/binary')}?offset=now&live=sse`, 'GET', undefined, {}, AbortSignal.any([liveAbort.signal, AbortSignal.timeout(45_000)]))
   expect(resumed.status).toBe(200); liveReader = resumed.body!.getReader(); liveText = ''
   while (!liveText.includes('event: control')) liveText += decoder.decode((await liveReader.read()).value)
@@ -259,7 +280,7 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
     liveText += decoder.decode(part.value)
   }
   await liveReader.cancel(); liveReader.releaseLock(); liveReader = undefined
-  appendWatch.close(); realtimeObserver.close(); realtimeObserver = undefined
+  appendWatch.close(); realtimeObserver!.close(); realtimeObserver = undefined
   stage('verify restored token fencing and resumed subscription work')
   const oldAck = await request(stream('__ds/subscriptions/restore/ack'), 'POST', JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, done: true }),
     { Authorization: `Bearer ${claim.token}`, 'Content-Type': 'application/json' })
@@ -279,6 +300,7 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
     branchId, preservedBranchId: preserved!.id, endpointPreserved: true, originalEpoch: original.serving_epoch,
     recoveryEpoch: recovery.servingEpoch, hotReplayAcrossSealing: true, restoredRealtime: true,
     restoredRealtimePayloadObserved: true, restoredRealtimeObservedOffset: observedAppend!.end,
+    restoredRealtimeReadiness: realtimeReadiness,
     discardedOffsetRejected: true, unexpiredTokenFenced: true, cronResumedAfterValidation: true,
     sourceCommit: deployed.TEST_FUNCTION_SOURCE_COMMIT, sourceDirty: deployed.TEST_FUNCTION_SOURCE_DIRTY,
     deploymentId: deployed.TEST_FUNCTION_DEPLOYMENT_ID, previousDeploymentId: initialDeploymentId,
