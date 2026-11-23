@@ -4,10 +4,11 @@ The package is unreleased and remains `private: true`. Git revisions and artifac
 
 | Boundary | Procedure and evidence |
 | --- | --- |
-| Fresh installation | Explicit checksummed migrations 0001–0005, storage format v1, environment/storage binding, and initialization of the external subscription keyring. |
+| Fresh installation | Explicit checksummed migrations 0001–0007, storage format v1, environment/storage binding, and initialization of the external subscription keyring. |
 | Schema 0004 → 0005 | Stop ingress, workers, and old instances. The prior snapshot fixture preserves sealed bytes, fork ranges, offsets, and producer sessions. Pre-0005 binaries have no serving-epoch guard and cannot overlap this upgrade. |
 | Binary overlap on schema 0005 | `b22c1675f7eb5c32b52f39be39279c819ea5f21f` → `01643614c6ba142ef945e5a3c3607731293cf875` passes eight checks through separately deployed Neon Functions built from independently installed package tarballs. Every migration checksum matches. |
 | Binary rollback on the same schema | The pinned baseline reads current-written sealed data and resumes producer sessions. After an epoch change, fresh baseline/current instances can serve the activated installation; the earlier processes remain fenced. |
+| Schema 0006 → 0007 | Stop all runtimes/workers. Migration 0007 fences old epochs, removes application PITR settings, and disables collection pending explicit opt-in under provider-owned historical recovery. Exact retained bytes and old-offset forks have an actual-Neon regression; current-source CI is required. |
 | Other schema/format or binary pairs | Unqualified. Use a stopped-ingress procedure until a specific compatibility pair is tested. Unknown migration history is rejected. Never infer compatibility from a similar API or an unchanged chunk-format number. |
 
 The mixed-binary result qualifies this pair and its recorded dependencies. It does not qualify rolling DDL, a new storage format, destructive GC, or arbitrary older binaries. A future migration must explicitly define which readers/writers may overlap and fence unsupported warm runtimes before changing their storage assumptions.

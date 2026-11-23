@@ -20,7 +20,7 @@ Use the [operations contract](operations-v1.md) for the recovery API example and
 
 Neon self-restore makes the preserved history a parent of the restored branch. A branch with children cannot have an expiry. Test tooling records both exact names before restore, expires the restored child, deletes leaves before parents, and uses a scheduled janitor for runner loss. Consumer backup retention is an operator policy; the qualification fixture's cleanup is not a recommendation to delete production recovery history immediately.
 
-Neon Postgres restore leaves Object Storage unchanged. Objects from later sealing can remain as harmless extra data. Restored manifests still require their earlier immutable keys. Retain those keys independently of the restored database's apparent references. Physical object deletion is disabled by default. The ordinary CI drill does not wait through collection holds. Separate real elapsed physical-collection child and in-place restore drills are recorded in the [qualification index](qualification/README.md); configure the entire supported recovery horizon before enabling collection.
+Current public Neon documentation says database PITR leaves Object Storage unchanged. Schema 0007 relies on coordinated provider recovery or matching object backups to restore every reachable immutable key, including keys deleted after the recovery point. Collection is disabled by default. The ordinary CI drill retains its witness objects and does not prove recovery of a previously deleted reachable key. Earlier schema-0006 physical-collection restore reports used application retention windows and remain historical evidence; they do not certify the future provider capability.
 
 ## Executable evidence
 

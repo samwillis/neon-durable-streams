@@ -82,11 +82,11 @@ const http = createServer(async (incoming, outgoing) => {
 beforeAll(async () => {
   await migrate(migrationPool, { schema, storageIdentity: objects.identity, environmentId })
   // Exercise the production collector alongside the unchanged upstream suite.
-  // Configuration happens before serving; real retention deadlines stay intact.
+  // Configuration happens before serving; historical object recovery remains a provider responsibility.
   const identity = await inspectInstallation(migrationPool, { schema })
   const recovery = await beginRecovery(migrationPool, { schema, operationId: randomUUID(), expectedInstallationId: identity.id,
     expectedServingEpoch: identity.serving_epoch, environmentId, storageIdentity: objects.identity })
-  await configureReclamation(migrationPool, { schema, token: recovery.token, enabled: true, recoveryWindowMs: 0, safetyMarginMs: 900_000 })
+  await configureReclamation(migrationPool, { schema, token: recovery.token, enabled: true })
   await verifyRecovery(migrationPool, { schema, token: recovery.token, objects })
   await finishRecovery(migrationPool, { schema, token: recovery.token })
   await initializeSubscriptions(migrationPool, { schema, keyring })

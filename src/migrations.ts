@@ -5,7 +5,7 @@ import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
-export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation'] as const
+export const MIGRATION_IDS = ['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation', '0007_provider_recovery'] as const
 
 export interface Migration {
   readonly id: string

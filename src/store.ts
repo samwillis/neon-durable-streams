@@ -105,8 +105,8 @@ export class PostgresStreamStore {
   private readonly replayTimeout: number
   private readonly pins: ReplayPins
   private readonly reclamation: ReclamationManager
-  private layout: 5 | 6 | undefined
-  get schemaVersion(): 5 | 6 {
+  private layout: 5 | 7 | undefined
+  get schemaVersion(): 5 | 7 {
     if (this.layout === undefined) throw new StorageCompatibilityError('Initialize the runtime before reading schema capabilities')
     return this.layout
   }
@@ -143,7 +143,7 @@ export class PostgresStreamStore {
         const legacy = history === JSON.stringify(MIGRATION_IDS.slice(0, 5))
         if (!legacy && history !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations')
         this.pins.enabled = !legacy
-        this.layout = legacy ? 5 : 6
+        this.layout = legacy ? 5 : 7
         if (this.chunks) this.chunks.reclamation = !legacy
         if (result.rows[0]!.storage_identity !== null && !this.chunks) throw new StorageCompatibilityError('This installation requires its configured object storage')
         await this.chunks?.assertBinding()
@@ -608,7 +608,7 @@ export class PostgresStreamStore {
       retired++
     }
     const chunks = this.chunks ? await this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
-    const collected = this.schemaVersion === 6 ? await this.reclamation.maintain() : { ...emptyReclamation(), worked: false }
+    const collected = this.schemaVersion === 7 ? await this.reclamation.maintain() : { ...emptyReclamation(), worked: false }
     const { worked: reclamationWorked, ...counts } = collected
     return { ...chunks, retired, ...counts, reclamationWorked }
   }

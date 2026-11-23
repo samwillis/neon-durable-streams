@@ -64,7 +64,7 @@ export class PostgresSubscriptions {
   async assertReady(): Promise<void> {
     this.ready ??= (async () => {
       await this.streams.assertReady()
-      this.signedTokens = this.streams.schemaVersion === 6
+      this.signedTokens = this.streams.schemaVersion === 7
       const result = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.installation`)
       if (result.rows.length !== 1) throw new StorageCompatibilityError('Missing installation identity')
       this.installationId = result.rows[0]!.id

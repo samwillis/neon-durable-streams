@@ -51,7 +51,7 @@ async function readAll(path: string) {
 beforeAll(async () => {
   const version = await pool.query<{ version: string }>("SELECT current_setting('server_version_num') AS version")
   expect(Number(version.rows[0]!.version)).toBeGreaterThanOrEqual(180000)
-  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation'])
+  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation', '0007_provider_recovery'])
   expect(await migrate(migrationPool, { schema })).toEqual([])
   server = createDurableStreams(config)
 })

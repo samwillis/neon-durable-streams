@@ -45,61 +45,56 @@ export async function inspectInstallation(pool: Pool, options: OperationTarget =
   return result.rows[0]!
 }
 
-export interface ReclamationPolicyOptions extends OperationTarget {
+export interface ReclamationOptions extends OperationTarget {
   /** An active, explicitly quiesced recovery operation from beginRecovery. */
   readonly token: string
+  /** Deleted object history must be recoverable by the provider or a matching backup. */
   readonly enabled: boolean
-  /** Include the entire supported PITR AND external-backup recovery window. */
-  readonly recoveryWindowMs: number
-  /** At least fifteen minutes in addition to the recovery window. */
-  readonly safetyMarginMs?: number
 }
 export type ReclamationStatus = { readonly supported: false } | {
   readonly supported: true
   readonly enabled: boolean
-  readonly recoveryWindowMs: number
-  readonly safetyMarginMs: number
-  readonly holdUntil: Date
   readonly inventoryCompletedAt: Date | null
-  readonly backlog?: { readonly pendingDeletes: number; readonly orphanCandidates: number; readonly quarantinedObjects: number; readonly oldestCollectAfter: Date | null }
+  readonly backlog?: { readonly pendingDeletes: number; readonly orphanCandidates: number; readonly quarantinedObjects: number; readonly oldestRetiredAt: Date | null }
 }
 /** Operator diagnostics. Backlog aggregates are opt-in; use a separate pool. */
 export async function inspectReclamation(pool: Pool, options: OperationTarget & { readonly includeBacklog?: boolean } = {}): Promise<ReclamationStatus> {
   const schema = target(options)
   if (options.includeBacklog !== undefined && typeof options.includeBacklog !== 'boolean') throw new TypeError('Invalid reclamation diagnostics selection')
   return transaction(pool, { readOnly: true, repeatableRead: true }, async (client) => {
-    if (!(await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)).rowCount) return { supported: false }
-    const policy = (await client.query<{ enabled: boolean; recovery_window_ms: string; safety_margin_ms: number; hold_until: Date; inventory_completed_at: Date | null }>(`SELECT * FROM ${schema}.reclamation_policy`)).rows[0]!
-    const result = { supported: true as const, enabled: policy.enabled, recoveryWindowMs: Number(policy.recovery_window_ms), safetyMarginMs: policy.safety_margin_ms,
-      holdUntil: policy.hold_until, inventoryCompletedAt: policy.inventory_completed_at }
+    const migrations = (await client.query<{ id: string }>(`SELECT id FROM ${schema}.migrations`)).rows.map((row) => row.id)
+    if (!migrations.includes('0006_reclamation')) return { supported: false }
+    if (!migrations.includes('0007_provider_recovery')) throw new StorageCompatibilityError('Run the stopped schema-0007 upgrade before administering collection')
+    const policy = (await client.query<{ enabled: boolean; inventory_completed_at: Date | null }>(`SELECT enabled,inventory_completed_at FROM ${schema}.reclamation_policy`)).rows[0]!
+    const result = { supported: true as const, enabled: policy.enabled, inventoryCompletedAt: policy.inventory_completed_at }
     if (!options.includeBacklog) return result
     const counts = (await client.query<{ pending: string; orphans: string; quarantined: string; oldest: Date | null }>(`SELECT
       count(*) FILTER (WHERE retired_at IS NOT NULL AND collected_at IS NULL) AS pending,
       count(*) FILTER (WHERE orphan_candidate) AS orphans,
       count(*) FILTER (WHERE quarantine_reason IS NOT NULL) AS quarantined,
-      min(collect_after) FILTER (WHERE retired_at IS NOT NULL AND collected_at IS NULL) AS oldest FROM ${schema}.chunk_objects`)).rows[0]!
-    return { ...result, backlog: { pendingDeletes: Number(counts.pending), orphanCandidates: Number(counts.orphans), quarantinedObjects: Number(counts.quarantined), oldestCollectAfter: counts.oldest } }
+      min(retired_at) FILTER (WHERE retired_at IS NOT NULL AND collected_at IS NULL) AS oldest FROM ${schema}.chunk_objects`)).rows[0]!
+    return { ...result, backlog: { pendingDeletes: Number(counts.pending), orphanCandidates: Number(counts.orphans), quarantinedObjects: Number(counts.quarantined), oldestRetiredAt: counts.oldest } }
   })
 }
-/** Once per recovery operation; retry with identical settings after lost replies. */
-export async function configureReclamation(pool: Pool, options: ReclamationPolicyOptions): Promise<void> {
-  const schema = target(options), margin = options.safetyMarginMs ?? 900_000
-  if (typeof options.enabled !== 'boolean' || !Number.isSafeInteger(options.recoveryWindowMs) || options.recoveryWindowMs < 0 || options.recoveryWindowMs > 315_576_000_000
-    || !Number.isSafeInteger(margin) || margin < 900_000 || margin > 2_147_483_647) throw new RangeError('Invalid reclamation recovery policy')
+/** Once per stopped operation; retry with identical settings after lost replies.
+ * The library protects current references/readers. Historical recovery requires
+ * restoring the matching object history, including subsequently deleted keys. */
+export async function configureReclamation(pool: Pool, options: ReclamationOptions): Promise<void> {
+  const schema = target(options)
+  if (typeof options.enabled !== 'boolean') throw new TypeError('Invalid reclamation setting')
+  if ('recoveryWindowMs' in options || 'safetyMarginMs' in options) throw new TypeError('Recovery retention is provider-owned; remove the legacy reclamation policy options')
   await transaction(pool, {}, async (client) => {
     const row = (await client.query<RecoveryRow>(`SELECT * FROM ${schema}.installation FOR UPDATE`)).rows[0]
     validRecovery(row, options.token)
-    const policy = (await client.query<{ configured_recovery_token: string | null; enabled: boolean; recovery_window_ms: string; safety_margin_ms: number }>(`SELECT * FROM ${schema}.reclamation_policy FOR UPDATE`)).rows[0]!
+    if (!(await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0007_provider_recovery'`)).rowCount) {
+      throw new StorageCompatibilityError('Run the stopped schema-0007 upgrade before administering collection')
+    }
+    const policy = (await client.query<{ configured_recovery_token: string | null; enabled: boolean }>(`SELECT configured_recovery_token,enabled FROM ${schema}.reclamation_policy FOR UPDATE`)).rows[0]!
     if (policy.configured_recovery_token === options.token) {
-      if (policy.enabled !== options.enabled || BigInt(policy.recovery_window_ms) !== BigInt(options.recoveryWindowMs) || policy.safety_margin_ms !== margin) {
-        throw new StorageCompatibilityError('This recovery operation already configured a different reclamation policy')
-      }
+      if (policy.enabled !== options.enabled) throw new StorageCompatibilityError('This recovery operation already configured a different reclamation setting')
       return
     }
-    await client.query(`UPDATE ${schema}.reclamation_policy SET enabled=$1,recovery_window_ms=$2,safety_margin_ms=$3,configured_recovery_token=$4,
-      inventory_cursor=NULL,hold_until=GREATEST(hold_until,clock_timestamp()+($2::bigint+$3::integer)*interval '1 millisecond')`, [options.enabled, options.recoveryWindowMs, margin, options.token])
-    // Existing promises may be extended, never shortened by a policy change.
-    // The global hold above covers a restore that discarded older promises.
+    await client.query(`UPDATE ${schema}.reclamation_policy SET enabled=$1,configured_recovery_token=$2,inventory_cursor=NULL`, [options.enabled, options.token])
   })
 }
 
@@ -197,8 +192,7 @@ export async function finishRecovery(pool: Pool, options: OperationTarget & { re
       if (replays.rowCount) throw new StorageCompatibilityError('Drain active replay readers or wait for their bounded pins before activating recovery')
       await client.query(`DELETE FROM ${schema}.replay_pins`)
       await client.query(`UPDATE ${schema}.chunk_objects SET claim_token=NULL, claim_until=NULL, claim_epoch=claim_epoch+1 WHERE retired_at IS NOT NULL`)
-      await client.query(`UPDATE ${schema}.reclamation_policy SET inventory_cursor=NULL,
-        hold_until=GREATEST(hold_until,clock_timestamp()+(recovery_window_ms+safety_margin_ms)*interval '1 millisecond')`)
+      await client.query(`UPDATE ${schema}.reclamation_policy SET inventory_cursor=NULL`)
     }
     // Process eviction can leave durable claims and leases behind. UUID tokens
     // invalidate callbacks issued on either side of a point-in-time rollback.

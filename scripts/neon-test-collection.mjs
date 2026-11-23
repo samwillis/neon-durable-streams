@@ -7,7 +7,7 @@ import { beginRecovery, configureReclamation, finishRecovery, inspectInstallatio
 import { createS3ChunkStorage } from '../dist/s3.js'
 
 // Test setup only. Refuse a serving deployment or an unrecorded branch. The
-// ordinary example has no route that enables or changes collection policy.
+// ordinary example has no route that enables or changes collection.
 const env = process.env, stateFile = env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json'
 const functionFile = env.NEON_TEST_FUNCTION_ENV_FILE ?? '.env.neon.function'
 const state = JSON.parse(await readFile(stateFile, 'utf8'))
@@ -27,10 +27,10 @@ try {
   const before = await inspectInstallation(pool, { schema }), operationId = randomUUID()
   const operation = { schema, operationId, expectedInstallationId: before.id, expectedServingEpoch: before.serving_epoch,
     environmentId: state.branchId, storageIdentity: objects.identity }
-  await writeFile(`${stateFile}.policy.json`, JSON.stringify({ ...operation, recoveryWindowMs: 300_000, safetyMarginMs: 900_000 }), { mode: 0o600, flag: 'wx' })
+  await writeFile(`${stateFile}.collection.json`, JSON.stringify(operation), { mode: 0o600, flag: 'wx' })
   const { token } = await beginRecovery(pool, operation)
-  await configureReclamation(pool, { schema, token, enabled: true, recoveryWindowMs: 300_000, safetyMarginMs: 900_000 })
+  await configureReclamation(pool, { schema, token, enabled: true })
   await verifyRecovery(pool, { schema, token, objects })
   await finishRecovery(pool, { schema, token })
-  console.log('Fresh isolated schema ready: collection enabled, five-minute supported recovery window plus fifteen-minute safety margin. No deadline bypasses.')
+  console.log('Fresh isolated schema ready: collection enabled; historical object recovery is provider-owned.')
 } finally { objects.close(); await pool.end() }

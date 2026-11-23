@@ -35,9 +35,9 @@ async function enable() {
   const before = await inspectInstallation(direct, { schema })
   const recovery = await beginRecovery(direct, { schema, operationId: randomUUID(), expectedInstallationId: before.id, expectedServingEpoch: before.serving_epoch,
     environmentId: 'collection-test', storageIdentity: objects.identity })
-  const policy = { schema, token: recovery.token, enabled: true, recoveryWindowMs: 0 }
+  const policy = { schema, token: recovery.token, enabled: true }
   await configureReclamation(direct, policy); await configureReclamation(direct, policy)
-  await expect(configureReclamation(direct, { ...policy, recoveryWindowMs: 1 })).rejects.toThrow('different reclamation policy')
+  await expect(configureReclamation(direct, { ...policy, enabled: false })).rejects.toThrow('different reclamation setting')
   await verifyRecovery(direct, { schema, token: recovery.token, objects })
   await finishRecovery(direct, { schema, token: recovery.token })
 }
@@ -45,14 +45,9 @@ async function phase(index: number, storage: ChunkStorage = objects) {
   await sql('UPDATE ds.reclamation_policy SET work_phase=$1', [index])
   return new ReclamationManager(`"${schema}"`, new InstallationGuard(pool, schema, 'collection-test'), storage).maintain()
 }
-// Fixture time travel changes only this test's random schema. Production API
-// enforces >=15 minutes and provides no way to bypass persisted promises.
-async function elapse() {
-  await sql("UPDATE ds.reclamation_policy SET hold_until=clock_timestamp()-interval '1 second'")
-  await sql("UPDATE ds.chunks SET collect_after=clock_timestamp()-interval '1 second' WHERE retired_at IS NOT NULL")
-  await sql("UPDATE ds.chunk_objects SET collect_after=clock_timestamp()-interval '1 second',next_attempt_at=clock_timestamp()-interval '1 second' WHERE retired_at IS NOT NULL")
-  await sql("UPDATE ds.streams SET reclaim_after=clock_timestamp()-interval '1 second' WHERE reclaim_after IS NOT NULL")
-  await sql("UPDATE ds.stream_changes SET created_at=clock_timestamp()-interval '1 day'")
+// Only retry backoff uses time in these fixtures; no recovery deadlines exist.
+async function retryNow() {
+  await sql("UPDATE ds.chunk_objects SET next_attempt_at=clock_timestamp()-interval '1 second' WHERE retired_at IS NOT NULL")
 }
 async function sealed(path = 'source', body = 'exact durable payload') {
   const value = server()
@@ -78,26 +73,65 @@ afterEach(async () => {
 })
 afterAll(async () => { objects.close(); await pool.end(); await direct.end() })
 
-test('policy requires quiesced administration and collection respects both persisted and global retention promises', async () => {
-  await expect(configureReclamation(direct, { schema, token: randomUUID(), enabled: true, recoveryWindowMs: 0 })).rejects.toThrow('installation is active')
-  await expect(configureReclamation(direct, { schema, token: randomUUID(), enabled: true, recoveryWindowMs: 0, safetyMarginMs: 1 })).rejects.toThrow('policy')
+test('collection requires an explicit stopped opt-in and deletes unreachable objects without an application PITR delay', async () => {
+  await expect(configureReclamation(direct, { schema, token: randomUUID(), enabled: true })).rejects.toThrow('installation is active')
+  const legacyPolicy = { schema, token: randomUUID(), enabled: true, recoveryWindowMs: 0 }
+  await expect(configureReclamation(direct, legacyPolicy)).rejects.toThrow('provider-owned')
+  const { value: disabled, chunk: retained } = await sealed('disabled')
+  expect((await request(disabled, 'disabled', 'DELETE')).status).toBe(204)
+  expect((await phase(0)).worked).toBe(false)
+  expect(await objects.get(retained.object_key, retained.encoded_bytes)).toHaveLength(retained.encoded_bytes)
   await enable()
+  expect((await phase(0)).reclaimedChunks).toBe(1)
+  expect((await phase(1)).deletedObjects).toBe(1)
+  await expect(objects.get(retained.object_key, retained.encoded_bytes)).rejects.toThrow('not found')
   const { value, chunk } = await sealed()
   expect((await sql('SELECT * FROM ds.chunk_objects WHERE chunk_id=$1', [chunk.id])).rows).toHaveLength(1)
   expect((await request(value, 'source', 'DELETE')).status).toBe(204)
-  expect((await phase(0)).reclaimedChunks).toBe(1)
-  expect(await inspectReclamation(direct, { schema, includeBacklog: true })).toMatchObject({ supported: true, enabled: true, recoveryWindowMs: 0,
-    safetyMarginMs: 900_000, backlog: { pendingDeletes: 1, orphanCandidates: 0, quarantinedObjects: 0 } })
-  expect((await phase(1)).deletedObjects).toBe(0)
-  expect((await objects.get(chunk.object_key, chunk.encoded_bytes)).length).toBe(chunk.encoded_bytes)
-  await sql("UPDATE ds.chunk_objects SET collect_after=clock_timestamp()-interval '1 second'")
-  expect((await phase(1)).deletedObjects).toBe(0) // Global hold independently applies.
-  await elapse()
+  await phase(0)
+  const status = await inspectReclamation(direct, { schema, includeBacklog: true })
+  expect(status).toMatchObject({ supported: true, enabled: true,
+    backlog: { pendingDeletes: 1, orphanCandidates: 0, quarantinedObjects: 0, oldestRetiredAt: expect.any(Date) } })
+  expect(status).not.toHaveProperty('recoveryWindowMs')
+  expect(status).not.toHaveProperty('holdUntil')
   expect((await phase(1)).deletedObjects).toBe(1)
   expect(await inspectReclamation(direct, { schema, includeBacklog: true })).toMatchObject({ backlog: { pendingDeletes: 0 } })
   expect((await phase(1)).deletedObjects).toBe(0)
   await expect(objects.get(chunk.object_key, chunk.encoded_bytes)).rejects.toThrow('not found')
   expect((await sql('SELECT collected_at FROM ds.chunk_objects WHERE chunk_id=$1', [chunk.id])).rows[0].collected_at).not.toBe(null)
+})
+
+test('collection preserves old stream offsets and inherited history after parent deletion', async () => {
+  await enable()
+  const value = server()
+  const first = await request(value, 'history', 'PUT', 'old bytes;')
+  expect(first.status).toBe(201)
+  const offset = first.headers.get('Stream-Next-Offset')!
+  for (let i = 0; i < 5; i++) expect((await request(value, 'history', 'POST', `new-${i};`)).status).toBe(204)
+  await value.maintain({ maxChunks: 16 })
+  const objectsBefore = (await sql('SELECT object_key,encoded_bytes FROM ds.chunks WHERE state=\'sealed\'')).rows
+  expect(objectsBefore.length).toBeGreaterThan(1)
+  // Run every collection phase while the original stream is still current.
+  for (let i = 0; i < 6; i++) expect((await value.maintain({ maxChunks: 1 })).deletedObjects).toBe(0)
+  expect((await request(value, 'old-fork', 'PUT', undefined, {
+    'Stream-Forked-From': '/v1/stream/history', 'Stream-Fork-Offset': offset,
+  })).status).toBe(201)
+  expect(await (await request(value, 'old-fork')).text()).toBe('old bytes;')
+  expect((await request(value, 'history', 'DELETE')).status).toBe(204)
+  for (let i = 0; i < 6; i++) expect((await value.maintain({ maxChunks: 1 })).deletedObjects).toBe(0)
+  // An old-offset fork of the surviving descendant remains valid as well.
+  expect((await request(value, 'old-grandchild', 'PUT', undefined, {
+    'Stream-Forked-From': '/v1/stream/old-fork', 'Stream-Fork-Offset': offset,
+  })).status).toBe(201)
+  expect((await request(value, 'old-fork', 'DELETE')).status).toBe(204)
+  expect(await (await request(value, 'old-grandchild')).text()).toBe('old bytes;')
+  expect((await phase(0)).reclaimedChunks).toBe(0)
+  for (const object of objectsBefore) expect(await objects.get(object.object_key, object.encoded_bytes)).toHaveLength(object.encoded_bytes)
+  expect((await request(value, 'old-grandchild', 'DELETE')).status).toBe(204)
+  for (let i = 0; i < 3; i++) await value.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+  await phase(0)
+  for (let i = 0; i < objectsBefore.length; i++) await phase(1)
+  for (const object of objectsBefore) await expect(objects.get(object.object_key, object.encoded_bytes)).rejects.toThrow('not found')
 })
 
 test('an in-flight replay pin protects a retired object, then releases before physical deletion', async () => {
@@ -110,7 +144,7 @@ test('an in-flight replay pin protects a retired object, then releases before ph
   try {
     await entered
     expect((await request(value, 'source', 'DELETE')).status).toBe(204)
-    await phase(0); await elapse()
+    await phase(0)
     expect((await phase(1)).deletedObjects).toBe(0)
     expect((await sql('SELECT * FROM ds.replay_pins WHERE chunk_id=$1', [chunk.id])).rows).toHaveLength(1)
     release()
@@ -128,8 +162,8 @@ test('a live descendant retains its deleted parent and exact inherited bytes unt
   expect((await phase(0)).reclaimedChunks).toBe(0)
   expect(await (await request(value, 'child')).text()).toBe('exact durable payload')
   expect((await request(value, 'child', 'DELETE')).status).toBe(204)
-  await value.maintain()
-  await phase(0); await elapse()
+  await value.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
+  await phase(0)
   expect((await phase(1)).deletedObjects).toBe(1)
   expect((await sql('SELECT retired_at FROM ds.chunks WHERE id=$1', [chunk.id])).rows[0].retired_at).not.toBe(null)
 })
@@ -154,7 +188,7 @@ test('a deleted HOT parent retained by a live fork can still archive before its 
   expect((await request(value, 'hot-parent')).status).toBe(410)
   expect((await request(value, 'hot-child', 'DELETE')).status).toBe(204)
   await value.maintain({ maxChunks: 1, maxSubscriptionWork: 1 })
-  await phase(0); await elapse()
+  await phase(0)
   expect((await phase(1)).deletedObjects).toBe(1)
   await expect(objects.get(chunk.object_key, chunk.encoded_bytes)).rejects.toThrow('not found')
 })
@@ -162,12 +196,12 @@ test('a deleted HOT parent retained by a live fork can still archive before its 
 test('an ambiguous successful delete preserves its retry identity and retries the same key idempotently', async () => {
   await enable()
   const { value, chunk } = await sealed()
-  await request(value, 'source', 'DELETE'); await phase(0); await elapse()
+  await request(value, 'source', 'DELETE'); await phase(0)
   const attempts: string[] = []
   const ambiguous: ChunkStorage = { ...objects, async delete(key) { attempts.push(key); await objects.delete(key); throw new Error('lost successful response') } }
   await expect(phase(1, ambiguous)).rejects.toThrow('lost successful response')
   expect((await sql('SELECT collected_at,claim_token FROM ds.chunk_objects WHERE chunk_id=$1', [chunk.id])).rows[0]).toMatchObject({ collected_at: null, claim_token: null })
-  await elapse()
+  await retryNow()
   const retried: ChunkStorage = { ...objects, async delete(key) { attempts.push(key); await objects.delete(key) } }
   expect((await phase(1, retried)).deletedObjects).toBe(1)
   expect(attempts).toEqual([chunk.object_key, chunk.object_key])
@@ -187,16 +221,19 @@ test('retirement fences an uploading worker before it can publish or discard loc
     expect(intent).toBeDefined() // Exact identity persisted before external put.
     expect((await request(operator, 'uploading', 'DELETE')).status).toBe(204)
     expect((await phase(0)).reclaimedChunks).toBe(1)
+    // Keep this paused worker's final maintenance round on metadata work so
+    // the explicit delete pass below observes the collection transition.
+    await sql('UPDATE ds.reclamation_policy SET work_phase=2')
     release()
     expect((await pending).sealed).toBe(0)
     expect((await sql('SELECT state,retired_at FROM ds.chunks')).rows[0]).toMatchObject({ state: 'frozen', retired_at: expect.any(Date) })
     expect((await sql('SELECT payload FROM ds.appends')).rows[0].payload.toString()).toBe('pending upload bytes')
-    await elapse(); expect((await phase(1)).deletedObjects).toBe(1)
+    expect((await phase(1)).deletedObjects).toBe(1)
     await expect(objects.get(intent.object_key, intent.encoded_bytes)).rejects.toThrow('not found')
   } finally { release(); await pending }
 })
 
-test('inventory verifies orphans, gives each a fresh hold, and rediscovers late resumed uploads', async () => {
+test('inventory verifies orphans before collection and rediscovers late resumed uploads', async () => {
   await enable()
   const streamId = randomUUID(), chunkId = randomUUID(), payload = Buffer.from('late immutable orphan')
   const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET, payload.length), payload, messageEnds: null }] })
@@ -207,21 +244,19 @@ test('inventory verifies orphans, gives each a fresh hold, and rediscovers late 
   await phase(4)
   const first = (await sql('SELECT * FROM ds.chunk_objects WHERE object_key=$1', [key])).rows[0]
   expect(first.orphan_candidate).toBe(false); expect(first.retired_at).toBeInstanceOf(Date)
-  expect(first.collect_after.getTime()-first.retired_at.getTime()).toBeGreaterThanOrEqual(899_999)
-  await elapse(); expect((await phase(1)).deletedObjects).toBe(1)
+  expect((await phase(1)).deletedObjects).toBe(1)
   await objects.put(key, bytes) // An already-issued external write can outlive SQL fencing.
   await sql('UPDATE ds.reclamation_policy SET inventory_completed_at=NULL')
   await phase(3); await phase(4)
-  expect((await phase(1)).deletedObjects).toBe(0)
   const second = (await sql('SELECT * FROM ds.chunk_objects WHERE object_key=$1', [key])).rows[0]
   expect(second.collected_at).toBe(null); expect(second.retired_at.getTime()).toBeGreaterThan(first.retired_at.getTime())
-  await elapse(); expect((await phase(1)).deletedObjects).toBe(1)
+  expect((await phase(1)).deletedObjects).toBe(1)
 })
 
 test('fair durable phase rotation and dependency-ordered pruning remove dead generation and namespace metadata', async () => {
   await enable()
   const { value } = await sealed()
-  await request(value, 'source', 'DELETE'); await phase(0); await elapse()
+  await request(value, 'source', 'DELETE'); await phase(0)
   // A fresh manager per single-round invocation models cold Function hints.
   const phases: number[] = []
   await sql('UPDATE ds.reclamation_policy SET work_phase=0')
@@ -264,30 +299,28 @@ test('pruned signed and legacy wakes still fence authentic tokens, and recreated
   const first = await issue()
   const legacy = `dsw.${first.wake_id.slice(2)}.${randomBytes(32).toString('base64url')}`
   await sql('UPDATE ds.subscription_wakes SET token_version=1,token_hash=$2 WHERE id=$1', [first.wake_id.slice(2), createHash('sha256').update(legacy).digest()])
-  await sql("UPDATE ds.subscription_wakes SET created_at=clock_timestamp()-interval '1 day'")
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=0'); await phase(5)
   expect((await sql('SELECT * FROM ds.subscription_wakes WHERE id=$1', [first.wake_id.slice(2)])).rows).toHaveLength(0)
   expect((await sql('SELECT * FROM ds.legacy_wake_tokens WHERE wake_id=$1', [first.wake_id.slice(2)])).rows).toHaveLength(1)
   expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${legacy}` })).status).toBe(409)
   expect((await request(value, name, 'DELETE')).status).toBe(204)
-  await sql("UPDATE ds.subscriptions SET deleted_at=clock_timestamp()-interval '1 day' WHERE deleted_at IS NOT NULL")
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=1'); await phase(5)
   expect((await sql('SELECT * FROM ds.subscriptions')).rows).toHaveLength(0)
   expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${first.token}` })).status).toBe(409)
   expect((await request(value, `${name}/ack`, 'POST', first.body, { ...json, Authorization: `Bearer ${legacy}` })).status).toBe(409)
   const next = await issue()
   expect(next.generation).toBeGreaterThan(first.generation)
-  await sql("UPDATE ds.subscription_wakes SET created_at=clock_timestamp()-interval '1 day'")
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=0'); await phase(5)
   expect((await request(value, `${name}/ack`, 'POST', next.body, { ...json, Authorization: `Bearer ${next.token}` })).status).toBe(409)
 }, 120_000)
 
-test('recovery ignores collected unreachable manifests, requires every reachable object, and renews collection holds', async () => {
+test('recovery requires every reachable object, skips retired manifests, and fences abandoned delete claims', async () => {
   await enable()
   const dead = await sealed('dead'), live = await sealed('live', 'reachable bytes')
   const liveBytes = await objects.get(live.chunk.object_key, live.chunk.encoded_bytes)
-  await request(dead.value, 'dead', 'DELETE'); await phase(0); await elapse()
+  await request(dead.value, 'dead', 'DELETE'); await phase(0)
   expect((await phase(1)).deletedObjects).toBe(1)
+  await sql("UPDATE ds.chunk_objects SET claim_token=gen_random_uuid(),claim_until=clock_timestamp()+interval '1 minute' WHERE retired_at IS NOT NULL")
   const before = await inspectInstallation(direct, { schema })
   const operation = await beginRecovery(direct, { schema, operationId: randomUUID(), expectedInstallationId: before.id,
     expectedServingEpoch: before.serving_epoch, environmentId: 'collection-test', storageIdentity: objects.identity })
@@ -297,7 +330,7 @@ test('recovery ignores collected unreachable manifests, requires every reachable
   await objects.put(live.chunk.object_key, liveBytes)
   expect(await verifyRecovery(direct, { schema, token: operation.token, objects })).toEqual({ complete: true, verified: 1 })
   await finishRecovery(direct, { schema, token: operation.token })
-  expect((await sql('SELECT hold_until>clock_timestamp() AS held FROM ds.reclamation_policy')).rows[0].held).toBe(true)
+  expect((await sql('SELECT count(*) FROM ds.chunk_objects WHERE claim_token IS NOT NULL')).rows[0].count).toBe('0')
   expect((await request(live.value, 'live')).status).toBe(503)
   expect(await (await request(server(), 'live')).text()).toBe('reachable bytes')
 })
@@ -340,7 +373,7 @@ test('creation and forks retry safely when namespace collection wins after INSER
 test('expired delete claims cannot finalize a replacement claim or lose the exact immutable retry key', async () => {
   await enable()
   const { value, chunk } = await sealed()
-  await request(value, 'source', 'DELETE'); await phase(0); await elapse()
+  await request(value, 'source', 'DELETE'); await phase(0)
   let enter!: () => void, release!: () => void
   const entered = new Promise<void>((resolve) => { enter = resolve }), paused = new Promise<void>((resolve) => { release = resolve })
   const delayed: ChunkStorage = { ...objects, async delete(key) { await objects.delete(key); enter(); await paused } }
@@ -360,7 +393,7 @@ test('expired delete claims cannot finalize a replacement claim or lose the exac
 test('retired chunk cleanup drains expired replay pins in bounded batches before deleting their parent', async () => {
   await enable()
   const { value, chunk } = await sealed()
-  await request(value, 'source', 'DELETE'); await phase(0); await elapse()
+  await request(value, 'source', 'DELETE'); await phase(0)
   const installation = await inspectInstallation(direct, { schema })
   await sql(`INSERT INTO ds.replay_pins (id,chunk_id,serving_epoch,expires_at)
     SELECT gen_random_uuid(),$1,$2,clock_timestamp()-interval '1 minute' FROM generate_series(1,300)`, [chunk.id, installation.serving_epoch])
@@ -381,7 +414,7 @@ test('inventory preserves live chunks, quarantines corrupt objects, and handles 
   const { chunk } = await sealed()
   await sql('DELETE FROM ds.chunk_objects') // Model a pre-0006 sealed manifest.
   await sql('UPDATE ds.reclamation_policy SET inventory_completed_at=NULL')
-  await phase(3); await phase(4); await elapse()
+  await phase(3); await phase(4)
   expect((await phase(1)).deletedObjects).toBe(0)
   const retained = (await sql('SELECT * FROM ds.chunk_objects WHERE object_key=$1', [chunk.object_key])).rows[0]
   expect(retained).toMatchObject({ retired_at: null, orphan_candidate: false, quarantine_reason: null })

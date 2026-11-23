@@ -301,7 +301,7 @@ qualify('recovery fences both running binaries and fresh old/current artifacts c
   expect(await read(freshOld, 'producer')).toBe('seed;old;new;race;epoch;after recovery;')
 }, 480_000)
 
-test('a stopped upgrade to schema 0006 preserves packed-consumer state and issues signed fenced wakes', async () => {
+test('a stopped upgrade to schema 0007 preserves packed-consumer state and issues signed fenced wakes', async () => {
   const before = runtimes.at(-2)!
   expect(before.kind).toBe('current')
   const json = { 'Content-Type': 'application/json' }, sub = '__ds/subscriptions/stopped-upgrade'
@@ -314,7 +314,7 @@ test('a stopped upgrade to schema 0006 preserves packed-consumer state and issue
   // Stop every actual packed deployment and its possible cold starts before DDL.
   for (const slug of slugs) await neon.functions.delete({ projectId, branchId, slug: slug! })
   await new Promise((resolve) => setTimeout(resolve, 6000))
-  expect(await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity })).toEqual(['0006_reclamation'])
+  expect(await migrate(pool, { schema, environmentId: branchId, storageIdentity: objects.identity })).toEqual(['0006_reclamation', '0007_provider_recovery'])
   // Complete explicit recovery while stopped, fencing old subscription leases
   // as well as runtime epochs before reopening ingress.
   const identity = await inspectInstallation(pool, { schema })

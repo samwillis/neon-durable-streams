@@ -46,7 +46,7 @@ test('quiesced upgrade from migration 0004 preserves v1 sealed bytes, offsets, f
     await client.query(`INSERT INTO "${schema}".appends (stream_id, start_offset, end_offset, payload_bytes, chunk_id) VALUES ($1, $2, $3, $4, $5)`, [streamId, ZERO_OFFSET, next, payload.length, chunkId])
     await client.query(`INSERT INTO "${schema}".producers (stream_id, producer_id, epoch, last_seq) VALUES ($1, 'writer', 7, 12)`, [streamId])
   })
-  expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual(['0005_operations', '0006_reclamation'])
+  expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual(['0005_operations', '0006_reclamation', '0007_provider_recovery'])
   expect(await migrate(pool, { schema, storageIdentity: objects.identity, environmentId: 'upgraded' })).toEqual([])
   server = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema, environmentId: 'upgraded' }, storage: { objects },
     auth: { authenticate: () => ({ tenantId: 'upgrade', subject: 'fixture' }), authorize: () => true } })
@@ -84,7 +84,7 @@ test('stopped schema-0005 upgrade fences warmed runtimes and preserves producer 
     expect((await request(old, 'fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/source' })).status).toBe(201)
     // No traffic/workers are admitted while DDL runs. Retain this stopped
     // object solely to prove epoch fencing if an old process attempts to resume.
-    expect(await migrate(pool, { schema: isolated, storageIdentity: objects.identity, environmentId: 'stopped-upgrade' })).toEqual(['0006_reclamation'])
+    expect(await migrate(pool, { schema: isolated, storageIdentity: objects.identity, environmentId: 'stopped-upgrade' })).toEqual(['0006_reclamation', '0007_provider_recovery'])
     expect((await request(old, 'source')).status).toBe(503)
     expect((await request(old, 'source', 'POST', 'must not append', tuple)).status).toBe(503)
     const current = make()
@@ -94,6 +94,52 @@ test('stopped schema-0005 upgrade fences warmed runtimes and preserves producer 
     expect(await (await request(current, 'source')).text()).toBe('retained before upgrade after')
     expect(await (await request(current, 'fork')).text()).toBe('retained before upgrade')
     expect((await pool.query(`SELECT enabled FROM "${isolated}".reclamation_policy`)).rows[0].enabled).toBe(false)
+  } finally {
+    await Promise.all(runtimes.map((value) => value.close()))
+    await pool.query(`DROP SCHEMA IF EXISTS "${isolated}" CASCADE`)
+  }
+})
+
+test('the stopped schema-0006 upgrade removes PITR settings, disables collection, and preserves exact live history', async () => {
+  const isolated = `ds_test_${randomUUID().replaceAll('-', '')}`, runtimes: DurableStreamsServer[] = []
+  const make = () => {
+    const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool, schema: isolated, environmentId: 'provider-upgrade' }, storage: { objects, targetChunkBytes: 4 },
+      auth: { authenticate: () => ({ tenantId: 'upgrade', subject: 'fixture' }), authorize: () => true } })
+    runtimes.push(value); return value
+  }
+  const request = (value: DurableStreamsServer, path: string, method = 'GET', body?: string, headers?: Record<string,string>) => value.fetch(new Request(`https://fixture.test/v1/stream/${path}`, {
+    method, headers: { 'Content-Type': 'text/plain', ...headers }, ...(body === undefined ? {} : { body }),
+  }))
+  try {
+    await migrate(pool, { schema: isolated, target: '0005_operations', storageIdentity: objects.identity, environmentId: 'provider-upgrade' })
+    const old = make()
+    const created = await request(old, 'source', 'PUT', 'historical bytes;')
+    const anchor = created.headers.get('Stream-Next-Offset')!
+    expect(created.status).toBe(201)
+    expect((await request(old, 'source', 'POST', 'later;')).status).toBe(204)
+    await old.maintain()
+    const oldManifest = (await pool.query(`SELECT object_key,sha256 FROM "${isolated}".chunks ORDER BY id`)).rows
+    const schema6 = (await migrationPlan(isolated))[5]!
+    await transaction(pool, {}, async (client) => {
+      await client.query(schema6.sql)
+      await client.query(`INSERT INTO "${isolated}".migrations (id,checksum) VALUES ($1,$2)`, [schema6.id, schema6.checksum])
+      await client.query(`UPDATE "${isolated}".reclamation_policy SET enabled=true,recovery_window_ms=604800000,hold_until=clock_timestamp()+interval '7 days'`)
+    })
+    await expect(inspectReclamation(pool, { schema: isolated })).rejects.toThrow('schema-0007 upgrade')
+    const before = (await pool.query(`SELECT serving_epoch FROM "${isolated}".installation`)).rows[0].serving_epoch
+    expect(await migrate(pool, { schema: isolated })).toEqual(['0007_provider_recovery'])
+    expect(await migrate(pool, { schema: isolated })).toEqual([])
+    expect((await pool.query(`SELECT serving_epoch FROM "${isolated}".installation`)).rows[0].serving_epoch).not.toBe(before)
+    expect(await inspectReclamation(pool, { schema: isolated })).toMatchObject({ supported: true, enabled: false })
+    const columns = (await pool.query(`SELECT column_name FROM information_schema.columns WHERE table_schema=$1 AND column_name IN
+      ('recovery_window_ms','safety_margin_ms','hold_until','collect_after','reclaim_after')`, [isolated])).rows
+    expect(columns).toHaveLength(0)
+    expect((await pool.query(`SELECT object_key,sha256 FROM "${isolated}".chunks ORDER BY id`)).rows).toEqual(oldManifest)
+    expect((await request(old, 'source')).status).toBe(503)
+    const current = make()
+    expect(await (await request(current, 'source')).text()).toBe('historical bytes;later;')
+    expect((await request(current, 'fork', 'PUT', undefined, { 'Stream-Forked-From': '/v1/stream/source', 'Stream-Fork-Offset': anchor })).status).toBe(201)
+    expect(await (await request(current, 'fork')).text()).toBe('historical bytes;')
   } finally {
     await Promise.all(runtimes.map((value) => value.close()))
     await pool.query(`DROP SCHEMA IF EXISTS "${isolated}" CASCADE`)

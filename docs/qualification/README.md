@@ -1,5 +1,7 @@
 # Qualification evidence
 
+Schema-0007 update: application recovery windows, safety margins, and collection holds are removed in favor of provider-owned historical object recovery. The previous reports below are preserved unchanged and qualify schema 0006 only. The current-source suite must pass independently; ordinary recovery fixtures retain witness objects and do not certify undeployed provider Object Storage PITR. See the [current collection contract](../reclamation-v1.md).
+
 The final hardening revision [`ee0b181`](https://github.com/samwillis/neon-durable-streams/actions/runs/45089891876) passed every required CI job on 23 November: **53 unit/property, 86 Neon, 21 transaction/process-loss, two recovery, nine public Function/webhook, two hints-only, and 338/338 full protocol tests**, with no failed or skipped test cases. The eight packed rolling checks and separate stopped schema upgrade are included in the 86. Conformance explicitly enables subscriptions and collection, with real fifteen-minute holds and no deadline bypasses. Cleanup completed. The package remains unpublished. The independent Realtime diagnostic failure below prevents claiming a fully passing 45-minute latency/availability profile.
 
 | Evidence | Result and scope |

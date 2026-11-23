@@ -37,9 +37,9 @@ Readers verify downloaded size, digest, identities, and frame boundaries before 
 
 ## Retention
 
-Physical object deletion is disabled by default. Schema-0006 can collect unreachable objects and metadata only under an explicitly configured recovery policy. It protects replay plans with pins, records upload intents, and synchronizes publication and retirement with references. The S3 adapter supplies idempotent exact-key deletion and bounded listing; custom adapters must provide those capabilities before collection can be enabled. Operators must size and monitor retained data. Listing unreferenced objects alone is insufficient evidence to delete them after a database restore.
+Physical object deletion is disabled by default. Schema 0007 collects unreachable objects and metadata after an explicit enablement setting, with historical recovery owned by Neon or matching backups. It protects replay plans with pins, records upload intents, and synchronizes publication and retirement with references. The S3 adapter supplies idempotent exact-key deletion and bounded listing; custom adapters must provide those capabilities before collection can be enabled. Operators must size and monitor retained data. Listing unreferenced objects alone is insufficient evidence to delete them after a database restore.
 
-Read the [reclamation contract](reclamation-v1.md) before stopped policy configuration. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md). The [qualification index](qualification/README.md) records physical-collection child and in-place restore evidence, exact source revisions, and the unresolved independent Realtime diagnostic.
+Read the [collection contract](reclamation-v1.md) before enabling it during stopped administration. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md). The [qualification index](qualification/README.md) records physical-collection child and in-place restore evidence, exact source revisions, and the unresolved independent Realtime diagnostic.
 
 ## Evidence
 
