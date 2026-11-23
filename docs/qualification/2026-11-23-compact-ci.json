@@ -1,0 +1,113 @@
+{
+  "runUrl": "https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790",
+  "sourceCommit": "cdf0fa861a4962dbc6eb20c43f0a0920d5c82ea7",
+  "allJobs": "success",
+  "services": "Actual Neon Functions, Postgres 18, Realtime, Object Storage",
+  "region": "aws-us-east-1",
+  "schema": 9,
+  "objectFormat": 1,
+  "checks": {
+    "unit": 57,
+    "neon": 96,
+    "postgresIntegration": 21,
+    "recovery": 2,
+    "consumerIngressAndWebhooks": 9,
+    "hintsWithoutCron": 2,
+    "sameCandidateMultiInstanceIncludedInNeon": 8,
+    "stoppedPackedSchemaUpgradeIncludedInNeon": 1
+  },
+  "conformance": {
+    "total": 338,
+    "passed": 338,
+    "failed": 0,
+    "skipped": 0,
+    "subscriptions": true,
+    "collectionEnabled": true,
+    "coordinatorDurationMs": 121765
+  },
+  "cleanup": {
+    "packedConsumerFixture": true,
+    "conformanceFixture": true,
+    "jobs": [
+      {
+        "name": "Neon qualification",
+        "conclusion": "success",
+        "cleanupSteps": [
+          {
+            "name": "Delete any interrupted recovery drill branch",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete interrupted in-place restore branches",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete interrupted rolling Functions and installed consumers",
+            "conclusion": "skipped"
+          },
+          {
+            "name": "Delete this run's Neon branch",
+            "conclusion": "success"
+          }
+        ]
+      },
+      {
+        "name": "Build and unit tests",
+        "conclusion": "success",
+        "cleanupSteps": []
+      },
+      {
+        "name": "Neon append-hint delivery",
+        "conclusion": "success",
+        "cleanupSteps": [
+          {
+            "name": "Delete the hint test branch",
+            "conclusion": "success"
+          }
+        ]
+      }
+    ],
+    "localBranches": {
+      "compact": "deleted",
+      "compacthints": "deleted",
+      "compactload": "deleted",
+      "measurementSchemasAndObjects": "deleted"
+    }
+  },
+  "collection": {
+    "historicalRecovery": "provider-owned",
+    "providerObjectPitrQualified": false,
+    "retainedBoundaryBytes": "approximately four raw bytes per stored frame plus O(chunks) manifest/index overhead; staging high-water allocation is separate"
+  },
+  "recoveryRealtime": {
+    "startup": "Initial snapshot timeout at 30030ms; fresh observer ready at31753ms",
+    "independentPayloadObserved": true,
+    "publicSseAndPayloadBoundsUnchanged": true,
+    "underlyingTimeoutRootCauseEstablished": false
+  },
+  "supersededRun": {
+    "url": "https://github.com/samwillis/neon-durable-streams/actions/runs/45144746918",
+    "sourceCommit": "f99f00abead3c62d5b16d895a258205ae5d43b04",
+    "conclusion": "cancelled",
+    "reason": "Replaced after reproducing and fixing premature HOT ancestor boundary pruning; not a full qualifying result",
+    "branchCleanup": "success"
+  },
+  "measurementAndLoad": {
+    "sourceCommit": "f99f00abead3c62d5b16d895a258205ae5d43b04",
+    "sourceClean": true,
+    "finalRuntimeDifference": "cdf0fa8 only tightens deletion eligibility for ancestors with surviving child-generation metadata; measurements and default-collection-off load remain scoped to their recorded revision",
+    "storageReport": "../experiments/2026-11-23-compact-range-measurement.json",
+    "loadReport": "2026-11-23-compact-load-600.json",
+    "loadAgeMs": 3600000,
+    "loadFramesPerChunk": 1024,
+    "loadCacheBytes": 33554432,
+    "loadCollectionEnabled": false,
+    "loadSetup": "Deployed with hints/no-cron to select production one-hour age; then enabled the recorded minute cron and updated its environment ledger flag before load."
+  },
+  "limits": [
+    "Ten-minute closed-loop workload does not establish a capacity ceiling or availability SLA.",
+    "Sampled Function memory is routed per instance, not fleet accounting or a steady-state bound.",
+    "Earlier 45-minute Realtime head diagnostic failure remains unresolved and retained in historical reports.",
+    "Object Storage historical PITR remains provider/backup-owned and is not qualified by these witness-object recovery fixtures."
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "total": 2,
+  "passed": 2,
+  "failed": 0,
+  "pending": 0,
+  "suites": [
+    {
+      "file": "branch.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "a real point-in-time branch adopts sealed objects, fences restored tokens, and isolates new writes",
+          "status": "passed",
+          "durationMs": 26370.521789000002,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "inplace.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "a stopped deployed Function restores its own branch, reconciles sealed bytes, and resumes in a fresh epoch",
+          "status": "passed",
+          "durationMs": 155270.658651,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

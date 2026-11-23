@@ -1,0 +1,26 @@
+{
+  "beforeCommit": "f99f00abead3c62d5b16d895a258205ae5d43b04",
+  "fixedCommit": "cdf0fa861a4962dbc6eb20c43f0a0920d5c82ea7",
+  "testFile": "test/neon/collection.test.ts",
+  "testFileSha256": "72c9a6e4dec30d7f73dbde89efa73266b282b72ae5960cf64217146a45ec2295",
+  "scenario": "A deleted parent's outbox is processed while its child is live, then the child is deleted while an inherited acknowledgement lease remains valid. Cleanup runs before the child deletion is fanned out.",
+  "before": {
+    "scope": "Focused new HOT regression against the earlier runtime",
+    "passed": false,
+    "expectedRetainedParentFrames": 2,
+    "observedRetainedParentFrames": 0
+  },
+  "after": {
+    "scope": "Focused actual-Neon regressions against the fixed runtime; complete clean CI recorded separately",
+    "passed": true,
+    "testsPassed": 3,
+    "tests": [
+      "inherited sealed boundaries survive object collection and child metadata retention",
+      "inherited hot boundaries survive local-row pruning until child metadata clears",
+      "dependency-ordered metadata pruning still completes"
+    ],
+    "ackBeforeChildFanoutStatus": 200,
+    "ackAfterChildFanoutStatus": 409
+  },
+  "change": "Require no child-generation metadata before both local data pruning and final generation deletion, matching the sealed-directory rule."
+}

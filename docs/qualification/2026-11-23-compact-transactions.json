@@ -1,0 +1,141 @@
+{
+  "total": 21,
+  "passed": 21,
+  "failed": 0,
+  "pending": 0,
+  "suites": [
+    {
+      "file": "storage.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "transaction and migration guarantees concurrent migrators initialize an installation once",
+          "status": "passed",
+          "durationMs": 1713.1923120000001,
+          "failures": []
+        },
+        {
+          "name": "transaction and migration guarantees local durability and timeout settings override inherited sessions and revert",
+          "status": "passed",
+          "durationMs": 322.3853960000001,
+          "failures": []
+        },
+        {
+          "name": "transaction and migration guarantees failed work rolls back the entire transaction",
+          "status": "passed",
+          "durationMs": 112.74029400000018,
+          "failures": []
+        },
+        {
+          "name": "transaction and migration guarantees unknown migration history blocks migration and preserves existing data",
+          "status": "passed",
+          "durationMs": 230.08414400000038,
+          "failures": []
+        },
+        {
+          "name": "transaction and migration guarantees an existing installation identity cannot be silently regenerated",
+          "status": "passed",
+          "durationMs": 276.59912499999973,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log concurrent creates establish exactly one stream identity",
+          "status": "passed",
+          "durationMs": 2440.4092470000005,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log concurrent duplicate producer retries append exactly once and create one change",
+          "status": "passed",
+          "durationMs": 2700.055813,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log sequence gaps and stale epochs do not mutate data",
+          "status": "passed",
+          "durationMs": 1127.0238259999987,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log JSON failure does not advance producer state and numbers retain precision",
+          "status": "passed",
+          "durationMs": 943.0229600000002,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log replay survives a new pool and server instance",
+          "status": "passed",
+          "durationMs": 903.9044439999998,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log SIGKILL of a writer preserves the committed transaction outcome",
+          "status": "passed",
+          "durationMs": 951.1790869999986,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log SIGKILL of a writer preserves the uncommitted transaction outcome",
+          "status": "passed",
+          "durationMs": 685.4301989999985,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log pages across complete frames and resumes without gaps",
+          "status": "passed",
+          "durationMs": 10176.129387,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log closing changes the ETag and deduplicates its producer tuple",
+          "status": "passed",
+          "durationMs": 1463.8409740000025,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log delete/recreate isolates producer state, bytes, ETags, and identities",
+          "status": "passed",
+          "durationMs": 1277.6212400000004,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log expiry commits its lifecycle change; HEAD never touches access time",
+          "status": "passed",
+          "durationMs": 1151.7384130000028,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log tenant identity isolates a shared URL and authentication precedes body parsing",
+          "status": "passed",
+          "durationMs": 424.71470399999816,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log unsupported reserved features fail explicitly and never create streams",
+          "status": "passed",
+          "durationMs": 122.29268600000069,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log unknown methods cannot fall through to reads and invalid calendar expiry is rejected",
+          "status": "passed",
+          "durationMs": 121.92686500000127,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log streamed bodies are byte-limited even when Content-Length understates their size",
+          "status": "passed",
+          "durationMs": 122.93873499999972,
+          "failures": []
+        },
+        {
+          "name": "durable HTTP hot log a stalled body is canceled and never creates a stream",
+          "status": "passed",
+          "durationMs": 132.1086269999978,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}

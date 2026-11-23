@@ -1,0 +1,675 @@
+{
+  "total": 96,
+  "passed": 96,
+  "failed": 0,
+  "pending": 0,
+  "suites": [
+    {
+      "file": "collection.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "collection requires an explicit stopped opt-in and deletes unreachable objects without an application PITR delay",
+          "status": "passed",
+          "durationMs": 9764.854988,
+          "failures": []
+        },
+        {
+          "name": "collection preserves old stream offsets and inherited history after parent deletion",
+          "status": "passed",
+          "durationMs": 22865.354201000002,
+          "failures": []
+        },
+        {
+          "name": "an in-flight replay pin protects a retired object, then releases before physical deletion",
+          "status": "passed",
+          "durationMs": 6845.253685999996,
+          "failures": []
+        },
+        {
+          "name": "a live descendant retains its deleted parent and exact inherited bytes until the last edge detaches",
+          "status": "passed",
+          "durationMs": 7546.539966999997,
+          "failures": []
+        },
+        {
+          "name": "a deleted HOT parent retained by a live fork can still archive before its last reference detaches",
+          "status": "passed",
+          "durationMs": 7710.1254809999955,
+          "failures": []
+        },
+        {
+          "name": "an ambiguous successful delete preserves its retry identity and retries the same key idempotently",
+          "status": "passed",
+          "durationMs": 6595.764968000003,
+          "failures": []
+        },
+        {
+          "name": "retirement fences an uploading worker before it can publish or discard local bytes",
+          "status": "passed",
+          "durationMs": 3533.5357490000024,
+          "failures": []
+        },
+        {
+          "name": "inventory verifies orphans before collection and rediscovers late resumed uploads",
+          "status": "passed",
+          "durationMs": 3931.1297819999963,
+          "failures": []
+        },
+        {
+          "name": "fair durable phase rotation and dependency-ordered pruning remove dead generation and namespace metadata",
+          "status": "passed",
+          "durationMs": 10820.253763,
+          "failures": []
+        },
+        {
+          "name": "pruned signed wakes still fence authentic tokens, and recreated subscriptions keep increasing generations",
+          "status": "passed",
+          "durationMs": 17527.918053999994,
+          "failures": []
+        },
+        {
+          "name": "pending inherited ack validation retains sealed ancestor boundaries after fork deletion",
+          "status": "passed",
+          "durationMs": 34318.48589800001,
+          "failures": []
+        },
+        {
+          "name": "pending inherited ack validation retains hot ancestor boundaries after fork deletion",
+          "status": "passed",
+          "durationMs": 42626.398162,
+          "failures": []
+        },
+        {
+          "name": "recovery requires every reachable object, skips retired manifests, and fences abandoned delete claims",
+          "status": "passed",
+          "durationMs": 18353.911281999986,
+          "failures": []
+        },
+        {
+          "name": "creation and forks retry safely when namespace collection wins after INSERT ON CONFLICT",
+          "status": "passed",
+          "durationMs": 5459.860688000015,
+          "failures": []
+        },
+        {
+          "name": "expired delete claims cannot finalize a replacement claim or lose the exact immutable retry key",
+          "status": "passed",
+          "durationMs": 10528.156848000013,
+          "failures": []
+        },
+        {
+          "name": "retired chunk cleanup drains expired replay pins in bounded batches before deleting their parent",
+          "status": "passed",
+          "durationMs": 11616.627843000024,
+          "failures": []
+        },
+        {
+          "name": "inventory preserves live chunks, quarantines corrupt objects, and handles a listed object disappearing",
+          "status": "passed",
+          "durationMs": 12723.372138999985,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "compact.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "1024 variable-size frames seal without retained rows; eight replay pages fetch one verified object",
+          "status": "passed",
+          "durationMs": 10564.271653,
+          "failures": []
+        },
+        {
+          "name": "normal cron passes preserve small tails; first-append age and explicit drain seal them",
+          "status": "passed",
+          "durationMs": 9924.278999,
+          "failures": []
+        },
+        {
+          "name": "an ordinary append updates its stream head once and leaves the due record unchanged",
+          "status": "passed",
+          "durationMs": 1114.8602470000005,
+          "failures": []
+        },
+        {
+          "name": "atomic ack batches validate sealed interior boundaries, inherited ranges and post-snapshot appends",
+          "status": "passed",
+          "durationMs": 15035.199494,
+          "failures": []
+        },
+        {
+          "name": "explicitly enabling object storage enrolls existing hot-only tails and fences the old binding",
+          "status": "passed",
+          "durationMs": 4319.370826999999,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "forks.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "concurrent duplicate partial forks acquire exactly one parent reference across sealed JSON",
+          "status": "passed",
+          "durationMs": 7631.213667,
+          "failures": []
+        },
+        {
+          "name": "fork creation racing source deletion either preserves the fixed generation or creates no fork",
+          "status": "passed",
+          "durationMs": 7608.493447000001,
+          "failures": []
+        },
+        {
+          "name": "a prepared sealed prefix cannot be attached to a replacement source generation",
+          "status": "passed",
+          "durationMs": 14449.168585,
+          "failures": []
+        },
+        {
+          "name": "cascade cleanup retains inherited sealed data until the last descendant is removed",
+          "status": "passed",
+          "durationMs": 9563.275548999998,
+          "failures": []
+        },
+        {
+          "name": "an already captured sealed replay survives concurrent logical cleanup and path recreation",
+          "status": "passed",
+          "durationMs": 6953.582515000002,
+          "failures": []
+        },
+        {
+          "name": "forking requires source-read authorization and cannot cross a tenant boundary",
+          "status": "passed",
+          "durationMs": 886.7646610000011,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "live.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "long-poll is woken by actual Realtime, including a final append with closure",
+          "status": "passed",
+          "durationMs": 1885.294066,
+          "failures": []
+        },
+        {
+          "name": "SSE delivers final bytes before EOF and closes without polling",
+          "status": "passed",
+          "durationMs": 1326.608717,
+          "failures": []
+        },
+        {
+          "name": "delete and recreate never attaches an existing live reader to the new UUID",
+          "status": "passed",
+          "durationMs": 1432.4857899999997,
+          "failures": []
+        },
+        {
+          "name": "canceling an idle reader releases its subscription promptly",
+          "status": "passed",
+          "durationMs": 810.6015079999997,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "maintenance.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "a hint uploads full frozen chunks while preserving small hot tails",
+          "status": "passed",
+          "durationMs": 4024.973973,
+          "failures": []
+        },
+        {
+          "name": "a tiny soft budget still gives wake publication and sealing a turn under outbox backlog",
+          "status": "passed",
+          "durationMs": 10283.510374000001,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "operations.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "explicit transaction budgets apply locally and restore a direct pooled session",
+          "status": "passed",
+          "durationMs": 366.8138550000001,
+          "failures": []
+        },
+        {
+          "name": "installation-wide reader slots cover separate server instances and release on cancellation",
+          "status": "passed",
+          "durationMs": 2696.2095520000003,
+          "failures": []
+        },
+        {
+          "name": "database expiry recovers abandoned admission slots after process loss",
+          "status": "passed",
+          "durationMs": 779.7916180000002,
+          "failures": []
+        },
+        {
+          "name": "quiescence waits for writers, fences cached runtimes, and resumes only after verification",
+          "status": "passed",
+          "durationMs": 6333.507519,
+          "failures": []
+        },
+        {
+          "name": "a worker paused outside SQL cannot publish after the serving epoch changes",
+          "status": "passed",
+          "durationMs": 6463.536523999999,
+          "failures": []
+        },
+        {
+          "name": "adoption binds the new environment and rejects matching data with stale configuration",
+          "status": "passed",
+          "durationMs": 2904.3783870000007,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "payloads.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "committed payload rows flow through Realtime without replaying SQL for every append",
+          "status": "passed",
+          "durationMs": 3226.9942800000003,
+          "failures": []
+        },
+        {
+          "name": "an append committed between authorization/catch-up and raw subscription is replayed exactly once",
+          "status": "passed",
+          "durationMs": 1701.4530859999995,
+          "failures": []
+        },
+        {
+          "name": "sealing or raw snapshot replacement recovers exact bytes through durable replay",
+          "status": "passed",
+          "durationMs": 6833.4178919999995,
+          "failures": []
+        },
+        {
+          "name": "buffer overflow and bounded window replacement recover from the durable cursor",
+          "status": "passed",
+          "durationMs": 2753.854880000001,
+          "failures": []
+        },
+        {
+          "name": "fork replay catches up inherited data before forwarding only child appends",
+          "status": "passed",
+          "durationMs": 5548.294679999999,
+          "failures": []
+        },
+        {
+          "name": "JSON payload forwarding preserves large numbers and JSON append boundaries",
+          "status": "passed",
+          "durationMs": 1215.947017999999,
+          "failures": []
+        },
+        {
+          "name": "final close waits for its contiguous bytes and delete/recreate never switches UUID",
+          "status": "passed",
+          "durationMs": 3006.4338050000006,
+          "failures": []
+        },
+        {
+          "name": "authentication expiry closes a raw payload session",
+          "status": "passed",
+          "durationMs": 5668.29751,
+          "failures": []
+        },
+        {
+          "name": "a paused reader survives payload overflow and sealing before final closure",
+          "status": "passed",
+          "durationMs": 8869.067487999997,
+          "failures": []
+        },
+        {
+          "name": "ttl expiry stops an idle payload session without extending its lifetime",
+          "status": "passed",
+          "durationMs": 6324.808147000003,
+          "failures": []
+        },
+        {
+          "name": "absolute expiry stops an idle payload session without extending its lifetime",
+          "status": "passed",
+          "durationMs": 5323.327236999998,
+          "failures": []
+        },
+        {
+          "name": "serving-epoch validation fences a raw session before recovery can activate",
+          "status": "passed",
+          "durationMs": 3440.948341000003,
+          "failures": []
+        },
+        {
+          "name": "a Realtime installation with the wrong serving epoch cannot supply payload rows",
+          "status": "passed",
+          "durationMs": 807.1808919999967,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "realtime.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "real Neon Realtime observes committed appends and closure across independent connections",
+          "status": "passed",
+          "durationMs": 1060.639015,
+          "failures": []
+        },
+        {
+          "name": "a tenant-filtered live query does not expose another tenant head",
+          "status": "passed",
+          "durationMs": 266.94568500000014,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "reclamation.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "snapshot pins survive epoch fencing, block recovery activation, and release after the old replay fails closed",
+          "status": "passed",
+          "durationMs": 4620.037304,
+          "failures": []
+        },
+        {
+          "name": "a sealed page holds a durable pin only during materialization and returns exact bytes",
+          "status": "passed",
+          "durationMs": 3223.175241000001,
+          "failures": []
+        },
+        {
+          "name": "a suspended materialization cannot emit after its monotonic deadline and releases its pin",
+          "status": "passed",
+          "durationMs": 3075.1158400000004,
+          "failures": []
+        },
+        {
+          "name": "partial fork preparation pins sealed bytes but cannot publish an edge onto a recreated source",
+          "status": "passed",
+          "durationMs": 4384.172028000001,
+          "failures": []
+        },
+        {
+          "name": "a replay cannot return after pin release exhausts its deadline",
+          "status": "passed",
+          "durationMs": 4236.490425,
+          "failures": []
+        },
+        {
+          "name": "a replay cannot return after final validation exhausts its deadline",
+          "status": "passed",
+          "durationMs": 3175.7973390000006,
+          "failures": []
+        },
+        {
+          "name": "Neon Object Storage provides bounded prefix inventory and idempotent exact-key deletion",
+          "status": "passed",
+          "durationMs": 687.203924999998,
+          "failures": []
+        },
+        {
+          "name": "signed wake tokens reject stale work after wake and subscription pruning without authorizing ordinary reads",
+          "status": "passed",
+          "durationMs": 14706.422064000002,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "rolling.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "a stopped packed schema-0007 upgrade preserves history and fenced wakes before canonical multi-instance qualification",
+          "status": "passed",
+          "durationMs": 127764.97409300001,
+          "failures": []
+        },
+        {
+          "name": "two packed canonical deployments share producer deduplication, ordering, and fencing",
+          "status": "passed",
+          "durationMs": 1519.9750969999877,
+          "failures": []
+        },
+        {
+          "name": "concurrent canonical seal workers publish mutually readable chunks and retain producer sessions",
+          "status": "passed",
+          "durationMs": 2885.848813999997,
+          "failures": []
+        },
+        {
+          "name": "canonical deployments preserve exact-number JSON and inherited sealed fork ranges",
+          "status": "passed",
+          "durationMs": 1897.5907560000196,
+          "failures": []
+        },
+        {
+          "name": "subscription registration, dispatch, claims, and scoped acks work across canonical deployments",
+          "status": "passed",
+          "durationMs": 2748.7156830000167,
+          "failures": []
+        },
+        {
+          "name": "both deployed Realtime instances deliver final contiguous bytes before EOF",
+          "status": "passed",
+          "durationMs": 908.5929570000153,
+          "failures": []
+        },
+        {
+          "name": "installation-wide admission bounds both deployments and releases canceled readers",
+          "status": "passed",
+          "durationMs": 10429.573249999987,
+          "failures": []
+        },
+        {
+          "name": "tenant and generation isolation survive multi-instance deletion and recreation",
+          "status": "passed",
+          "durationMs": 640.0720230000152,
+          "failures": []
+        },
+        {
+          "name": "recovery fences both canonical deployments and fresh artifacts resume the installation",
+          "status": "passed",
+          "durationMs": 12952.652581000002,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "storage.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "replay crosses sealed and hot data after a new server instance, preserving producer deduplication",
+          "status": "passed",
+          "durationMs": 6051.381514999999,
+          "failures": []
+        },
+        {
+          "name": "sealed JSON retains exact numeric lexemes and UTF-8 message indexes",
+          "status": "passed",
+          "durationMs": 2889.9239560000005,
+          "failures": []
+        },
+        {
+          "name": "an upload whose response is lost preserves local bytes and can be adopted after restart",
+          "status": "passed",
+          "durationMs": 4196.515402000001,
+          "failures": []
+        },
+        {
+          "name": "a worker with an expired claim cannot publish over its replacement",
+          "status": "passed",
+          "durationMs": 3746.6713120000004,
+          "failures": []
+        },
+        {
+          "name": "checksum corruption fails closed before returning any stored bytes",
+          "status": "passed",
+          "durationMs": 665.4377829999976,
+          "failures": []
+        },
+        {
+          "name": "a different bucket or branch identity requires explicit recovery",
+          "status": "passed",
+          "durationMs": 472.96172099999967,
+          "failures": []
+        },
+        {
+          "name": "SIGKILL after publication preserves sealed replay without local payloads",
+          "status": "passed",
+          "durationMs": 3893.737069999999,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "subscriptions.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "one bounded dispatch coalesces committed appends without consuming intent beyond its cutoff",
+          "status": "passed",
+          "durationMs": 13304.538573,
+          "failures": []
+        },
+        {
+          "name": "resumed multi-batch fan-out preserves appends needed by a newly registered lower UUID",
+          "status": "passed",
+          "durationMs": 22232.914745000002,
+          "failures": []
+        },
+        {
+          "name": "registration backfill cannot be overtaken by dispatch when an append commits before registration does",
+          "status": "passed",
+          "durationMs": 8674.654616,
+          "failures": []
+        },
+        {
+          "name": "a late-committing earlier change is delivered after a later change was already processed",
+          "status": "passed",
+          "durationMs": 10822.505167000003,
+          "failures": []
+        },
+        {
+          "name": "synchronous webhook completion acks only its snapshot and wakes again for a concurrent append",
+          "status": "passed",
+          "durationMs": 5000.793143000003,
+          "failures": []
+        },
+        {
+          "name": "webhook retries honor a persisted deadline after a fresh handler and keep stable signing keys",
+          "status": "passed",
+          "durationMs": 6277.774820000006,
+          "failures": []
+        },
+        {
+          "name": "leases use database time, heartbeat, and generation fencing; invalid ack batches are atomic",
+          "status": "passed",
+          "durationMs": 7686.4367559999955,
+          "failures": []
+        },
+        {
+          "name": "quota-blocked glob discovery preserves the earliest cursor when capacity grows before the next append",
+          "status": "passed",
+          "durationMs": 12624.65587799999,
+          "failures": []
+        },
+        {
+          "name": "pull-wake appends are observable through actual Neon Realtime",
+          "status": "passed",
+          "durationMs": 7302.685903999998,
+          "failures": []
+        },
+        {
+          "name": "signing-key rotation preserves old JWKS verification while new deliveries use the new key",
+          "status": "passed",
+          "durationMs": 5911.820357999997,
+          "failures": []
+        },
+        {
+          "name": "acks validate inherited sealed frame boundaries before advancing a fork cursor",
+          "status": "passed",
+          "durationMs": 6288.5858549999975,
+          "failures": []
+        },
+        {
+          "name": "explicit and glob membership retain independent links and at-tail baselines",
+          "status": "passed",
+          "durationMs": 1912.2283310000057,
+          "failures": []
+        },
+        {
+          "name": "authorization sees the normalized selector and destination and can deny wake-stream writes",
+          "status": "passed",
+          "durationMs": 28.63678900001105,
+          "failures": []
+        }
+      ]
+    },
+    {
+      "file": "upgrade.test.ts",
+      "status": "passed",
+      "message": "",
+      "tests": [
+        {
+          "name": "stopped upgrade from schema 0004 preserves exact v1 objects, interior forks and producer retries",
+          "status": "passed",
+          "durationMs": 5056.27147,
+          "failures": []
+        },
+        {
+          "name": "preparation fences warm epochs; failed object verification retains every old row and conversion resumes",
+          "status": "passed",
+          "durationMs": 3284.9483310000005,
+          "failures": []
+        },
+        {
+          "name": "retired metadata converts from its exact retained index after the object has been collected",
+          "status": "passed",
+          "durationMs": 2169.0333819999996,
+          "failures": []
+        },
+        {
+          "name": "conversion preserves old frozen and unassigned hot frames across the monotonic staging floor",
+          "status": "passed",
+          "durationMs": 6710.6227579999995,
+          "failures": []
+        }
+      ]
+    }
+  ]
+}
