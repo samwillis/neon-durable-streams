@@ -130,7 +130,7 @@ test.each(['pin release', 'final validation'] as const)('a replay cannot return 
       const client = await pool.connect()
       return { release: client.release.bind(client), async query(text: string, parameters?: unknown[]) {
         const result = await client.query(text, parameters)
-        if (text.includes('.replay_pins WHERE id = $1')) {
+        if (/\.replay_pins\s+WHERE\s+id\s*=\s*\$1/.test(text)) {
           released = true
           if (stage === 'pin release') { now += 60_001; delayed = true }
         }

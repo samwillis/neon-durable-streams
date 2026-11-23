@@ -125,6 +125,9 @@ test('buffer overflow and bounded window replacement recover from the durable cu
     const results = await Promise.all(['A-', 'B-', 'C-'].map((body) => request(handler, 'bounded', 'POST', body)))
     const tail = results.map((response) => response.headers.get('Stream-Next-Offset')!).sort().at(-1)!
     for (const part of ['A-', 'B-', 'C-']) await live.readUntil(part)
+    // Drain the complete checkpoint before expecting downstream demand to
+    // renew its window; data and control may arrive in separate body chunks.
+    await live.readUntil(`"streamNextOffset":"${tail}"`)
     await expect.poll(() => watches.slice(live.watchIndex + 1).some((watch) => watch.after === tail), { timeout: 5000, interval: 50 }).toBe(true)
   } finally { await live.close() }
 })
