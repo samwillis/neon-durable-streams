@@ -49,21 +49,21 @@ pool.on('connect', (client) => {
 const notifier = createNeonRealtimeNotifier({ url: required('DS_REALTIME_URL'), secret: required('DS_REALTIME_SECRET'),
   database: new URL(required('DATABASE_URL')).pathname.slice(1) })
 const rawObjects = createS3ChunkStorage({ endpoint: required('AWS_ENDPOINT_URL_S3'), region: required('AWS_REGION'), bucket: required('DS_BUCKET') })
-const objects = { ...rawObjects,
-  async get(...args) {
-    const metrics = context.getStore()
-    const started = performance.now()
-    try {
-      const bytes = await rawObjects.get(...args)
-      if (metrics) { metrics.objectGets++; metrics.objectBytes += bytes.byteLength }
-      return bytes
-    } finally { if (metrics) metrics.objectMs += performance.now() - started }
-  },
+async function objectRead(method, args) {
+  const metrics = context.getStore()
+  const started = performance.now()
+  if (metrics) { metrics.objectGets++; if (method === 'getRange') metrics.objectRangeGets++ }
+  try {
+    const bytes = await rawObjects[method](...args)
+    if (metrics) metrics.objectBytes += bytes.byteLength
+    return bytes
+  } finally { if (metrics) metrics.objectMs += performance.now() - started }
 }
+const objects = { ...rawObjects, get: (...args) => objectRead('get', args), getRange: (...args) => objectRead('getRange', args) }
 function server(cacheBytes = settings.cacheBytes) {
   return createDurableStreams({ postgres: { pool, schema, environmentId: required('DS_ENVIRONMENT_ID') },
     auth: { authenticate: () => ({ tenantId: 'replay', subject: 'benchmark' }), authorize: () => true },
-    storage: { objects, targetChunkBytes: settings.targetChunkBytes, maxChunkFrames: settings.maxChunkFrames, cacheBytes },
+    storage: { objects, targetChunkBytes: settings.targetChunkBytes, maxChunkFrames: settings.maxChunkFrames, blockBytes: settings.blockBytes, cacheBytes },
     subscriptions: { keyring: parseSubscriptionKeyring(required('DS_KEYRING_JSON')) },
     live: { notifier, maxReaders: 64, maxSseDurationMs: 10000, heartbeatMs: 1000 },
   })
@@ -109,7 +109,7 @@ async function handle(request) {
   if (!url.pathname.startsWith('/v1/stream/replay-')) return new Response(null, { status: 404 })
   const cold = request.headers.get('x-replay-cache') === 'cold'
   const handler = cold ? server(0) : shared
-  const metrics = { sqlCalls: 0, transactions: 0, pinInsertCalls: 0, pinDeleteCalls: 0, sqlMs: 0, objectGets: 0, objectBytes: 0, objectMs: 0 }
+  const metrics = { sqlCalls: 0, transactions: 0, pinInsertCalls: 0, pinDeleteCalls: 0, sqlMs: 0, objectGets: 0, objectRangeGets: 0, objectBytes: 0, objectMs: 0 }
   const started = performance.now()
   const before = process.memoryUsage()
   let response

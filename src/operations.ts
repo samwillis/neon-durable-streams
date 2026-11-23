@@ -150,7 +150,7 @@ export async function verifyRecovery(pool: Pool, options: VerifyRecoveryOptions)
     await new SubscriptionSigner(pool, options.schema ?? 'durable_streams', options.keyring).signature(Buffer.alloc(0))
   }
   if (before.recovery_complete) return { complete: true, verified: Number(before.recovery_verified) }
-  const manifests = await pool.query<{ id: string; stream_id: string; object_key: string; sha256: string; encoded_bytes: number; frame_count: number; payload_bytes: string; start_offset: string; end_offset: string; end_deltas: number[] }>(
+  const manifests = await pool.query<{ id: string; stream_id: string; object_key: string; sha256: string; encoded_bytes: number; frame_count: number; payload_bytes: string; start_offset: string; end_offset: string; end_deltas: number[]; block_directory: Buffer }>(
     `SELECT * FROM ${schema}.chunks WHERE state = 'sealed' AND retired_at IS NULL
       AND ($1::uuid IS NULL OR id > $1) ORDER BY id LIMIT $2`, [before.recovery_cursor, maximum])
   for (const chunk of manifests.rows) {
@@ -158,6 +158,7 @@ export async function verifyRecovery(pool: Pool, options: VerifyRecoveryOptions)
     const bytes = await options.objects.get(chunk.object_key, chunk.encoded_bytes)
     if (bytes.length !== chunk.encoded_bytes) throw new StorageCompatibilityError('Recovery object length differs from manifest')
     const frames = decodeChunk(bytes, { installationId: before.id, streamId: chunk.stream_id, chunkId: chunk.id }, chunk.sha256).frames
+    if (!bytes.subarray(68, 68 + bytes.readUInt32BE(64)).equals(chunk.block_directory)) throw new StorageCompatibilityError('Recovery object differs from block directory')
     if (frames.length !== chunk.frame_count || frames[0]?.start !== chunk.start_offset || frames.at(-1)?.end !== chunk.end_offset
       || BigInt(frames.reduce((n, frame) => n + frame.payload.length, 0)) !== BigInt(chunk.payload_bytes)) throw new StorageCompatibilityError('Recovery object frames differ from manifest')
     if (!equalDirectory(boundaryDirectory(chunk.start_offset, frames),chunk.end_deltas)) throw new StorageCompatibilityError('Recovery object differs from boundary directory')

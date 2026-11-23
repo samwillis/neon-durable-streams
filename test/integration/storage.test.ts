@@ -7,7 +7,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createDurableStreams } from '../../src/index.js'
 import type { DurableStreamsServer } from '../../src/index.js'
-import { MIGRATION_IDS, migrate } from '../../src/migrations.js'
+import { MIGRATION_IDS, migrate, STORAGE_VERSION } from '../../src/migrations.js'
 import { transaction } from '../../src/transaction.js'
 
 const database = process.env.TEST_DATABASE_URL
@@ -103,7 +103,7 @@ describe('transaction and migration guarantees', () => {
     const prior = (await pool.query(`SELECT id FROM "${schema}".installation`)).rows[0].id as string
     await pool.query(`DELETE FROM "${schema}".installation`)
     try { await expect(migrate(pool, { schema })).rejects.toThrow('explicit recovery') }
-    finally { await pool.query(`INSERT INTO "${schema}".installation (id, storage_version) VALUES ($1, 1)`, [prior]) }
+    finally { await pool.query(`INSERT INTO "${schema}".installation (id, storage_version) VALUES ($1, $2)`, [prior, STORAGE_VERSION]) }
   })
 })
 

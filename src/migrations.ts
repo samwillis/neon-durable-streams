@@ -6,6 +6,7 @@ import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
 export const MIGRATION_IDS = ['0001_installation', '0002_streams', '0003_storage', '0004_subscriptions'] as const
+export const STORAGE_VERSION = 2
 
 export interface Migration {
   readonly id: string
@@ -49,10 +50,10 @@ export async function migrate(pool: Pool, options: { readonly schema?: string; r
       completed.push(migration.id)
     }
     if (completed.includes('0001_installation')) {
-      await client.query(`INSERT INTO ${identifier}.installation (id, storage_version) VALUES ($1, 1)`, [randomUUID()])
+      await client.query(`INSERT INTO ${identifier}.installation (id, storage_version) VALUES ($1, $2)`, [randomUUID(), STORAGE_VERSION])
     } else {
       const installation = await client.query<{ storage_version: number }>(`SELECT storage_version FROM ${identifier}.installation`)
-      if (installation.rows.length !== 1 || installation.rows[0]!.storage_version !== 1) {
+      if (installation.rows.length !== 1 || installation.rows[0]!.storage_version !== STORAGE_VERSION) {
         throw new StorageCompatibilityError('Missing or incompatible installation identity; explicit recovery required')
       }
     }

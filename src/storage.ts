@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { Pool, PoolClient } from 'pg'
-import { chunkDigest, decodeChunk, encodeChunk } from './chunk-codec.js'
+import { chunkDigest, decodeChunk, ChunkIntegrityError } from './chunk-codec.js'
 import type { ChunkFrame } from './chunk-codec.js'
+import { encodeBlockObject, decodeBlock, unpackBlockDirectory } from './block-codec.js'
 import { StorageCompatibilityError } from './errors.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
@@ -9,7 +10,7 @@ import { assertReplayDeadline } from './replay.js'
 import { boundaryDirectory, equalDirectory } from './boundary-directory.js'
 import { VerifiedChunkCache } from './chunk-cache.js'
 import { advanceOffset } from './offset.js'
-import type { StoredFrame } from './replay-plan.js'
+import type { StoredFrame, ObjectRange } from './replay-plan.js'
 
 export interface ChunkInventoryPage {
   readonly objects: readonly { readonly key: string; readonly size: number }[]
@@ -43,6 +44,8 @@ export interface StorageOptions {
   readonly maxChunkAgeMs?: number
   /** Per-server verified-object cache budget; zero disables retention. */
   readonly cacheBytes?: number
+  /** Encoded byte target for independently verified object ranges. */
+  readonly blockBytes?: number
 }
 interface FrozenClaim {
   readonly id: string
@@ -59,6 +62,7 @@ interface PreparedChunk {
   readonly claim: FrozenClaim
   readonly identity: { readonly installationId: string; readonly streamId: string; readonly chunkId: string }
   readonly bytes: Buffer
+  readonly blockDirectory: Buffer
   readonly digest: string
   readonly key: string
 }
@@ -69,6 +73,7 @@ export class ChunkManager {
   private readonly schema: string
   private readonly target: number
   private readonly maximumFrames: number
+  private readonly blockBytes: number
   private readonly lease: number
   readonly maxAgeMs: number
   private readonly cache: VerifiedChunkCache
@@ -78,11 +83,13 @@ export class ChunkManager {
     this.schema = validateSchema(schema)
     this.target = options.targetChunkBytes ?? 4 * 1024 * 1024
     this.maximumFrames = options.maxChunkFrames ?? 1024
+    this.blockBytes = options.blockBytes ?? 65536
     this.lease = options.workerLeaseMs ?? 120_000
     this.maxAgeMs = options.maxChunkAgeMs ?? 3_600_000
     this.cache = new VerifiedChunkCache(options.cacheBytes ?? 32 * 1024 * 1024)
     if (!Number.isSafeInteger(this.target) || this.target < 1 || this.target > 16 * 1024 * 1024
       || !Number.isSafeInteger(this.maximumFrames) || this.maximumFrames < 1 || this.maximumFrames > 1024
+      || !Number.isSafeInteger(this.blockBytes) || this.blockBytes < 4096 || this.blockBytes > 16 * 1024 * 1024
       || !Number.isSafeInteger(this.lease) || this.lease < 1000 || this.lease > 300_000
       || !Number.isSafeInteger(this.maxAgeMs) || this.maxAgeMs < 1 || this.maxAgeMs > 604_800_000
       || !options.objects.identity || options.objects.identity.length > 2048) throw new RangeError('Invalid storage options')
@@ -166,10 +173,11 @@ export class ChunkManager {
     const frames = source.rows.map((frame) => ({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }))
     if (frames.length !== claim.frame_count || frames[0]?.start !== claim.start_offset || frames.at(-1)?.end !== claim.end_offset
       || BigInt(frames.reduce((sum, frame) => sum + (frame.payload?.length ?? 0), 0)) !== BigInt(claim.payload_bytes)) throw new Error('Frozen manifest mismatch')
-    const bytes = encodeChunk({ ...identity, frames })
+    const encoded = encodeBlockObject({ ...identity, frames }, this.blockBytes)
+    const bytes = encoded.bytes
     const digest = chunkDigest(bytes)
     const key = `v1/${identity.installationId}/${identity.streamId}/${identity.chunkId}/${digest}.ndsc`
-    return { claim, identity, bytes, digest, key }
+    return { claim, identity, bytes, blockDirectory: encoded.packedDirectory, digest, key }
   }
   private async recordIntent({ claim, key, digest, bytes }: PreparedChunk): Promise<boolean> {
     return this.guard.run({}, async (client) => {
@@ -193,13 +201,13 @@ export class ChunkManager {
     const directory = boundaryDirectory(claim.start_offset, decodeChunk(verified, identity, digest).frames)
     return { ...prepared, directory }
   }
-  private async publish({ claim, key, digest, bytes, directory }: VerifiedChunk): Promise<boolean> {
+  private async publish({ claim, key, digest, bytes, directory, blockDirectory }: VerifiedChunk): Promise<boolean> {
     return this.guard.run({}, async (client) => {
       const result = await client.query(`UPDATE ${this.schema}.chunks SET state = 'sealed', object_key = $4, sha256 = $5,
-        encoded_bytes = $6, end_deltas=$7, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
+        encoded_bytes = $6, end_deltas=$7, block_directory=$8, sealed_at = clock_timestamp(), claim_until = NULL, claim_token = NULL
         WHERE id = $1 AND claim_token = $2 AND claim_epoch = $3 AND state = 'frozen' AND claim_until > clock_timestamp()
         AND retired_at IS NULL RETURNING id`,
-      [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length, directory])
+      [claim.id, claim.claim_token, claim.claim_epoch, key, digest, bytes.length, directory, blockDirectory])
       if (!result.rowCount) return false
       const cleared = await client.query(`DELETE FROM ${this.schema}.appends WHERE stream_id=$1 AND end_offset>$2 AND end_offset<=$3`, [claim.stream_id,claim.start_offset,claim.end_offset])
       if (cleared.rowCount !== claim.frame_count) throw new Error('Chunk publication frame mismatch')
@@ -220,17 +228,8 @@ export class ChunkManager {
     for (const frame of frames) {
       assertReplayDeadline(deadline)
       if (frame.storage === 'postgres') { result.push({ start: frame.start_offset, end: frame.end_offset, payload: frame.payload, messageEnds: frame.message_ends }); continue }
-      const { manifest } = frame
-      const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: manifest.id }
-      const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), manifest.sha256, manifest.encodedBytes])
-      const decoded = await this.cache.get(key, async () => {
-        const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes)
-        if (bytes.length !== manifest.encodedBytes) throw new Error('Sealed object length differs from manifest')
-        return decodeChunk(bytes, identity, manifest.sha256)
-      }, manifest.encodedBytes)
+      const selected = await this.readObjectRange(frame)
       assertReplayDeadline(deadline)
-      if (!equalDirectory(boundaryDirectory(manifest.start, decoded.frames), manifest.endDeltas)) throw new Error('Sealed object differs from boundary directory')
-      const selected = decoded.frames.slice(frame.firstFrame - 1, frame.lastFrame)
       if (selected.length !== frame.lastFrame - frame.firstFrame + 1 || selected[0]?.start !== frame.start_offset || selected.at(-1)?.end !== frame.end_offset
         || selected.reduce((sum, value) => sum + value.payload.length, 0) !== frame.payload_bytes) throw new Error('Sealed object differs from planned range')
       // The store copies these private views into its response or fork prefix.
@@ -238,5 +237,57 @@ export class ChunkManager {
       result.push(...selected)
     }
     return result
+  }
+
+  private async readObjectRange(frame: ObjectRange): Promise<readonly ChunkFrame[]> {
+    const { manifest } = frame
+    const identity = { installationId: this.installationId!, streamId: frame.stream_id, chunkId: manifest.id }
+    const key = JSON.stringify([this.options.objects.identity, ...Object.values(identity), manifest.sha256, manifest.encodedBytes, chunkDigest(manifest.blockDirectory)])
+    const directory = unpackBlockDirectory(manifest.blockDirectory, manifest.encodedBytes, manifest.endDeltas.length)
+    const base = BigInt(manifest.start.slice(17))
+    const boundary = (index: number) => index === 0 ? manifest.start
+      : `${manifest.start.slice(0, 17)}${(base + BigInt(manifest.endDeltas[index - 1]!)).toString().padStart(16, '0')}`
+    for (const block of directory) {
+      const first = block.firstFrame, last = first + block.frameCount
+      const payloadBytes = manifest.endDeltas[last - 1]! - (first === 0 ? 0 : manifest.endDeltas[first - 1]!) - 5 * block.frameCount
+      if (block.start !== boundary(first) || block.end !== boundary(last) || block.payloadBytes !== payloadBytes) throw new Error('Block directory differs from durable boundaries')
+    }
+    const blocks = directory.filter((block) => block.firstFrame < frame.lastFrame && block.firstFrame + block.frameCount >= frame.firstFrame)
+    const cached = this.cache.peek(key)
+    if (cached) return cached.frames.slice(frame.firstFrame - 1, frame.lastFrame)
+    if (blocks.length === directory.length) {
+      const whole = await this.cache.get(key, async () => {
+        const bytes = await this.options.objects.get(manifest.key, manifest.encodedBytes)
+        if (bytes.length !== manifest.encodedBytes) throw new Error('Sealed object length differs from manifest')
+        const decoded = decodeChunk(bytes, identity, manifest.sha256)
+        const packedLength = bytes.readUInt32BE(64)
+        if (!bytes.subarray(68, 68 + packedLength).equals(manifest.blockDirectory)
+          || !equalDirectory(boundaryDirectory(manifest.start, decoded.frames), manifest.endDeltas)) throw new Error('Sealed object differs from its manifest')
+        return decoded
+      }, manifest.encodedBytes)
+      return whole.frames.slice(frame.firstFrame - 1, frame.lastFrame)
+    }
+    if (!blocks.length) throw new Error('Replay selected no object blocks')
+    const start = blocks[0]!.byteStart, end = blocks.at(-1)!.byteStart + blocks.at(-1)!.byteLength
+    let download: Promise<Buffer> | undefined
+    const decoded = await Promise.all(blocks.map((block) => this.cache.get(`${key}:${block.byteStart}:${block.sha256}`, async () => {
+      // Every missing block in this contiguous selection shares one Range GET.
+      download ??= this.options.objects.getRange(manifest.key, { start, end, totalBytes: manifest.encodedBytes }).then((bytes) => {
+        if (bytes.length !== end - start) throw new ChunkIntegrityError('Range length differs from requested blocks')
+        return bytes
+      })
+      const bytes = await download
+      const localStart = block.byteStart - start
+      // Each retained block owns its allocation, so one survivor cannot retain
+      // an entire evicted multi-block download outside the cache accounting.
+      const owned = blocks.length === 1 ? bytes : Buffer.from(bytes.subarray(localStart, localStart + block.byteLength))
+      return { ...identity, frames: decodeBlock(owned, block) }
+    }, block.byteLength)))
+    const selected: ChunkFrame[] = []
+    for (const [index, chunk] of decoded.entries()) {
+      const block = blocks[index]!
+      selected.push(...chunk.frames.slice(Math.max(0, frame.firstFrame - 1 - block.firstFrame), frame.lastFrame - block.firstFrame))
+    }
+    return selected
   }
 }

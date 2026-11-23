@@ -6,7 +6,7 @@ import { formatPayloads, mediaType, preparePayload } from './payload.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
 import type { TransactionOptions } from './transaction.js'
-import { MIGRATION_IDS } from './migrations.js'
+import { MIGRATION_IDS, STORAGE_VERSION } from './migrations.js'
 import { streamPresence, unavailableGenerationStatus } from './stream-lifecycle.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions } from './storage.js'
@@ -138,7 +138,7 @@ export class PostgresStreamStore {
   async assertReady(): Promise<void> {
     this.ready ??= this.pool.query<{ storage_version: number; storage_identity: string | null }>(`SELECT storage_version, storage_identity FROM ${this.schema}.installation`)
       .then(async (result) => {
-        if (result.rows.length !== 1 || result.rows[0]!.storage_version !== 1) throw new StorageCompatibilityError('Unsupported storage version')
+        if (result.rows.length !== 1 || result.rows[0]!.storage_version !== STORAGE_VERSION) throw new StorageCompatibilityError('Unsupported storage version')
         const migrations = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.migrations ORDER BY id`)
         const history = JSON.stringify(migrations.rows.map((row) => row.id))
         if (history !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations; install the current baseline in a fresh schema')
@@ -325,7 +325,7 @@ export class PostgresStreamStore {
         SELECT stream_id,chunk_id,min(start_offset) AS start_offset,max(end_offset) AS end_offset,sum(payload_bytes)::integer AS payload_bytes,
           min(ordinal) AS first_frame,max(ordinal) AS last_frame FROM bounded WHERE bytes<=$3
         GROUP BY stream_id,chunk_id,CASE WHEN chunk_id IS NULL THEN end_offset ELSE NULL END
-      ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.end_deltas,c.start_offset AS chunk_start
+      ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.end_deltas,c.block_directory,c.start_offset AS chunk_start
         FROM selected s LEFT JOIN ${this.schema}.appends a ON s.chunk_id IS NULL AND a.stream_id=s.stream_id AND a.end_offset=s.end_offset
         LEFT JOIN ${this.schema}.chunks c ON c.id=s.chunk_id ORDER BY s.start_offset`, [id, start, bytes, limit])
     let expected = start

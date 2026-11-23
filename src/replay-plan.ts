@@ -19,6 +19,7 @@ export interface ObjectRange extends Range {
     readonly sha256: string
     readonly encodedBytes: number
     readonly endDeltas: number[]
+    readonly blockDirectory: Buffer
     readonly start: string
   }
   readonly firstFrame: number
@@ -35,6 +36,7 @@ export interface ReplayRow extends Range {
   readonly sha256: string | null
   readonly encoded_bytes: number | null
   readonly end_deltas: number[] | null
+  readonly block_directory: Buffer | null
   readonly chunk_start: string | null
   readonly first_frame: number | null
   readonly last_frame: number | null
@@ -48,9 +50,9 @@ export function decodeReplayRow(row: ReplayRow): StoredFrame {
     return { ...range, storage: 'postgres', payload: row.payload, message_ends: row.message_ends }
   }
   if (row.payload !== null || !row.object_key || !row.sha256 || !row.encoded_bytes || row.encoded_bytes < 1
-    || !row.end_deltas?.length || !row.chunk_start || row.first_frame === null || row.last_frame === null
+    || !row.end_deltas?.length || !Buffer.isBuffer(row.block_directory) || !row.block_directory.length || !row.chunk_start || row.first_frame === null || row.last_frame === null
     || !Number.isSafeInteger(row.first_frame) || !Number.isSafeInteger(row.last_frame)
     || row.first_frame < 1 || row.last_frame < row.first_frame || row.last_frame > row.end_deltas.length) throw new Error('Sealed range is missing its manifest')
   return { ...range, storage: 'object', manifest: { id: row.chunk_id, key: row.object_key, sha256: row.sha256,
-    encodedBytes: row.encoded_bytes, endDeltas: row.end_deltas, start: row.chunk_start }, firstFrame: row.first_frame, lastFrame: row.last_frame }
+    encodedBytes: row.encoded_bytes, endDeltas: row.end_deltas, blockDirectory: row.block_directory, start: row.chunk_start }, firstFrame: row.first_frame, lastFrame: row.last_frame }
 }

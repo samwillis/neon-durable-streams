@@ -1,6 +1,6 @@
 import { advanceOffset, parseOffset } from './offset.js'
-import { chunkDigest, ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-codec.js'
-import type { Chunk, ChunkFrame, ChunkIdentity } from './chunk-codec.js'
+import { chunkDigest, ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-types.js'
+import type { Chunk, ChunkFrame, ChunkIdentity } from './chunk-types.js'
 
 const MAGIC = Buffer.from('NDSBLK02')
 const HEADER_BYTES = 68

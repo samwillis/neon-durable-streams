@@ -19,6 +19,7 @@ CREATE TABLE __SCHEMA__.chunks (
   frame_count integer NOT NULL CHECK (frame_count BETWEEN 1 AND 1024),
   payload_bytes bigint NOT NULL CHECK (payload_bytes > 0),
   end_deltas integer[],
+  block_directory bytea,
   claim_token uuid,
   claim_epoch bigint NOT NULL DEFAULT 0,
   claim_until timestamptz,
@@ -39,7 +40,8 @@ CREATE TABLE __SCHEMA__.chunks (
   CONSTRAINT chunk_directory_shape CHECK
     (end_deltas IS NULL OR __SCHEMA__.valid_directory(end_deltas,frame_count,payload_bytes,start_offset,end_offset)),
   CONSTRAINT sealed_directory_required CHECK
-    ((state='sealed' AND end_deltas IS NOT NULL) OR (state='frozen' AND end_deltas IS NULL))
+    ((state='sealed' AND end_deltas IS NOT NULL AND block_directory IS NOT NULL AND octet_length(block_directory)>0)
+      OR (state='frozen' AND end_deltas IS NULL AND block_directory IS NULL))
 );
 CREATE INDEX chunks_pending ON __SCHEMA__.chunks (created_at) WHERE state = 'frozen';
 CREATE INDEX chunks_retired ON __SCHEMA__.chunks (retired_at, id) WHERE retired_at IS NOT NULL;

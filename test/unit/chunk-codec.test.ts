@@ -6,8 +6,8 @@ import { advanceOffset, ZERO_OFFSET } from '../../src/offset.js'
 import { preparePayload } from '../../src/payload.js'
 
 const identity = { installationId: '00112233-4455-6677-8899-aabbccddeeff', streamId: '11111111-1111-4111-8111-111111111111', chunkId: '22222222-2222-4222-8222-222222222222' }
-test('v1 matches the independently specified binary fixture', () => {
-  const golden = Buffer.from(readFileSync(new URL('../fixtures/chunks/v1.hex', import.meta.url), 'utf8').trim(), 'hex')
+test('v2 matches the independently specified binary fixture', () => {
+  const golden = Buffer.from(readFileSync(new URL('../fixtures/chunks/v2.hex', import.meta.url), 'utf8').trim(), 'hex')
   const frames = [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET, 2), payload: Buffer.from('hi'), messageEnds: null }]
   expect(encodeChunk({ ...identity, frames })).toEqual(golden)
   expect(decodeChunk(golden, identity, chunkDigest(golden))).toEqual({ ...identity, frames })

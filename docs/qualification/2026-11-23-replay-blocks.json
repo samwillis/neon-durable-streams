@@ -1,0 +1,50 @@
+{
+  "scope": "Normal Fetch handler on actual Neon Postgres and Object Storage from the coordinator. This engineering snapshot precedes deployed matrix and complete qualification.",
+  "parentCommit": "270b10a1f372f49b251465799964e9ea688bafd8",
+  "sourceDirty": true,
+  "runtimeSnapshotSha256": "367a5866fce0b8e8397b90aaf74f8b09a57c05eafaa51fd024927d99256a8271",
+  "testSha256": "0d75645384dac43fb79cc053304132cd819962de80cd780bbab807d1caf3f895",
+  "storageVersion": 2,
+  "objectFormat": 2,
+  "total": 7,
+  "passed": 7,
+  "failed": 0,
+  "skipped": 0,
+  "cases": [
+    {
+      "name": "a cold interior seek downloads one verified block and reuses it for another frame",
+      "passed": true,
+      "durationMs": 2977.184291999998
+    },
+    {
+      "name": "adjacent selected blocks coalesce into one partial HTTP request",
+      "passed": true,
+      "durationMs": 1948.5533330000035
+    },
+    {
+      "name": "concurrent readers share the same block download",
+      "passed": true,
+      "durationMs": 2386.7346250000046
+    },
+    {
+      "name": "a corrupt later block fails the complete response before any selected data is returned",
+      "passed": true,
+      "durationMs": 1822.068333000003
+    },
+    {
+      "name": "invalid physical manifest bounds are rejected before issuing object requests",
+      "passed": true,
+      "durationMs": 1741.469707999997
+    },
+    {
+      "name": "a verified full-object cache entry also serves subsequent interior reads",
+      "passed": true,
+      "durationMs": 2949.3692500000034
+    },
+    {
+      "name": "partial JSON replay across a fork cap preserves exact numbers and UTF-8",
+      "passed": true,
+      "durationMs": 19221.96979100001
+    }
+  ]
+}

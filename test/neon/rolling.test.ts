@@ -8,7 +8,7 @@ import { zipSync } from 'fflate'
 import { createNeonClient } from '@neon/sdk'
 import pg from 'pg'
 import { afterAll, beforeAll, expect, test } from 'vitest'
-import { migrate, migrationPlan } from '../../src/migrations.js'
+import { migrate, migrationPlan, STORAGE_VERSION } from '../../src/migrations.js'
 import { beginRecovery, finishRecovery, inspectInstallation, verifyRecovery } from '../../src/operations.js'
 import { createS3ChunkStorage } from '../../src/s3.js'
 import { initializeSubscriptions, parseSubscriptionKeyring } from '../../src/subscriptions.js'
@@ -165,7 +165,7 @@ afterAll(async () => {
       scope: 'Eight same-candidate multi-instance checks on a fresh four-file baseline; no cross-version compatibility claim', checks: { expected, passed: passed.length, names: passed }, cleaned, generatedAt: new Date().toISOString(), testSha256,
       node: process.version, region: env.AWS_REGION,
       artifacts: prepared ? Object.fromEntries(Object.entries(prepared.artifacts).map(([key, { packageRoot: _root, consumer: _consumer, ...artifact }]) => [key, artifact])) : {},
-      runtimes: runtimes.map(({ url: _url, ...runtime }) => runtime), storageVersion: 1,
+      runtimes: runtimes.map(({ url: _url, ...runtime }) => runtime), storageVersion: STORAGE_VERSION,
       migrations: (await migrationPlan(schema)).map(({ id, checksum }) => ({ id, checksum })),
     }, null, 2) + '\n')
   }

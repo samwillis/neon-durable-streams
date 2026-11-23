@@ -11,16 +11,19 @@ export class VerifiedChunkCache {
   constructor(private readonly budget: number) {
     if (!Number.isSafeInteger(budget) || budget < 0 || budget > 256 * 1024 * 1024) throw new RangeError('Invalid verified chunk cache budget')
   }
-  async get(key: string, load: () => Promise<Chunk>, encodedBytes: number): Promise<Chunk> {
+  peek(key: string): Chunk | undefined {
     const found = this.entries.get(key)
-    if (found) {
-      this.entries.delete(key)
-      this.entries.set(key, found)
-      return found.chunk
-    }
+    if (!found) return undefined
+    this.entries.delete(key)
+    this.entries.set(key, found)
+    return found.chunk
+  }
+  async get(key: string, load: () => Promise<Chunk>, encodedBytes: number): Promise<Chunk> {
+    const found = this.peek(key)
+    if (found) return found
     const pending = this.pending.get(key)
     if (pending) return pending
-    if (this.pending.size >= 128)
+    if (this.pending.size >= 4096)
       throw new StreamError(503, 'REPLAY_BUSY', 'Too many object reads; retry from the durable checkpoint', { 'Retry-After': '1' })
     const work = Promise.resolve()
       .then(load)
