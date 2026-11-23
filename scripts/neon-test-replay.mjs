@@ -27,7 +27,7 @@ const integer = (name, fallback, min, max) => {
   return value
 }
 const settings = { targetChunkBytes: integer('REPLAY_CHUNK_BYTES', 4 * 1024 * 1024, 1, 16 * 1024 * 1024),
-  maxChunkFrames: integer('REPLAY_CHUNK_FRAMES', 131072, 1, 131072), blockBytes: integer('REPLAY_BLOCK_BYTES', 65536, 4096, 16 * 1024 * 1024),
+  maxChunkFrames: integer('REPLAY_CHUNK_FRAMES', 8192, 1, 131072), blockBytes: integer('REPLAY_BLOCK_BYTES', 65536, 4096, 16 * 1024 * 1024),
   cacheBytes: integer('REPLAY_CACHE_BYTES', 32 * 1024 * 1024, 0, 256 * 1024 * 1024), readAhead: integer('REPLAY_READ_AHEAD', 0, 0, 1), firstBlockProbe: true }
 let previous
 try { previous = Object.fromEntries((await readFile(outputFile, 'utf8')).trim().split('\n').map((line) => { const index = line.indexOf('='); return [line.slice(0, index), line.slice(index + 1)] })) }

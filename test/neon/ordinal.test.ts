@@ -18,8 +18,8 @@ const direct = new pg.Pool({ connectionString: env.TEST_DATABASE_URL_UNPOOLED, m
 pool.on('error', () => {}); direct.on('error', () => {})
 const objects = createS3ChunkStorage({ endpoint: env.AWS_ENDPOINT_URL_S3, region: env.AWS_REGION, bucket: env.NEON_TEST_BUCKET })
 const servers: DurableStreamsServer[] = []
-function server() {
-  const value = createDurableStreams({ postgres: { pool, schema, ...postgresTestLimits }, storage: { objects },
+function server(maxChunkFrames?: number) {
+  const value = createDurableStreams({ postgres: { pool, schema, ...postgresTestLimits }, storage: { objects, ...(maxChunkFrames === undefined ? {} : { maxChunkFrames }) },
     auth: { authenticate: () => ({ tenantId: 'ordinal', subject: 'fixture' }), authorize: () => true } })
   servers.push(value); return value
 }
@@ -48,7 +48,7 @@ async function seed(value: DurableStreamsServer, path: string, count: number, pa
 }
 
 test('dense tiny history retains only block metadata and replays 16384 appends in two default pages', async () => {
-  const writer = server()
+  const writer = server(131072)
   const { id, offsets } = await seed(writer, 'dense', 16384, 'x'.repeat(32))
   expect((await writer.maintain({ forceHot: true, maxChunks: 1 })).sealed).toBe(1)
   expect((await pool.query(`SELECT count(*) FROM "${schema}".appends WHERE stream_id=$1`, [id])).rows[0].count).toBe('0')
@@ -67,6 +67,21 @@ test('dense tiny history retains only block metadata and replays 16384 appends i
   expect(second.headers.get('Stream-Up-To-Date')).toBe('true')
   expect(await second.text()).toBe('x'.repeat(8192 * 32))
   expect((await request(reader, `dense?offset=${offsets[100]!.slice(0, 17)}${'f'.repeat(32)}`)).status).toBe(400)
+}, 120000)
+
+test('the default frame-work cap rotates tiny staging before a large append index accumulates', async () => {
+  const value = server(), payload = 'x'.repeat(32)
+  const { id } = await seed(value, 'default-work', 8191, payload)
+  const appended = await request(value, 'default-work', 'POST', payload)
+  expect(appended.status).toBe(204)
+  const frozen = (await pool.query(`SELECT frame_count,payload_bytes FROM "${schema}".chunks WHERE stream_id=$1`, [id])).rows
+  expect(frozen).toEqual([{ frame_count: 8192, payload_bytes: String(8192 * 32) }])
+  expect((await value.maintain({ maxChunks: 1 })).sealed).toBe(1)
+  expect((await pool.query(`SELECT count(*) FROM "${schema}".appends WHERE stream_id=$1`, [id])).rows[0].count).toBe('0')
+  const replay = await request(value, 'default-work')
+  expect(replay.headers.get('Stream-Up-To-Date')).toBe('true')
+  expect(replay.headers.get('Stream-Next-Offset')).toBe(appended.headers.get('Stream-Next-Offset'))
+  expect(await replay.text()).toBe(payload.repeat(8192))
 }, 120000)
 
 test('producer retry and close-only append consume no ordinal', async () => {

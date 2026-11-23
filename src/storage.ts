@@ -86,7 +86,7 @@ export class ChunkManager {
   constructor(private readonly pool: Pool, schema: string, private readonly options: StorageOptions, private readonly guard = new InstallationGuard(pool, schema)) {
     this.schema = validateSchema(schema)
     this.target = options.targetChunkBytes ?? 4 * 1024 * 1024
-    this.maximumFrames = options.maxChunkFrames ?? 131072
+    this.maximumFrames = options.maxChunkFrames ?? 8192
     this.blockBytes = options.blockBytes ?? 65536
     this.readAhead = options.readAhead ?? 0
     this.lease = options.workerLeaseMs ?? 120_000

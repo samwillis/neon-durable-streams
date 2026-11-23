@@ -90,9 +90,23 @@ try {
       const live = (await pool.query(`SELECT count(*)::integer AS rows,COALESCE(sum(pg_column_size(t)),0)::text AS tuple_bytes FROM ${sql}.${name} t`)).rows[0]
       relations.push({ name, rows: live.rows, tupleBytes: Number(live.tuple_bytes), ...Object.fromEntries(Object.entries(sizes).map(([key, value]) => [key, Number(value)])) })
     }
+    // Retained live manifests alone miss the append B-tree's reusable high-
+    // water mark. Exercise a full transient staging batch, delete it, and use
+    // ordinary vacuum exactly as a sealed batch would leave this index.
+    const stagedStart = kind === 'ordinal' ? `lpad((n+$5)::text,16,'0')||'_'||$3::text` : `'0000000000000000_'||lpad(((n+$5)*37)::text,16,'0')`
+    const stagedEnd = kind === 'ordinal' ? `lpad((n+$5+1)::text,16,'0')||'_'||$3::text` : `'0000000000000000_'||lpad(((n+$5+1)*37)::text,16,'0')`
+    await pool.query(`INSERT INTO ${sql}.appends(stream_id,start_offset,end_offset,payload,payload_bytes)
+      SELECT $1::uuid,${stagedStart},${stagedEnd},$2,32 FROM generate_series(0,$4::integer-1) n WHERE length($3::text)>0`, [stream, payload, history, framesPerChunk, appends])
+    const stagingPeak = (await pool.query('SELECT pg_relation_size($1::regclass)::text AS heap_bytes,pg_indexes_size($1::regclass)::text AS index_bytes,pg_total_relation_size($1::regclass)::text AS total_bytes', [`${sql}.appends`])).rows[0]
+    await pool.query(`DELETE FROM ${sql}.appends`)
+    await pool.query(`VACUUM (ANALYZE) ${sql}.appends`)
+    const reusableIndexBytes = Number((await pool.query('SELECT pg_indexes_size($1::regclass)::text AS bytes', [`${sql}.appends`])).rows[0].bytes)
+    const allocationAfterChurn = Number((await pool.query('SELECT pg_total_relation_size($1::regclass)::text AS bytes', [`${sql}.appends`])).rows[0].bytes)
     samples.push({ kind, framesPerChunk, sealedAppends: appends, payloadBytes, storageVersion: kind === 'ordinal' ? STORAGE_VERSION : 2,
       chunks: inserts.length, relations, observedBranchWalBytes: wal, directoryBytes: inserts.reduce((sum, row) => sum + row.directory.length / 2, 0),
       rawPerAppendDirectoryBytes: kind === 'byte-control' ? appends * 4 : 0,
+      stagingPeak: Object.fromEntries(Object.entries(stagingPeak).map(([key, value]) => [key, Number(value)])), reusableAppendIndexBytes: reusableIndexBytes,
+      totalBytesAfterVacuumAndStagingChurn: relations.filter((relation) => relation.name !== 'appends').reduce((sum, relation) => sum + relation.total_bytes, allocationAfterChurn),
       totalBytesAfterVacuum: relations.reduce((sum, relation) => sum + relation.total_bytes, 0) })
     console.log(JSON.stringify(samples.at(-1)))
   }
@@ -103,6 +117,6 @@ try {
 await writeFile(env.ORDINAL_METADATA_REPORT ?? 'qualification-results/replay-ordinal-metadata.json', JSON.stringify({
   sourceCommit: git('rev-parse', 'HEAD'), controlCommit: control, branchId: state.branchId,
   harnessSha256: createHash('sha256').update(await readFile(new URL(import.meta.url))).digest('hex'),
-  scope: 'Synthetic immutable manifests in actual constrained Neon schemas, 1048576 sealed appends of 32 bytes, after ordinary VACUUM ANALYZE. No object uploads or replay. Relation totals include heap/index/TOAST; excludes fixed installation, producer, subscription state, dead-tuple churn and provider history. WAL includes other branch activity and is not a per-append cost measurement.',
+  scope: 'Synthetic immutable manifests in actual constrained Neon schemas, 1048576 sealed appends of 32 bytes, after ordinary VACUUM ANALYZE. No object uploads or replay. A full transient staging batch is also inserted/deleted/vacuumed to measure reusable B-tree allocation. Relation totals include heap/index/TOAST; excludes fixed installation, producer, subscription state, dead-tuple churn and provider history. WAL includes other branch activity and is not a per-append cost measurement.',
   cleanupComplete, samples,
 }, null, 2) + '\n')

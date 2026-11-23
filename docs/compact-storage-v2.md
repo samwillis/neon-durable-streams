@@ -16,7 +16,7 @@ An ordinary append updates its stream head once. A due record is inserted on the
 storage: {
   objects,
   targetChunkBytes: 4 * 1024 * 1024,
-  maxChunkFrames: 131072,
+  maxChunkFrames: 8192,
   maxChunkAgeMs: 3_600_000,
   blockBytes: 65536,
   cacheBytes: 32 * 1024 * 1024,
@@ -30,7 +30,7 @@ Replay defaults to 2 MiB and 8192 frames per page, with a maximum configurable f
 
 The verified cache accounts for owned bytes and decoded frame/index overhead: 32 MiB by default, at most 256 retained entries, 128 pending fetch groups, 4096 pending blocks and 128 MiB of pending encoded reads. `cacheBytes: 0` disables retention while preserving concurrent sharing. One reader's cancellation releases its interest; the last reader aborts shared I/O and awaits settlement before releasing its pin. Closing is terminal and prevents late cache refill.
 
-A separate replay/body admission budget defaults to 256 MiB and 128 reservations. Planning reserves the configured page's working set; a completed page transfers to an actual retained-body reservation. Ordinary response bodies serve 64 KiB views under downstream demand and hold that reservation until consumption, cancellation, authentication expiry, shutdown or the response deadline (five minutes by default). These budgets cover separate allocations and must be sized together with the Node heap, Realtime buffers and sealer working sets.
+A separate replay/body admission budget defaults to 256 MiB and 128 reservations. Planning reserves the configured page's working set; a completed page transfers to an actual retained-body reservation. Ordinary response bodies serve 64 KiB views under downstream demand and hold that reservation until consumption, cancellation, authentication expiry, shutdown or the response deadline (five minutes by default). A larger configured frame cap (up to 131072) creates fewer objects but increases freeze latency, sealer memory and the append index high-water mark. The 8192 default bounds those costs for tiny appends. These budgets cover separate allocations and must be sized together with the Node heap, Realtime buffers and sealer working sets.
 
 ## Replay correctness
 
