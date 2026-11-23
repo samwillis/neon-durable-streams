@@ -361,7 +361,9 @@
     ],
     "firstBlockProbe": "2026-11-23-replay-final-first-block.json",
     "fullDefaultBatch": "2026-11-23-replay-final-dense.json",
-    "metadataPolicies": "2026-11-23-replay-metadata-final.json"
+    "metadataPolicies": "2026-11-23-replay-metadata-final.json",
+    "runtimeInstancesObserved": 15,
+    "maxSampledHeaderRssBytes": 193822720
   },
   "attempts": [
     "Earlier noncanonical zero-token implementation failed upstream fork cases; canonical zero restored before final qualification.",
@@ -528,7 +530,7 @@
     "Closed-loop remote-coordinator profiles do not establish an arrival-rate ceiling or availability SLA.",
     "Header memory snapshots and process lifetime RSS do not certify steady-state/fleet memory. Budgets are separate and per instance.",
     "Synthetic footprint covers one million sealed 32-byte frames and one staging batch; relation sizes exclude fixed installation, producer/subscription state, provider history and long-running bloat.",
-    "Branch WAL includes setup/background work; independent lock-wait/CPU attribution is not reported.",
+    "Observed branch WAL includes setup and other activity, not an isolated per-append cost. Lock wait, individual index-page reads and decoding CPU were not isolated from total SQL/handler timings.",
     "Recovery retains witness objects; provider Object Storage historical recovery after physical deletion remains unqualified.",
     "Other qualification branches share the account/project; no overlapping replay-branch workload during the final performance profile."
   ],
@@ -557,6 +559,7 @@
     "2026-11-23-replay-pipeline-comparison.json": "4f6ff2e400f9d864d98367f6649b1b439569f8b43f21124897fab719f72ab591",
     "2026-11-23-replay-readpath-candidate.json": "4d3d452fd8cd762b689920ebf83422f0e76e6989cc788c4f0a46765629b09423",
     "2026-11-23-replay-readpath.json": "ea96cf3cecb5dee9e114dfab3162cb65ffb0d33688394f817edfeca2a5c22b8e",
-    "2026-11-23-replay-streaming.json": "36bcef3f0318fdfdb20da7cecc9108d15598888dfbc7fdda2ab9a6eb6817a1a7"
+    "2026-11-23-replay-streaming.json": "36bcef3f0318fdfdb20da7cecc9108d15598888dfbc7fdda2ab9a6eb6817a1a7",
+    "2026-11-23-replay-final.md": "d57bcc2d8e6e90db1233fd627b87029fc5ebbf204f0b26b7ea3f75eeafffc743"
   }
 }
