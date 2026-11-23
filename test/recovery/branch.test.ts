@@ -69,7 +69,7 @@ test('a real point-in-time branch adopts sealed objects, fences restored tokens,
   expect(claim.token).toMatch(/^dsw\./)
   const sourceLsn = (await parentPool.query<{ lsn: string }>('SELECT pg_current_wal_flush_lsn() AS lsn')).rows[0]!.lsn
   // This committed future and its immutable objects are beyond the recovery point.
-  await request(parent, 'data/root', 'POST', ' future data')
+  const abandoned = (await request(parent, 'data/root', 'POST', ' future data')).headers.get('Stream-Next-Offset')!
   await parent.maintain({ maxChunks: 16 })
   // Neon forbids children of expiring branches. This is the recorded disposable
   // CI branch; restore its expiry after child cleanup. The scheduled janitor
@@ -113,7 +113,15 @@ test('a real point-in-time branch adopts sealed objects, fences restored tokens,
   await recovered.maintain({ maxChunks: 16 })
   const next = await (await request(recovered, '__ds/subscriptions/recover/claim', 'POST', JSON.stringify({ worker: 'replacement' }), { 'Content-Type': 'application/json' })).json() as { token: string }
   expect(next.token).toMatch(/^dsw\./); expect(next.token).not.toBe(claim.token)
-  await request(recovered, 'data/root', 'POST', ' child only')
+  const rewritten = (await request(recovered, 'data/root', 'POST', ' child only')).headers.get('Stream-Next-Offset')!
+  expect(rewritten.slice(0, 16)).toBe(abandoned.slice(0, 16))
+  expect(rewritten).not.toBe(abandoned)
+  expect((await request(recovered, `data/root?offset=${abandoned}`)).status).toBe(400)
+  await recovered.maintain({ forceHot: true, maxChunks: 16 })
+  expect((await request(recovered, `data/root?offset=${abandoned}`)).status).toBe(400)
+  const resumed = await request(recovered, `data/root?offset=${rewritten}`)
+  expect(resumed.status).toBe(200)
+  expect(await resumed.text()).toBe('')
   expect(await (await request(parent, 'data/root')).text()).toBe('initial recovery bytes committed once pending future data')
   expect(await (await request(recovered, 'data/root')).text()).toBe('initial recovery bytes committed once pending child only')
 })

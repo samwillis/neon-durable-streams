@@ -273,6 +273,10 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
   while (!liveText.includes('event: control')) liveText += decoder.decode((await liveReader.read()).value)
   const restoredAppend = await request(stream('data/binary'), 'POST', restoredPayload, { ...tuple, 'Producer-Seq': '1' })
   expect(restoredAppend.status).toBe(200)
+  const rewrittenOffset = restoredAppend.headers.get('Stream-Next-Offset')!
+  expect(rewrittenOffset.slice(0, 16)).toBe(discardedOffset.slice(0, 16))
+  expect(rewrittenOffset).not.toBe(discardedOffset)
+  expect((await request(`${stream('data/binary')}?offset=${discardedOffset}`)).status).toBe(400)
   await expect.poll(() => observedAppend?.end, { timeout: 30_000, interval: 50,
     message: 'The restored branch must independently emit the committed raw Realtime payload' }).toBe(restoredAppend.headers.get('Stream-Next-Offset'))
   while (!liveText.includes(Buffer.from(' new timeline').toString('base64'))) {
@@ -286,6 +290,10 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
     { Authorization: `Bearer ${claim.token}`, 'Content-Type': 'application/json' })
   expect(oldAck.status).toBe(409)
   await maintain()
+  expect((await request(`${stream('data/binary')}?offset=${discardedOffset}`)).status).toBe(400)
+  const resumedCheckpoint = await request(`${stream('data/binary')}?offset=${rewrittenOffset}`)
+  expect(resumedCheckpoint.status).toBe(200)
+  expect((await resumedCheckpoint.arrayBuffer()).byteLength).toBe(0)
   const nextClaim = await request(stream('__ds/subscriptions/restore/claim'), 'POST', '{"worker":"fresh-worker"}', { 'Content-Type': 'application/json' })
   expect(nextClaim.status).toBe(200)
   expect((await nextClaim.json() as { token: string }).token).not.toBe(claim.token)
@@ -301,7 +309,7 @@ test('a stopped deployed Function restores its own branch, reconciles sealed byt
     recoveryEpoch: recovery.servingEpoch, hotReplayAcrossSealing: true, restoredRealtime: true,
     restoredRealtimePayloadObserved: true, restoredRealtimeObservedOffset: observedAppend!.end,
     restoredRealtimeReadiness: realtimeReadiness,
-    discardedOffsetRejected: true, unexpiredTokenFenced: true, cronResumedAfterValidation: true,
+    discardedOffsetRejected: true, rewrittenOrdinalPreserved: true, abandonedHistoryRejectedAfterRewriteAndSeal: true, unexpiredTokenFenced: true, cronResumedAfterValidation: true,
     sourceCommit: deployed.TEST_FUNCTION_SOURCE_COMMIT, sourceDirty: deployed.TEST_FUNCTION_SOURCE_DIRTY,
     deploymentId: deployed.TEST_FUNCTION_DEPLOYMENT_ID, previousDeploymentId: initialDeploymentId,
     memoryMiB: fn.active_deployment?.memory_mib, deployedBundle: deployed.TEST_FUNCTION_BUNDLE_SHA }, null, 2) + '\n')
