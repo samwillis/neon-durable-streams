@@ -34,11 +34,11 @@ async function readPage(dataset, from, cache, mode = 'seek', extra = {}) {
   const metrics = JSON.parse(response.headers.get('x-replay-metrics') ?? 'null')
   assert.ok(metrics, 'Missing per-request deployed metrics')
   assert.equal(response.status, extra.status ?? 200)
-  const reader = response.body.getReader()
+  const reader = response.body?.getReader()
   const parts = []
   let firstByteMs, size = 0
   try {
-    for (;;) {
+    while (reader) {
       const part = await reader.read()
       if (part.done) break
       firstByteMs ??= performance.now() - begin
@@ -47,7 +47,7 @@ async function readPage(dataset, from, cache, mode = 'seek', extra = {}) {
       parts.push(part.value)
       if (extra.slow) await pause(10)
     }
-  } finally { await reader.cancel(); reader.releaseLock() }
+  } finally { if (reader) { await reader.cancel(); reader.releaseLock() } }
   const completeMs = performance.now() - begin
   const next = dataset.offsets.indexOf(response.headers.get('Stream-Next-Offset'))
   assert.ok(next >= from && next <= dataset.frames, 'Checkpoint is not an acknowledged frame boundary')
