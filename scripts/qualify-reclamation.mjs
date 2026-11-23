@@ -57,8 +57,8 @@ async function sample() {
   return samples.at(-1)
 }
 try {
-  if (!(await pool.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0007_provider_recovery'`)).rowCount
-    || !(await pool.query(`SELECT enabled FROM ${schema}.reclamation_policy`)).rows[0]?.enabled) throw new Error('Schema 0007 with explicit collection opt-in required')
+  if (!(await pool.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0004_subscriptions'`)).rowCount
+    || !(await pool.query(`SELECT enabled FROM ${schema}.reclamation_policy`)).rows[0]?.enabled) throw new Error('Current baseline with explicit collection opt-in required')
   for (let sequence = 0; !stopped && performance.now() - started < seconds * 1000; sequence++) {
     const cycle = performance.now(), path = `${run}/${sequence}`, child = `${path}-fork`, payload = Buffer.alloc(65536, sequence % 256)
     payload.write(`${run}:${sequence}`)

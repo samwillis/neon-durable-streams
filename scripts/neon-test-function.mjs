@@ -47,8 +47,8 @@ try {
   const installed = await direct.query('SELECT to_regclass($1) AS relation', [`${schema}.migrations`])
   if (installed.rows[0].relation) {
     const history = await direct.query(`SELECT id FROM "${schema}".migrations ORDER BY id`)
-    if (history.rows.length < MIGRATION_IDS.length && (await neon.functions.list({ projectId, branchId }).all()).length) {
-      throw new Error('A stopped schema upgrade is required: stop the recorded branch Functions and workers before deploying across migrations')
+    if (history.rows.length !== MIGRATION_IDS.length || history.rows.some((row, index) => row.id !== MIGRATION_IDS[index])) {
+      throw new Error('The recorded test schema predates the current baseline; provision a fresh test environment')
     }
   }
   await migrate(direct, { schema, storageIdentity: objects.identity, environmentId: branchId })

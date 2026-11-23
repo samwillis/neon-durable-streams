@@ -36,11 +36,11 @@ Use a recorded isolated Neon branch with no other application writes. Keep crede
 
 ```sh
 mise exec node@24 -- pnpm build
-mise exec node@24 -- node scripts/neon-test-rolling-artifacts.mjs
+mise exec node@24 -- node scripts/neon-test-rolling-artifacts.mjs 1ba871b2495ceb0a988676c314886384446506a2
 NEON_TEST_STATE_FILE=.neon-test-state-example.json mise exec node@24 -- node --env-file=.env.neon.example docs/experiments/measure-compact-storage.mjs /tmp/compact-storage.json
 mise exec node@24 -- node scripts/neon-test-rolling-cleanup.mjs
 ```
 
-The recorded state and branch environment must match. The harness creates fresh random schemas and exact immutable object keys, never resets statistics, installs extensions, or runs `VACUUM FULL`. It records successful cleanup, packed source/tarball/lock hashes, Node, region, and its own hash. The synthetic harness now explicitly targets schema 0007 so it remains runnable after the canonical migration list grows; use its historical revision to reproduce the original recorded script hash exactly.
+The recorded state and branch environment must match. The harness creates fresh random schemas and exact immutable object keys, never resets statistics, installs extensions, or runs `VACUUM FULL`. It records successful cleanup, packed source/tarball/lock hashes, Node, region, and its own hash. The synthetic harness loads the archived schema-0007 package prepared by the same command. Use the historical harness revision to reproduce an original recorded script hash exactly. The candidate uses today's fresh baseline; the archived package retains its own historical migrations.
 
 The final CI runtime `cdf0fa8` follows the measured `f99f00a` with a conservative eligibility fix for deleted ancestors whose child-generation metadata is still needed. Append, sealing, replay, cache, and migration code are unchanged between those revisions. These measurements and the ten-minute default-collection-off load remain scoped to their recorded `f99f00a` hashes; the full clean qualification of `cdf0fa8` is recorded in the [qualification index](../qualification/README.md).

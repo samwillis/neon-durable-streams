@@ -1,6 +1,6 @@
 # Sealed object format v1
 
-Current SQL ownership and upgrade procedures are described in [compact Postgres storage](compact-storage-v2.md). Schema 0009 removes sealed append rows while retaining this immutable object format.
+Current SQL ownership and installation procedures are described in [compact Postgres storage](compact-storage-v2.md). The current baseline removes sealed append rows while retaining this immutable object format.
 
 The consumer supplies an immutable-key `ChunkStorage` adapter and explicitly binds its identity during migration. The `/s3` adapter derives that identity from the endpoint, region, and private bucket, excluding credentials so key rotation does not change the binding. A mismatched branch/bucket fails closed. Database restores and branch adoption still require an explicit recovery workflow; this version does not silently rebind an installation.
 
@@ -39,7 +39,7 @@ Readers verify downloaded size, digest, identities, and frame boundaries before 
 
 ## Retention
 
-Physical object deletion is disabled by default. Schema 0007 collects unreachable objects and metadata after an explicit enablement setting, with historical recovery owned by Neon or matching backups. It protects replay plans with pins, records upload intents, and synchronizes publication and retirement with references. The S3 adapter supplies idempotent exact-key deletion and bounded listing; custom adapters must provide those capabilities before collection can be enabled. Operators must size and monitor retained data. Listing unreferenced objects alone is insufficient evidence to delete them after a database restore.
+Physical object deletion is disabled by default. The current implementation collects unreachable objects and metadata after an explicit enablement setting, with historical recovery owned by Neon or matching backups. It protects replay plans with pins, records upload intents, and synchronizes publication and retirement with references. The S3 adapter supplies idempotent exact-key deletion and bounded listing; custom adapters must provide those capabilities before collection can be enabled. Operators must size and monitor retained data. Listing unreferenced objects alone is insufficient evidence to delete them after a database restore.
 
 Read the [collection contract](reclamation-v1.md) before enabling it during stopped administration. Explicit quiesced adoption and manifest reconciliation are described in the [operations contract](operations-v1.md). The [qualification index](qualification/README.md) records physical-collection child and in-place restore evidence, exact source revisions, and the unresolved independent Realtime diagnostic.
 
@@ -51,4 +51,4 @@ Tests run against real Neon Object Storage and Postgres, including hot/sealed re
 
 `maintain` interleaves one bounded subscription pass with lifecycle/chunk work, so continuous outbox traffic cannot exclude delivery and sealing. `timeBudgetMs` stops new rounds after the deadline; the current round finishes its bounded SQL/object/webhook I/O. Count limits remain in force. Hints and cron share size/count/age policy. Explicit administrative drains use `forceHot: true`; ordinary cron does not flush every small tail. The example keeps at most two coalesced hint passes under one Neon `waitUntil` owner, plus a durable minute-level cron with 64 chunk/subscription work units and a 40-second soft budget.
 
-Replay defaults to 128 frames per page and a 2 MiB byte budget. `limits.maxPageFrames` supports up to 1,024. Larger chunks can serve several response pages from one verified cache entry; eviction or another Function instance can require another full-object read. See the [compact storage contract](compact-storage-v2.md) for cache/resource bounds and the stopped upgrade.
+Replay defaults to 128 frames per page and a 2 MiB byte budget. `limits.maxPageFrames` supports up to 1,024. Larger chunks can serve several response pages from one verified cache entry; eviction or another Function instance can require another full-object read. See the [compact storage contract](compact-storage-v2.md) for cache/resource bounds.

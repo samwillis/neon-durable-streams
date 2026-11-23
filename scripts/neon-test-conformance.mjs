@@ -104,7 +104,7 @@ try {
   console.log(`Full Neon conformance passed: ${evidence.passedTests}/${evidence.total}, no failures or skips.`)
 } finally {
   // Save a failed report on interrupted/ambiguous runs; successful cleanup is
-  // part of qualification, as with the mixed-version suite.
+  // part of qualification, as with the multi-instance suite.
   try {
     if (attempted) {
       try { await neon.functions.delete({ projectId, branchId, slug }) }

@@ -10,7 +10,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const root = fileURLToPath(new URL('../../', import.meta.url))
 const require = createRequire(join(root, 'package.json'))
 const pg = require('pg')
-const { migrate } = await import(pathToFileURL(join(root, 'dist/migrations.js')).href)
+// This experiment measures the archived per-append layout, not today's schema.
+const artifacts = JSON.parse(await readFile(join(root, '.neon-test-state-rolling-artifacts.json'), 'utf8')).artifacts
+if (artifacts.baseline?.commit !== '1ba871b2495ceb0a988676c314886384446506a2') throw new Error('Prepare archived package artifacts as documented in docs/experiments/README.md')
+const { migrate } = await import(pathToFileURL(join(artifacts.baseline.packageRoot, 'dist/migrations.js')).href)
 const env = process.env
 if (!env.TEST_DATABASE_URL_UNPOOLED || !env.NEON_TEST_BRANCH_ID) throw new Error('Recorded disposable Neon test environment required')
 const state = JSON.parse(await readFile(env.NEON_TEST_STATE_FILE ?? join(root, '.neon-test-state-smoke.json'), 'utf8'))
@@ -29,7 +32,7 @@ try {
   for (const framesPerChunk of [128, 1024]) {
     const schema = `ds_test_${randomUUID().replaceAll('-', '')}`, sql = quote(schema), streamId = randomUUID()
     schemas.push(schema)
-    await migrate(pool, { schema, target: '0007_provider_recovery', storageIdentity: 'synthetic-metadata-measurement', environmentId: env.NEON_TEST_BRANCH_ID })
+    await migrate(pool, { schema, storageIdentity: 'synthetic-metadata-measurement', environmentId: env.NEON_TEST_BRANCH_ID })
     await pool.query('BEGIN')
     try {
       await pool.query("SET LOCAL statement_timeout='60s'; SET LOCAL lock_timeout='5s'; SET LOCAL transaction_timeout='120s'")

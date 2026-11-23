@@ -6,7 +6,7 @@ import { createS3ChunkStorage } from '../../dist/s3.js'
 import { advanceOffset, ZERO_OFFSET } from '../../dist/offset.js'
 
 // Run after preparing independently packed artifacts with
-// scripts/neon-test-rolling-artifacts.mjs. Uses fresh random schemas and exact
+// scripts/neon-test-rolling-artifacts.mjs 1ba871b2495ceb0a988676c314886384446506a2. Uses fresh random schemas and exact
 // owned keys only. No statistics resets, extension installation or VACUUM FULL.
 const env = process.env
 const state = JSON.parse(await readFile(env.NEON_TEST_STATE_FILE ?? '.neon-test-state.json', 'utf8'))
@@ -17,7 +17,7 @@ if (
 )
   throw new Error('Recorded disposable Neon environment required')
 const artifacts = JSON.parse(await readFile('.neon-test-state-rolling-artifacts.json', 'utf8')).artifacts
-if (artifacts.baseline.commit !== '1ba871b2495ceb0a988676c314886384446506a2') throw new Error('Unexpected baseline')
+if (artifacts.baseline?.commit !== '1ba871b2495ceb0a988676c314886384446506a2') throw new Error('Unexpected baseline')
 const base = createS3ChunkStorage({ endpoint: env.AWS_ENDPOINT_URL_S3, region: env.AWS_REGION, bucket: env.NEON_TEST_BUCKET })
 const pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL_UNPOOLED, max: 1, connectionTimeoutMillis: 20_000, query_timeout: 60_000 })
 pool.on('error', () => {})

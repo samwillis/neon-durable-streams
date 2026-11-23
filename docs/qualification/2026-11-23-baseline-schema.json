@@ -1,0 +1,37 @@
+{
+  "passed": true,
+  "generatedAt": "2026-11-23T10:24:07.285Z",
+  "provider": "Neon Postgres 18",
+  "referenceCommit": "cdf0fa861a4962dbc6eb20c43f0a0920d5c82ea7",
+  "scope": "Final catalog semantics and singleton defaults: ignores schema and generated constraint/index names, physical column order, migration ledger data, random installation UUID/epoch",
+  "counts": {
+    "relations": 22,
+    "columns": 259,
+    "constraints": 225,
+    "indexes": 51,
+    "functions": 1,
+    "sequences": 1,
+    "defaults": 4
+  },
+  "referenceSha256": "8abb98a6bde7c26f1d7f5d3c4d981901c3bdd643c7f736375f311928a3b6b859",
+  "candidateSha256": "8abb98a6bde7c26f1d7f5d3c4d981901c3bdd643c7f736375f311928a3b6b859",
+  "differences": [],
+  "migrations": [
+    {
+      "id": "0001_installation",
+      "checksum": "4e616e075de58f97269bdc49eb443d947bdf646e12c5dcfa52c633069f8185ca"
+    },
+    {
+      "id": "0002_streams",
+      "checksum": "07ac100c897b8aef91ee093c1cc5a7ab4f57d7eb4c75ccbc6d9f95982d55fb2f"
+    },
+    {
+      "id": "0003_storage",
+      "checksum": "c4feb55d76fbe8ade145ac11e9e80c5f4783f0ba499b1022aed0d8ca336bbe0a"
+    },
+    {
+      "id": "0004_subscriptions",
+      "checksum": "432afd5bf0a7cf1769e054311a23555b0d618fb01f2d61fcdcb16439bd930a88"
+    }
+  ]
+}

@@ -138,7 +138,7 @@ export class PostgresStreamStore {
         if (result.rows.length !== 1 || result.rows[0]!.storage_version !== 1) throw new StorageCompatibilityError('Unsupported storage version')
         const migrations = await this.pool.query<{ id: string }>(`SELECT id FROM ${this.schema}.migrations ORDER BY id`)
         const history = JSON.stringify(migrations.rows.map((row) => row.id))
-        if (history !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations; complete the stopped compact-storage upgrade')
+        if (history !== JSON.stringify(MIGRATION_IDS)) throw new StorageCompatibilityError('Unsupported database migrations; install the current baseline in a fresh schema')
         if (result.rows[0]!.storage_identity !== null && !this.chunks) throw new StorageCompatibilityError('This installation requires its configured object storage')
         await this.chunks?.assertBinding()
         await this.reclamation.assertReady()

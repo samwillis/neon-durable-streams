@@ -24,7 +24,7 @@ The quality target is a production library. The unpublished release candidate pr
 
 ## Current implementation
 
-Schema 0009 serves a compact hot/chunk layout: sealing deletes append rows and keeps a bounded boundary array per manifest. Defaults seal at 4 MiB, 1,024 frames, or one hour from the first append; replay uses a bounded verified-object cache. Existing installations require the [stopped storage upgrade](docs/compact-storage-v2.md).
+The four-file [database baseline](docs/migrations.md) installs a compact hot/chunk layout: sealing deletes append rows and keeps a bounded boundary array per manifest. Defaults seal at 4 MiB, 1,024 frames, or one hour from the first append; replay uses a bounded verified-object cache. Earlier development migration histories require a fresh schema.
 
 The API supports PUT/POST/GET/HEAD/DELETE, JSON batching, producer deduplication/fencing, Stream-Seq, closure, TTL/absolute expiry, conditional reads, tenant isolation, and bounded replay pages. Long-poll and SSE are available with an explicitly configured notifier. Subscription control APIs are available with an explicitly configured persistent keyring. Consumer-owned database pools remain open when the handler closes; importing the library never provisions resources or migrates a database.
 
@@ -53,7 +53,7 @@ export default { fetch: streams.fetch }
 
 On Neon Functions, register the consumer's pool with `attachDatabasePool` from `@neon/functions`. Run `migrate` from the package's `/migrations` entrypoint through a direct connection as an explicit deployment step before serving requests. The package is currently consumed from this checkout/tarball; it has not been published to npm.
 
-See [development and tests](docs/development.md) for commands and the [compact storage contract](docs/compact-storage-v2.md) for current ownership, resource bounds, and the stopped upgrade. Clean runtime `cdf0fa8` passed every [required CI job](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790): **57 unit/property, 96 actual-Neon, 21 transaction/process-loss, nine deployed Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**, with no failed or skipped tests. Conformance enables subscriptions and collection. [Evidence](docs/qualification/README.md) also records the measured storage savings and a ten-minute run with all 16 readers matching exact durable replay. The package remains unpublished, and workload capacity and provider historical object recovery retain their documented qualification limits.
+See [development and tests](docs/development.md) for commands and the [compact storage contract](docs/compact-storage-v2.md) for current ownership and resource bounds. Before migration consolidation, clean runtime `cdf0fa8` passed every [required CI job](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790): **57 unit/property, 96 actual-Neon, 21 transaction/process-loss, nine deployed Function/webhook, two hints-only, both recovery drills, and all 338 conformance cases**, with no failed or skipped tests. Conformance enables subscriptions and collection. [Evidence](docs/qualification/README.md) also records the measured storage savings and a ten-minute run with all 16 readers matching exact durable replay. The package remains unpublished, and workload capacity and provider historical object recovery retain their documented qualification limits.
 
 
 

@@ -1,3 +1,4 @@
+-- Subscription membership, durable wakes, signing keys, and change fanout.
 CREATE TABLE __SCHEMA__.webhook_signing_keys (
   kid text PRIMARY KEY,
   public_jwk jsonb NOT NULL CHECK (NOT (public_jwk ? 'd')),
@@ -54,6 +55,7 @@ CREATE TABLE __SCHEMA__.subscription_wakes (
   tenant_id text COLLATE "C" NOT NULL,
   generation bigint NOT NULL CHECK (generation BETWEEN 1 AND 9007199254740991),
   kind text NOT NULL CHECK (kind IN ('webhook', 'pull-wake')),
+  token_version smallint NOT NULL DEFAULT 1 CHECK (token_version IN (1, 2)),
   token_hash bytea,
   token_cipher bytea,
   state text NOT NULL CHECK (state IN ('ready', 'delivered', 'completed', 'expired', 'fenced')),
@@ -93,5 +95,20 @@ CREATE TABLE __SCHEMA__.subscription_pending_links (
   FOREIGN KEY (tenant_id, stream_id) REFERENCES __SCHEMA__.streams (tenant_id, id)
 );
 CREATE INDEX subscription_pending_links_due ON __SCHEMA__.subscription_pending_links (due_at, subscription_id, stream_id);
-ALTER TABLE __SCHEMA__.stream_changes ADD COLUMN fanout_after uuid;
+
+-- One bounded scalar preserves increasing generations across name pruning.
+CREATE SEQUENCE __SCHEMA__.wake_generations AS bigint MINVALUE 1 MAXVALUE 9007199254740991 NO CYCLE;
+
+CREATE TABLE __SCHEMA__.stream_changes (
+  stream_id uuid NOT NULL REFERENCES __SCHEMA__.streams (id),
+  version bigint NOT NULL,
+  before_offset text COLLATE "C" NOT NULL,
+  after_offset text COLLATE "C" NOT NULL,
+  kind text NOT NULL CHECK (kind IN ('created', 'appended', 'closed', 'deleted', 'expired')),
+  processed boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  fanout_after uuid,
+  PRIMARY KEY (stream_id, version)
+);
+CREATE INDEX stream_changes_pending ON __SCHEMA__.stream_changes (created_at) WHERE NOT processed;
 CREATE INDEX stream_changes_stream_pending ON __SCHEMA__.stream_changes (stream_id, version) WHERE NOT processed;

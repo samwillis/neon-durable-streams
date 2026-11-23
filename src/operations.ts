@@ -63,9 +63,6 @@ export async function inspectReclamation(pool: Pool, options: OperationTarget & 
   const schema = target(options)
   if (options.includeBacklog !== undefined && typeof options.includeBacklog !== 'boolean') throw new TypeError('Invalid reclamation diagnostics selection')
   return transaction(pool, { readOnly: true, repeatableRead: true }, async (client) => {
-    const migrations = (await client.query<{ id: string }>(`SELECT id FROM ${schema}.migrations`)).rows.map((row) => row.id)
-    if (!migrations.includes('0006_reclamation')) return { supported: false }
-    if (!migrations.includes('0007_provider_recovery')) throw new StorageCompatibilityError('Run the stopped schema-0007 upgrade before administering collection')
     const policy = (await client.query<{ enabled: boolean; inventory_completed_at: Date | null }>(`SELECT enabled,inventory_completed_at FROM ${schema}.reclamation_policy`)).rows[0]!
     const result = { supported: true as const, enabled: policy.enabled, inventoryCompletedAt: policy.inventory_completed_at }
     if (!options.includeBacklog) return result
@@ -87,9 +84,6 @@ export async function configureReclamation(pool: Pool, options: ReclamationOptio
   await transaction(pool, {}, async (client) => {
     const row = (await client.query<RecoveryRow>(`SELECT * FROM ${schema}.installation FOR UPDATE`)).rows[0]
     validRecovery(row, options.token)
-    if (!(await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0007_provider_recovery'`)).rowCount) {
-      throw new StorageCompatibilityError('Run the stopped schema-0007 upgrade before administering collection')
-    }
     const policy = (await client.query<{ configured_recovery_token: string | null; enabled: boolean }>(`SELECT configured_recovery_token,enabled FROM ${schema}.reclamation_policy FOR UPDATE`)).rows[0]!
     if (policy.configured_recovery_token === options.token) {
       if (policy.enabled !== options.enabled) throw new StorageCompatibilityError('This recovery operation already configured a different reclamation setting')
@@ -151,9 +145,8 @@ export async function verifyRecovery(pool: Pool, options: VerifyRecoveryOptions)
     await new SubscriptionSigner(pool, options.schema ?? 'durable_streams', options.keyring).signature(Buffer.alloc(0))
   }
   if (before.recovery_complete) return { complete: true, verified: Number(before.recovery_verified) }
-  const reclamation = await pool.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)
-  const manifests = await pool.query<{ id: string; stream_id: string; object_key: string; sha256: string; encoded_bytes: number; frame_count: number; payload_bytes: string; start_offset: string; end_offset: string; end_deltas?: number[] | null }>(
-    `SELECT * FROM ${schema}.chunks WHERE state = 'sealed' ${reclamation.rowCount ? 'AND retired_at IS NULL' : ''}
+  const manifests = await pool.query<{ id: string; stream_id: string; object_key: string; sha256: string; encoded_bytes: number; frame_count: number; payload_bytes: string; start_offset: string; end_offset: string; end_deltas: number[] }>(
+    `SELECT * FROM ${schema}.chunks WHERE state = 'sealed' AND retired_at IS NULL
       AND ($1::uuid IS NULL OR id > $1) ORDER BY id LIMIT $2`, [before.recovery_cursor, maximum])
   for (const chunk of manifests.rows) {
     if (!options.objects) throw new StorageCompatibilityError('Sealed manifests require target object storage')
@@ -162,7 +155,7 @@ export async function verifyRecovery(pool: Pool, options: VerifyRecoveryOptions)
     const frames = decodeChunk(bytes, { installationId: before.id, streamId: chunk.stream_id, chunkId: chunk.id }, chunk.sha256).frames
     if (frames.length !== chunk.frame_count || frames[0]?.start !== chunk.start_offset || frames.at(-1)?.end !== chunk.end_offset
       || BigInt(frames.reduce((n, frame) => n + frame.payload.length, 0)) !== BigInt(chunk.payload_bytes)) throw new StorageCompatibilityError('Recovery object frames differ from manifest')
-    if (chunk.end_deltas && !equalDirectory(boundaryDirectory(chunk.start_offset, frames),chunk.end_deltas)) throw new StorageCompatibilityError('Recovery object differs from boundary directory')
+    if (!equalDirectory(boundaryDirectory(chunk.start_offset, frames),chunk.end_deltas)) throw new StorageCompatibilityError('Recovery object differs from boundary directory')
   }
   return transaction(pool, {}, async (client) => {
     const current = (await client.query<RecoveryRow>(`SELECT * FROM ${schema}.installation FOR UPDATE`)).rows[0]
@@ -188,14 +181,11 @@ export async function finishRecovery(pool: Pool, options: OperationTarget & { re
     if (!row.recovery_complete) throw new StorageCompatibilityError('Verify every sealed manifest before activating this installation')
     const readers = await client.query(`SELECT 1 FROM ${schema}.live_leases WHERE expires_at > clock_timestamp() AND serving_epoch <> $1 LIMIT 1`, [row.serving_epoch])
     if (readers.rowCount) throw new StorageCompatibilityError('Drain active live readers or wait for their bounded leases before activating recovery')
-    const reclamation = await client.query(`SELECT 1 FROM ${schema}.migrations WHERE id='0006_reclamation'`)
-    if (reclamation.rowCount) {
-      const replays = await client.query(`SELECT 1 FROM ${schema}.replay_pins WHERE expires_at>clock_timestamp() AND serving_epoch<>$1 LIMIT 1`, [row.serving_epoch])
-      if (replays.rowCount) throw new StorageCompatibilityError('Drain active replay readers or wait for their bounded pins before activating recovery')
-      await client.query(`DELETE FROM ${schema}.replay_pins`)
-      await client.query(`UPDATE ${schema}.chunk_objects SET claim_token=NULL, claim_until=NULL, claim_epoch=claim_epoch+1 WHERE retired_at IS NOT NULL`)
-      await client.query(`UPDATE ${schema}.reclamation_policy SET inventory_cursor=NULL`)
-    }
+    const replays = await client.query(`SELECT 1 FROM ${schema}.replay_pins WHERE expires_at>clock_timestamp() AND serving_epoch<>$1 LIMIT 1`, [row.serving_epoch])
+    if (replays.rowCount) throw new StorageCompatibilityError('Drain active replay readers or wait for their bounded pins before activating recovery')
+    await client.query(`DELETE FROM ${schema}.replay_pins`)
+    await client.query(`UPDATE ${schema}.chunk_objects SET claim_token=NULL, claim_until=NULL, claim_epoch=claim_epoch+1 WHERE retired_at IS NOT NULL`)
+    await client.query(`UPDATE ${schema}.reclamation_policy SET inventory_cursor=NULL`)
     // Process eviction can leave durable claims and leases behind. UUID tokens
     // invalidate callbacks issued on either side of a point-in-time rollback.
     await client.query(`UPDATE ${schema}.chunks SET claim_token = NULL, claim_until = NULL, claim_epoch = claim_epoch + 1 WHERE state = 'frozen'`)

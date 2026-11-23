@@ -7,7 +7,7 @@ import pg from 'pg'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createDurableStreams } from '../../src/index.js'
 import type { DurableStreamsServer } from '../../src/index.js'
-import { migrate } from '../../src/migrations.js'
+import { MIGRATION_IDS, migrate } from '../../src/migrations.js'
 import { transaction } from '../../src/transaction.js'
 
 const database = process.env.TEST_DATABASE_URL
@@ -51,7 +51,7 @@ async function readAll(path: string) {
 beforeAll(async () => {
   const version = await pool.query<{ version: string }>("SELECT current_setting('server_version_num') AS version")
   expect(Number(version.rows[0]!.version)).toBeGreaterThanOrEqual(180000)
-  expect(await migrate(migrationPool, { schema })).toEqual(['0001_core', '0002_chunks', '0003_forks', '0004_subscriptions', '0005_operations', '0006_reclamation', '0007_provider_recovery', '0008_compact_prepare', '0009_compact_storage'])
+  expect(await migrate(migrationPool, { schema })).toEqual([...MIGRATION_IDS])
   expect(await migrate(migrationPool, { schema })).toEqual([])
   server = createDurableStreams(config)
 })

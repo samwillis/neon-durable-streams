@@ -6,7 +6,9 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 // Build actual packed consumers, without cloud credentials in build processes.
-const baseline = '1ba871b2495ceb0a988676c314886384446506a2'
+// Optional archived revision for research comparisons; CI builds only current.
+const baseline = process.argv[2]
+if (baseline !== undefined && !/^[a-f0-9]{40}$/.test(baseline)) throw new Error('Expected a full archived commit SHA')
 const stateFile = '.neon-test-state-rolling-artifacts.json'
 const root = resolve(import.meta.dirname, '..')
 const run = promisify(execFile)
@@ -21,14 +23,16 @@ catch (error) { await rm(directory, { recursive: true, force: true }); throw err
 async function command(cmd, args, cwd = root) {
   return (await run(cmd, args, { cwd, env: buildEnv, timeout: 240_000, maxBuffer: 8 * 1024 * 1024 })).stdout
 }
-try { await command('git', ['cat-file', '-e', `${baseline}^{commit}`]) }
-catch { await command('git', ['fetch', '--no-tags', '--depth=1', 'https://github.com/samwillis/neon-durable-streams.git', baseline]) }
 const prior = join(directory, 'baseline-source'), archive = join(directory, 'baseline.tar')
-await mkdir(prior)
-await command('git', ['archive', '--format=tar', '--output', archive, baseline, ...sourcePaths])
-await command('tar', ['-xf', archive, '-C', prior])
-await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], prior)
-await command('pnpm', ['build'], prior)
+if (baseline) {
+  try { await command('git', ['cat-file', '-e', `${baseline}^{commit}`]) }
+  catch { await command('git', ['fetch', '--no-tags', '--depth=1', 'https://github.com/samwillis/neon-durable-streams.git', baseline]) }
+  await mkdir(prior)
+  await command('git', ['archive', '--format=tar', '--output', archive, baseline, ...sourcePaths])
+  await command('tar', ['-xf', archive, '-C', prior])
+  await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], prior)
+  await command('pnpm', ['build'], prior)
+}
 const currentCommit = (await command('git', ['rev-parse', 'HEAD'])).trim()
 const currentDirty = Boolean((await command('git', ['status', '--porcelain', '--untracked-files=all', '--', ...candidatePaths])).trim())
 const candidate = join(directory, 'current-source')
@@ -49,7 +53,7 @@ async function sourceDigest(source) {
   return hash.digest('hex')
 }
 const artifacts = {}
-for (const [label, source, commit] of [['baseline', prior, baseline], ['current', candidate, currentCommit]]) {
+for (const [label, source, commit] of [...(baseline ? [['baseline', prior, baseline]] : []), ['current', candidate, currentCommit]]) {
   const consumer = join(directory, label)
   await mkdir(consumer)
   await command('pnpm', ['pack', '--pack-destination', consumer], source)
@@ -66,5 +70,5 @@ for (const [label, source, commit] of [['baseline', prior, baseline], ['current'
     sourceLockSha256: digest(await readFile(join(source, 'pnpm-lock.yaml'))),
     consumerLockSha256: digest(await readFile(join(consumer, 'pnpm-lock.yaml'))) }
 }
-await writeFile(stateFile, JSON.stringify({ directory, baselineSourceArchiveSha256: digest(await readFile(archive)), artifacts }), { mode: 0o600 })
-console.log('Prepared independently installed baseline and current package consumers.')
+await writeFile(stateFile, JSON.stringify({ directory, ...(baseline ? { baselineSourceArchiveSha256: digest(await readFile(archive)) } : {}), artifacts }), { mode: 0o600 })
+console.log('Prepared independently installed packed package consumer(s).')

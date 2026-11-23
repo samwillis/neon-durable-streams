@@ -51,7 +51,7 @@ jobs:
         run: pnpm test:function
       - name: Real Neon Realtime and Object Storage integration
         run: pnpm test:neon --reporter=default --reporter=json --outputFile=neon-results.json
-      - name: Preserve packed mixed-version Function evidence
+      - name: Preserve packed multi-instance Function evidence
         if: ${{ always() && hashFiles('qualification-results/rolling-upgrade.json') != '' }}
         uses: actions/upload-artifact@v4
         with:

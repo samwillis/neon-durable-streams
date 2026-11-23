@@ -1,6 +1,6 @@
 # Compact Postgres storage
 
-Schema 0009 is the canonical serving layout. Immutable objects retain binary format v1. Older serving schemas require a stopped upgrade; they are supported by migration tooling rather than a second runtime implementation. The [design review](postgres-efficiency-v2.md) explains the alternatives and original synthetic measurement.
+The four-file [database baseline](migrations.md) installs the canonical compact layout directly. Immutable objects retain binary format v1. The [design review](postgres-efficiency-v2.md) records the alternatives and original synthetic measurement.
 
 ## Data ownership
 
@@ -38,33 +38,9 @@ The budget covers retained cache state, not all concurrent replay/network memory
 
 At 32 bytes per append, a full 1,024-frame chunk still has only 32 KiB of payload and v1 still spends 74 bytes on each frame header. Very sparse streams can create smaller objects at their age deadline. These are remaining costs to size explicitly; this change does not introduce cross-stream packing or compaction.
 
-## Stopped upgrade
+## Installation
 
-Back up the matching database and objects first. Stop ingress, timers, scheduled triggers, workers, old instances, and their possible cold starts. Epoch fencing supplements that stop. In particular, pre-0005 processes cannot enforce it. Use a direct connection and retain the external subscription wrapping keyring.
-
-```ts
-import { migrate, convertSealedStorage } from '@samwillis/durable-streams-neon/migrations'
-
-await migrate(directPool, {
-  schema,
-  storageIdentity: objects.identity,
-  environmentId: branchId,
-  target: '0008_compact_prepare',
-})
-
-let batch
-do {
-  batch = await convertSealedStorage(directPool, { schema, objects, maxChunks: 16 })
-} while (!batch.complete)
-
-await migrate(directPool, { schema, storageIdentity: objects.identity, environmentId: branchId })
-```
-
-Preparation appends migration 0008, changes the serving epoch, and creates the directory/due-queue structures. No supported runtime serves this intermediate schema. Conversion performs bounded batches with no SQL lock/connection held over object I/O. Each active sealed object's exact old frame index is compared with verified v1 bytes before its directory and row deletion commit together. A corrupt/missing active object stops conversion. Already retired objects may have been collected; their complete retained frame indexes suffice for pending metadata validation. Missing boundaries are never inferred from endpoints alone.
-
-Batches are resumable after failure or a lost reply: converted chunks are skipped. Finalization appends migration 0009 and refuses to proceed while any sealed chunk lacks its directory or retains staging rows. It backfills the monotonic hot floor from existing manifests/fork anchors, removes append chunk assignments and their two secondary indexes, and drops the obsolete hot-counter index/due column and legacy wake-token receipt table, fences outstanding wakes, and changes the serving epoch again. Existing migrations 0001–0007 and immutable object keys/bytes remain unchanged.
-
-If `beginRecovery()` was used for the stopped operation, perform `verifyRecovery()` and `finishRecovery()` after final migration before reopening. Otherwise restart fresh canonical instances, verify authenticated readiness and representative replay/producer/fork/subscription behavior, then reopen ingress. The upgrade does not silently rebind environment/storage identities. Conversion has no automatic binary downgrade: restore matching pre-upgrade database/objects if rollback is required. Do not run an old binary against schema 0009.
+Run the complete [database baseline](migrations.md) before serving. Older unreleased development histories require a fresh schema; their preparation, backfill, and conversion tooling has been removed from the package. The migration ledger and checksums remain for future schema changes. Immutable object format v1 is unchanged.
 
 The native Function example exposes explicit forced draining only through its authenticated manual maintenance route. Cron and hints use normal due maintenance. `DS_MAX_CHUNK_AGE_MS` defaults to one hour; the cron integration fixture overrides it to one second so scheduled age-based sealing can be tested within a bounded test duration. The separate hints-only fixture keeps the production age default.
 
@@ -74,4 +50,4 @@ Current-data object reachability and historical boundary metadata have distinct 
 
 Whole-parent retention for live forks, replay pins, upload intents, exact-key deletion retries, and serving-epoch fencing remain. Historical database/object recovery remains provider/backup-owned, and collection remains disabled by default. See the [collection contract](reclamation-v1.md).
 
-Actual-Neon qualification covers 1,024 variable-size frames, eight replay pages with one object fetch, cache-disabled cold replay, interior seeks/forks, atomic sealed ack batches, post-snapshot appends, first-append age, explicit drains, one ordinary stream-head update, migration failure/retry, old-format continuity, and retired-index conversion. The complete pinned 338-case protocol suite must pass with subscriptions and collection enabled. Deployed Function/webhook, hints/cron recovery, process-loss, and restore checks remain required. Exact revisions and reports belong in the [qualification index](qualification/README.md); historical schema-0007 results do not certify this layout.
+Actual-Neon qualification covers 1,024 variable-size frames, eight replay pages with one object fetch, cache-disabled cold replay, interior seeks/forks, atomic sealed ack batches, post-snapshot appends, first-append age, explicit drains, one ordinary stream-head update, transactional baseline failure/retry, rejection of old development histories, and v1 object continuity. The complete pinned 338-case protocol suite must pass with subscriptions and collection enabled. Deployed Function/webhook, hints/cron recovery, process-loss, and restore checks remain required. Exact revisions and reports belong in the [qualification index](qualification/README.md); historical qualification remains scoped to its recorded source revision.

@@ -1,6 +1,8 @@
 # Development and current validation
 
-Current canonical schema 0009 passed [all required CI jobs](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790) at clean `cdf0fa8`: 57 unit/property, 96 actual-Neon, 21 transaction/process-loss, nine Function/webhook, two hints-only, both recovery drills, and 338/338 full conformance, with zero failed/skipped cases. See the [compact storage/upgrade contract](compact-storage-v2.md), [measurement method](experiments/README.md), and [qualification evidence](qualification/README.md). The packed fixture now verifies a stopped old-layout upgrade followed by eight same-candidate multi-instance checks; it does not run an obsolete schema-0005 serving mode in the current runtime.
+Install the complete [four-file database baseline](migrations.md) in a fresh schema. Earlier unreleased migration histories and partial targets are unsupported; historical qualification below identifies the versions tested.
+
+Before consolidation, the compact layout passed [all required CI jobs](https://github.com/samwillis/neon-durable-streams/actions/runs/45148464790) at clean `cdf0fa8`: 57 unit/property, 96 actual-Neon, 21 transaction/process-loss, nine Function/webhook, two hints-only, both recovery drills, and 338/338 full conformance, with zero failed/skipped cases. See the [compact storage contract](compact-storage-v2.md), [measurement method](experiments/README.md), and [qualification evidence](qualification/README.md). The current packed fixture runs eight same-candidate multi-instance checks on a fresh baseline. Historical upgrade reports remain scoped to their archived packages.
 
 Earlier revision evidence follows. Its source/layout scope is retained.
 
