@@ -103,7 +103,12 @@ async function handle(request) {
   const url = new URL(request.url)
   if (url.pathname === '/_benchmark/health') return Response.json({ instanceId, settings, build: required('DS_BUILD_HASH'), sourceCommit: required('DS_SOURCE_COMMIT'), ready: (await shared.inspectHealth()).ready })
   if (url.pathname === '/_benchmark/seed' && request.method === 'POST') return Response.json(await seed(await request.json()))
-  if (url.pathname === '/_benchmark/maintain' && request.method === 'POST') return Response.json(await shared.maintain({ forceHot: true, maxChunks: 128, timeBudgetMs: 40000 }))
+  if (url.pathname === '/_benchmark/maintain' && request.method === 'POST') {
+    const memoryBefore = process.memoryUsage(), started = performance.now()
+    const result = await shared.maintain({ forceHot: true, maxChunks: 128, timeBudgetMs: 40000 })
+    return Response.json({ ...result, benchmark: { instanceId, memoryBefore, memoryAfter: process.memoryUsage(),
+      lifetimeMaxRssKiB: process.resourceUsage().maxRSS, durationMs: performance.now() - started } })
+  }
   if (url.pathname === '/_benchmark/storage') {
     const relations = await pool.query(`SELECT relname,pg_relation_size(c.oid) AS heap_bytes,pg_indexes_size(c.oid) AS index_bytes,
       pg_total_relation_size(c.oid) AS total_bytes FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
