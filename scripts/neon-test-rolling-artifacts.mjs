@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 
 // Build actual packed consumers, without cloud credentials in build processes.
@@ -16,7 +16,8 @@ const buildEnv = Object.fromEntries(Object.entries(process.env).filter(([key]) =
 buildEnv.GIT_TERMINAL_PROMPT = '0'
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const sourcePaths = ['src', 'migrations', 'package.json', 'pnpm-lock.yaml', 'tsconfig.json', 'tsconfig.build.json', 'README.md', 'NOTICE']
-const candidatePaths = [...sourcePaths, 'LICENSE']
+const candidatePaths = [...sourcePaths, 'LICENSE', 'scripts/build.mjs']
+let baselinePaths = sourcePaths
 const directory = await mkdtemp(join(tmpdir(), 'durable-streams-rolling-'))
 try { await writeFile(stateFile, JSON.stringify({ directory }), { mode: 0o600, flag: 'wx' }) }
 catch (error) { await rm(directory, { recursive: true, force: true }); throw error }
@@ -27,8 +28,9 @@ const prior = join(directory, 'baseline-source'), archive = join(directory, 'bas
 if (baseline) {
   try { await command('git', ['cat-file', '-e', `${baseline}^{commit}`]) }
   catch { await command('git', ['fetch', '--no-tags', '--depth=1', 'https://github.com/samwillis/neon-durable-streams.git', baseline]) }
+  try { await command('git', ['cat-file', '-e', `${baseline}:scripts/build.mjs`]); baselinePaths = [...sourcePaths, 'scripts/build.mjs'] } catch { /* Archived revisions may use a direct tsc build. */ }
   await mkdir(prior)
-  await command('git', ['archive', '--format=tar', '--output', archive, baseline, ...sourcePaths])
+  await command('git', ['archive', '--format=tar', '--output', archive, baseline, ...baselinePaths])
   await command('tar', ['-xf', archive, '-C', prior])
   await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], prior)
   await command('pnpm', ['build'], prior)
@@ -37,7 +39,7 @@ const currentCommit = (await command('git', ['rev-parse', 'HEAD'])).trim()
 const currentDirty = Boolean((await command('git', ['status', '--porcelain', '--untracked-files=all', '--', ...candidatePaths])).trim())
 const candidate = join(directory, 'current-source')
 await mkdir(candidate)
-for (const path of candidatePaths) await cp(join(root, path), join(candidate, path), { recursive: true })
+for (const path of candidatePaths) { await mkdir(dirname(join(candidate, path)), { recursive: true }); await cp(join(root, path), join(candidate, path), { recursive: true }) }
 await command('pnpm', ['install', '--frozen-lockfile', '--prefer-offline', '--ignore-scripts'], candidate)
 await command('pnpm', ['build'], candidate)
 async function sourceDigest(source) {
@@ -49,7 +51,7 @@ async function sourceDigest(source) {
     if (entries) { for (const child of entries.sort()) await include(join(path, child)); return }
     hash.update(path); hash.update('\0'); hash.update(await readFile(absolute)); hash.update('\0')
   }
-  for (const path of source === candidate ? candidatePaths : sourcePaths) await include(path)
+  for (const path of source === candidate ? candidatePaths : baselinePaths) await include(path)
   return hash.digest('hex')
 }
 const artifacts = {}
