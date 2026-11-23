@@ -15,6 +15,8 @@ const pool = new pg.Pool({ connectionString: env.TEST_DATABASE_URL_UNPOOLED, max
 const request = (path, options = {}) => fetch(new URL(path, env.TEST_FUNCTION_URL), { ...options,
   headers: { Authorization: `Bearer ${env.TEST_FUNCTION_API_KEY}`, ...options.headers }, signal: options.signal ?? AbortSignal.timeout(180000) })
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
+const harnessSha256 = digest(await readFile(new URL(import.meta.url)))
+const inputsSha256 = digest(await readFile(new URL('../test/fixtures/replay-data.mjs', import.meta.url)))
 const samples = []
 const datasets = []
 const errors = []
@@ -29,6 +31,7 @@ let storageBefore, storageAfter
 async function readPage(dataset, from, cache, mode = 'seek', extra = {}) {
   const url = `v1/stream/${dataset.path}?offset=${encodeURIComponent(dataset.offsets[from])}`
   const begin = performance.now()
+  const startedAt = new Date().toISOString()
   const response = await request(url, { headers: { 'x-replay-cache': cache, ...extra.headers } })
   const headerMs = performance.now() - begin
   const metrics = JSON.parse(response.headers.get('x-replay-metrics') ?? 'null')
@@ -54,7 +57,7 @@ async function readPage(dataset, from, cache, mode = 'seek', extra = {}) {
   const bytes = Buffer.concat(parts)
   if (response.status === 200) assert.deepEqual(bytes, expectedReplay(dataset.profile, from, next), 'Replay bytes differ from independent deterministic inputs')
   else assert.equal(bytes.length, 0)
-  samples.push({ profile: dataset.profile, from, through: next, mode, headerMs, firstByteMs: firstByteMs ?? headerMs, completeMs,
+  samples.push({ profile: dataset.profile, from, through: next, mode, startedAt, headerMs, firstByteMs: firstByteMs ?? headerMs, completeMs,
     deliveredBytes: bytes.length, digest: digest(bytes), metrics })
   return { next, response }
 }
@@ -203,6 +206,7 @@ try {
     assert.deepEqual(Buffer.from(await replayed.arrayBuffer()), expectedReplay('binary', dataset.frames, dataset.frames + 24))
   }
   storageAfter = await (await request('_benchmark/storage')).json()
+  assert.equal(Number(storageAfter.counts.replay_pins), 0, 'Replay pins remain after all readers completed')
 } catch (error) {
   errors.push({ name: error.name, message: error.message })
   console.error(error.name, error.message)
@@ -210,7 +214,8 @@ try {
   await pool.end()
   const report = { sourceCommit: env.TEST_FUNCTION_SOURCE_COMMIT, bundleSha256: env.TEST_FUNCTION_BUNDLE_SHA,
     deploymentId: env.TEST_FUNCTION_DEPLOYMENT_ID, branchId: env.NEON_TEST_BRANCH_ID, region: env.AWS_REGION,
-    harnessSha256: digest(await readFile(new URL(import.meta.url))), generatedAt: new Date().toISOString(), run, seed: 20261123, repetitions,
+    harnessSha256, inputsSha256, coordinator: { node: process.version, platform: process.platform, architecture: process.arch },
+    generatedAt: new Date().toISOString(), run, seed: 20261123, repetitions,
     settings: JSON.parse(env.REPLAY_SETTINGS), durationMs: performance.now() - started, errors,
     scope: 'Public API appends and reads through deployed instrumented consumer. Per-request SQL/object metrics cover handler work through response headers. Disabled-cache requests create a separate server on the reached isolate. Instance IDs distinguish routed isolates. Client times include coordinator network. No open-loop capacity claim.',
     profiles: datasets.map((dataset) => ({ profile: dataset.profile, frames: dataset.frames })), storageBefore, storageAfter, samples,

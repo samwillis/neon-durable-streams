@@ -1,0 +1,53 @@
+{
+  "scope": "Intermediate read-path comparison. Final block/range, offset and full conformance qualification remain pending.",
+  "baseline": {
+    "file": "2026-11-23-replay-baseline.json",
+    "sha256": "d0e1efbe80c6ff07c302f2d29736c3fa1ecb5cb206491a156d208f322b13a42e",
+    "sourceCommit": "1e2d9861dec097bfc09e22213224f5c61ea416c4",
+    "samples": 517
+  },
+  "candidate": {
+    "file": "2026-11-23-replay-readpath-candidate.json",
+    "sha256": "4d3d452fd8cd762b689920ebf83422f0e76e6989cc788c4f0a46765629b09423",
+    "sourceCommit": "66cc94f647fe0aabd5f377d59f77649d82a46b32",
+    "samples": 517
+  },
+  "sourceAttribution": "The two immutable deployed bundles were measured with the same expanded driver. Initial seeding overlapped a brief range-only regression recheck. The measured reads ran after that recheck. Neither run overlapped the earlier broad regression suite.",
+  "observations": {
+    "warmedSealedSqlCallsPerPage": {
+      "baseline": 17,
+      "candidate": 12
+    },
+    "initialPageSqlCalls": {
+      "baseline": 16,
+      "candidate": 11
+    },
+    "sequentialMedianHandlerMs": {
+      "baseline": 37.5,
+      "candidate": 22.8
+    },
+    "allReplayPinsReleased": true
+  },
+  "correctness": {
+    "snapshotAndPinRaces": {
+      "passed": 6,
+      "failed": 0
+    },
+    "broadRegression": {
+      "passed": 36,
+      "failed": 1,
+      "failure": "New range test was loaded into a process already using the previous adapter. getRange was missing on that cached module."
+    },
+    "freshProcessRangeRecheck": {
+      "selected": 1,
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "limits": [
+    "Latency distributions vary across routed instances and ingress. Client tail latency did not improve uniformly. No capacity or sustained-load qualification is claimed.",
+    "Metrics in response headers cover work until response headers, rather than the full SSE body lifetime.",
+    "Cache-disabled requests create a separate server within the reached isolate. They are distinct from a newly started isolate.",
+    "Current replay still fetches complete objects. The bounded range adapter and block codec are groundwork for the next integration milestone."
+  ]
+}

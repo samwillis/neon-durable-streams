@@ -10,9 +10,9 @@ Work started on 2026-11-23. All six milestones remain in scope. The baseline and
 
 | Milestone | Evidence and remaining work |
 | --- | --- |
-| 1 | The initial baseline at `1e2d986` verified 310 samples across five datasets. Typical warmed sealed replay used 17 SQL calls per page. The driver now also covers quiet streams, sixteen fork levels, cancellation, catch-up into live delivery and replay of concurrent writes. Expanded baseline and matched candidate measurements are pending. |
-| 2 | Candidate `66cc94f` removes stream-head locking for non-TTL snapshots, combines pin statements/transactions and reduces buffer copies. Six actual-Neon cases pass for append/seal/delete/retirement races, TTL renewal and expired pins. Broader regressions and the deployed comparison remain in progress. |
-| 3 | The adapter supports bounded cancellable HTTP Range GETs with strict response validation. Actual Neon returned 3,074 selected bytes from a 4,224,034-byte sealed object in three exact ranges. Serving replay still requires the verifiable block codec, directory, cache and read integration. |
+| 1 | Baseline `1e2d986` and candidate `66cc94f` each passed 517 samples with three repetitions per profile. Coverage includes five payload profiles, quiet streams, sixteen fork levels, cancellation, catch-up into live delivery and exact replay of concurrent writes. [Reports and limits](qualification/2026-11-23-replay-readpath.json). |
+| 2 | Candidate `66cc94f` removes stream-head locking for non-TTL snapshots, combines pin statements/transactions and reduces buffer copies. Typical warmed sealed replay dropped from 17 to 12 SQL calls per page. Six actual-Neon snapshot/pin cases passed. The broader run passed 36 cases. A new range case encountered a cached old adapter in that long-running process and passed its fresh-process recheck. Client tail latency varied across routed instances. |
+| 3 | The adapter supports bounded cancellable HTTP Range GETs with strict response validation. Actual Neon returned 3,074 selected bytes from a 4,224,034-byte sealed object in three exact ranges. The compact independently verifiable block codec has six passing property/corruption cases. Serving replay still requires publication, directory, cache and read integration. |
 | 4 | Response pipelining, byte-oriented pages, shared cancellation and conditional GET optimization are pending. |
 | 5 | Offset prototypes, restore-collision checks and the measured choice are pending. |
 | 6 | Fresh-baseline adoption and complete final qualification are pending. |
