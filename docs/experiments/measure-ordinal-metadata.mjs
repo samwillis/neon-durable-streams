@@ -75,7 +75,7 @@ try {
     }
     const before = (await pool.query('SELECT pg_current_wal_insert_lsn() AS lsn')).rows[0].lsn
     await pool.query(`INSERT INTO ${sql}.chunks(id,stream_id,start_offset,end_offset,state,frame_count,payload_bytes,block_directory,object_key,sha256,encoded_bytes,sealed_at${kind === 'byte-control' ? ',end_deltas' : ''})
-      SELECT x.id,$1,x.start,x.end,'sealed',$3,$4,decode(x.directory,'hex'),'v1/'||$5||'/'||$1||'/'||x.id||'/'||x.sha||'.ndsc',x.sha,x.encoded,clock_timestamp()
+      SELECT x.id,$1::uuid,x.start,x.end,'sealed',$3,$4,decode(x.directory,'hex'),'v1/'||$5||'/'||$1::uuid::text||'/'||x.id||'/'||x.sha||'.ndsc',x.sha,x.encoded,clock_timestamp()
       ${kind === 'byte-control' ? ',ARRAY(SELECT n*37 FROM generate_series(1,$3::integer) n)' : ''}
       FROM jsonb_to_recordset($2::jsonb) x(id uuid,start text,"end" text,directory text,sha text,encoded integer)`,
     [stream, JSON.stringify(inserts), framesPerChunk, framesPerChunk * payloadBytes, installation.id])
