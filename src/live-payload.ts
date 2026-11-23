@@ -1,4 +1,4 @@
-import { advanceOffset, parseOffset } from './offset.js'
+import { isSuccessor, parseOffset } from './offset.js'
 import type { HeadWatch, StreamNotifier } from './neon.js'
 import type { ReadResult } from './store.js'
 import type { InstallationIdentity } from './installation.js'
@@ -46,7 +46,7 @@ export class AppendBuffer {
         parseOffset(row.start); parseOffset(row.end)
         if (row.streamId !== this.streamId || row.start >= row.end) throw new Error('Invalid Realtime frame identity')
         if (row.end <= cursor) continue
-        if (!row.payload || row.start < cursor || advanceOffset(row.start, row.payload.byteLength) !== row.end) throw new Error('Realtime frame needs durable replay')
+        if (!row.payload || row.start < cursor || !isSuccessor(row.start, row.end)) throw new Error('Realtime frame needs durable replay')
         if (row.messageEnds) {
           let previous = 0
           for (const end of row.messageEnds) {

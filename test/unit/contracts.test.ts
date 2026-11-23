@@ -6,23 +6,23 @@ import { streamPath } from '../../src/path.js'
 
 describe('persistent offset contract', () => {
   test('increments exactly above the JavaScript safe integer range', () => {
-    expect(advanceOffset('0000000000000000_9007199254740992', 1)).toBe('0000000000000000_9007199254740998')
-    expect(() => advanceOffset('0000000000000000_9999999999999998', 1)).toThrow('capacity')
+    const history = 'a'.repeat(32)
+    expect(advanceOffset(`9007199254740992_${history}`)).toBe(`9007199254740993_${history}`)
+    expect(() => advanceOffset(`9999999999999999_${history}`)).toThrow('capacity')
   })
-  test('offset order and payload accounting survive arbitrary append batches', () => {
-    fc.assert(fc.property(fc.array(fc.integer({ min: 1, max: 1_000_000 }), { maxLength: 200 }), (sizes) => {
-      let offset = ZERO_OFFSET
-      let bytes = 0n
-      for (const size of sizes) {
-        const next = advanceOffset(offset, size)
-        bytes += BigInt(size) + 5n
+  test('offsets order by ordinal across arbitrary history transitions', () => {
+    fc.assert(fc.property(fc.array(fc.uuid(), { maxLength: 200 }), (histories) => {
+      let offset = ZERO_OFFSET, ordinal = 0n
+      for (const history of histories) {
+        const next = advanceOffset(offset, history.replaceAll('-', ''))
         expect(next > offset).toBe(true)
-        expect(parseOffset(next).position).toBe(bytes)
+        expect(parseOffset(next).ordinal).toBe(++ordinal)
+        expect(parseOffset(next).history).toBe(history.replaceAll('-', ''))
         offset = next
       }
     }))
   })
-  test.each(['', 'now', '-1', '1_2', '0000000000000000_0000000000000000x'])('sentinels/invalid tokens are not stored offsets: %j', (value) => {
+  test.each(['', 'now', '-1', '1_2', '0000000000000000_00000000000000000000000000000000x'])('sentinels/invalid tokens are not stored offsets: %j', (value) => {
     expect(() => parseOffset(value)).toThrow()
   })
 })

@@ -1,41 +1,26 @@
-# Sealed object format v1
+# Sealed storage
 
-Current SQL ownership and installation procedures are described in [compact Postgres storage](compact-storage-v2.md). The current baseline removes sealed append rows while retaining this immutable object format.
+The [storage layout](compact-storage-v2.md), [offset contract](offset-design.md) and [block encoding](block-storage-format.md) describe the current storage version 3 baseline.
 
 The consumer supplies an immutable-key `ChunkStorage` adapter and explicitly binds its identity during migration. The `/s3` adapter derives that identity from the endpoint, region, and private bucket, excluding credentials so key rotation does not change the binding. A mismatched branch/bucket fails closed. Database restores and branch adoption still require an explicit recovery workflow; this version does not silently rebind an installation.
 
 ## Rotation and publication
 
-Hot frames keep their bytes and JSON message indexes in Postgres. Under the stream lock, rotation records a contiguous bounded prefix as a new FROZEN manifest and advances the monotonic hot floor. It does not update individual append rows. It records the frame count, payload length, offsets, and UUID before any upload. Appends continue into the next hot chunk. Defaults rotate at 4 MiB or 1,024 frames; the triggering append can add up to one maximum frame beyond the byte target. Normal maintenance seals tails after one hour from their first append. Explicit `forceHot: true` drains earlier.
+Hot frames keep their bytes and JSON message indexes in Postgres. Under the stream lock, rotation records a contiguous bounded prefix as a new FROZEN manifest and advances the monotonic hot floor. It does not update individual append rows. It records the frame count, payload length, offsets, and UUID before any upload. Appends continue into the next hot chunk. Defaults rotate at 4 MiB or 131,072 frames; the triggering append can add up to one maximum frame beyond the byte target. Normal maintenance seals tails after one hour from their first append. Explicit `forceHot: true` drains earlier.
 
-`server.maintain({ maxChunks })` obtains a persisted expiring claim with a random token and increasing epoch. It reads immutable frozen frames, encodes them, and uploads outside a database transaction. The object key contains the installation UUID, stream generation, chunk UUID, and SHA-256 digest. Duplicate uploads use the same key and bytes. After downloading and verifying the uploaded object, a short transaction publishes the manifest with its boundary directory and deletes those exact append rows together. Publication requires the current token, epoch, and unexpired lease. A stale worker cannot publish or release a replacement worker's claim.
+`server.maintain({ maxChunks })` obtains a persisted expiring claim with a random token and increasing epoch. It reads immutable frozen frames, encodes them, and uploads outside a database transaction. The object key contains the installation UUID, stream generation, chunk UUID, and SHA-256 digest. Duplicate uploads use the same key and bytes. After downloading and verifying the uploaded object, a short transaction publishes the manifest with its verified block directory and deletes those exact append rows together. Publication requires the current token, epoch, and unexpired lease. A stale worker cannot publish or release a replacement worker's claim.
 
 Failures before publication leave the frozen local bytes readable. Failure after the commit leaves a sealed manifest and its verified object. A lost publication response is never automatically replayed as a database transaction. Another explicit maintenance call can recover through durable state. Claim expiration allows recovery after every worker disappears. Maintenance errors are returned to the host; they must be observed and retried by its scheduler. A bounded batch does not promise that an arbitrary backlog is drained.
 
-The host owns scheduling and authentication of maintenance calls. No correctness step depends on an untracked task after an HTTP response. A cron Function or explicit worker calls `maintain`; opportunistic calls can supplement that durable recovery trigger. Scheduling cadence determines idle-chunk sealing latency. Subscription recovery will extend this same explicit maintenance API.
+The host owns scheduling and authentication of maintenance calls. No correctness step depends on an untracked task after an HTTP response. A cron Function or explicit worker calls `maintain`; opportunistic calls can supplement that durable recovery trigger. Scheduling cadence determines idle-chunk sealing latency. Subscription recovery shares this explicit maintenance API.
 
-## Binary format
+## Encoding and replay
 
-The independently specified fixture is `test/fixtures/chunks/v1.hex`. All integer fields are unsigned big-endian.
+The [block format](block-storage-format.md) specifies the single shipping codec and its independent fixture. Objects contain complete append frames grouped into independently hashed blocks. Postgres stores one packed block directory per chunk; frame lengths and JSON element boundaries live inside blocks. Dense ordinal/history intervals validate sealed checkpoints without per-append SQL metadata.
 
-| Field | Bytes |
-| --- | ---: |
-| ASCII magic `NDSTRM01` | 8 |
-| Installation, stream, chunk UUIDs, raw bytes | 16 each |
-| Frame count | 4 |
-| Each frame's start and end offset, ASCII | 33 each |
-| Frame payload length | 4 |
-| JSON message count, or `0xffffffff` for binary/text | 4 |
-| JSON message byte-end indexes, including trailing commas | 4 each |
-| Exact frame payload | payload length |
+Replay planning captures authorized generation, capped ancestry and staging/object ownership in a coherent snapshot, acquiring temporary pins before it ends. It downloads selected verified ranges or an explicit whole object outside SQL. Adjacent missing blocks coalesce, concurrent readers share immutable fetches, and cached blocks own their allocations. Corruption in a later block fails the complete page before headers.
 
-Chunks have 1–1024 contiguous frames and an absolute encoded limit of 128 MiB. Decode verifies the complete checksum, identities, magic/version, frame lengths, offset arithmetic/continuity, indexes, JSON validity, and exact envelope exhaustion. It does not round-trip numeric values through JavaScript serialization.
-
-## Replay and resource bounds
-
-A snapshot transaction captures a bounded local/chunk plan and writes temporary replay pins when sealed objects are selected. PostgreSQL computes the page byte budget from retained frame lengths before returning payloads. A plan contains either local frame bytes or references to sealed immutable manifests. The SQL transaction ends before object downloads. Sealed manifests retain bounded relative end-offset arrays; exact payload and JSON message-index data live in objects. There is no retained per-frame SQL row or B-tree entry. Directory bytes still scale with append count.
-
-Readers verify downloaded size, digest, identities, and frame boundaries before caching immutable objects and returning copied response frames. A per-server bounded verified cache coalesces concurrent downloads; hits still require the normal pins and fences. Response pages copy only selected frames, so a slow reader does not pin a whole chunk buffer. The S3 adapter defaults to four concurrent network operations, at most 128 queued operations with a five-second queue deadline, a 30-second operation deadline, and three SDK attempts inside that deadline. Stream read pages retain their existing size/frame caps. Memory/egress under mixed hot/sealed reads still needs sustained workload measurements before release.
+The S3 adapter requires exact HTTP 206 and Content-Range for ranges. It defaults to four concurrent operations, 128 queued requests with a five-second queue deadline, a 30-second operation deadline and three SDK attempts inside that deadline. Range fragments are consumed under backpressure. Per-server replay, response and cache memory have separate bounds described in the [storage layout](compact-storage-v2.md).
 
 ## Retention
 
@@ -51,4 +36,4 @@ Tests run against real Neon Object Storage and Postgres, including hot/sealed re
 
 `maintain` interleaves one bounded subscription pass with lifecycle/chunk work, so continuous outbox traffic cannot exclude delivery and sealing. `timeBudgetMs` stops new rounds after the deadline; the current round finishes its bounded SQL/object/webhook I/O. Count limits remain in force. Hints and cron share size/count/age policy. Explicit administrative drains use `forceHot: true`; ordinary cron does not flush every small tail. The example keeps at most two coalesced hint passes under one Neon `waitUntil` owner, plus a durable minute-level cron with 64 chunk/subscription work units and a 40-second soft budget.
 
-Replay defaults to 128 frames per page and a 2 MiB byte budget. `limits.maxPageFrames` supports up to 1,024. Larger chunks can serve several response pages from one verified cache entry; eviction or another Function instance can require another full-object read. See the [compact storage contract](compact-storage-v2.md) for cache/resource bounds.
+Replay defaults to 8192 frames and 2 MiB per page. The frame-work ceiling is configurable up to 131072. Partial seeks use verified HTTP ranges; warm cached blocks require no object request. Ordinary bodies stream views over one owned verified page, and SSE emits bounded data fragments before their control checkpoint.

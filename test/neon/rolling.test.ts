@@ -205,11 +205,11 @@ qualify('canonical deployments preserve exact-number JSON and inherited sealed f
   expect((await request(current, 'json-child', 'PUT', undefined, { 'Content-Type': 'application/json', 'Stream-Forked-From': '/v1/stream/json' })).status).toBe(201)
   expect((await request(peer, 'json-grandchild', 'PUT', undefined, { 'Content-Type': 'application/json', 'Stream-Forked-From': '/v1/stream/json-child' })).status).toBe(201)
   expect((await request(current, 'json-partial', 'PUT', undefined, { 'Content-Type': 'application/json', 'Stream-Forked-From': '/v1/stream/json',
-    'Stream-Fork-Offset': '0000000000000000_0000000000000000', 'Stream-Fork-Sub-Offset': '2' })).status).toBe(201)
+    'Stream-Fork-Offset': '0000000000000000_00000000000000000000000000000000', 'Stream-Fork-Sub-Offset': '2' })).status).toBe(201)
   await maintain(peer)
   expect(await read(peer, 'json-partial')).toBe('[9007199254740993,1e400]')
   expect((await request(peer, 'json-subpartial', 'PUT', undefined, { 'Content-Type': 'application/json', 'Stream-Forked-From': '/v1/stream/json-partial',
-    'Stream-Fork-Offset': '0000000000000000_0000000000000000', 'Stream-Fork-Sub-Offset': '1' })).status).toBe(201)
+    'Stream-Fork-Offset': '0000000000000000_00000000000000000000000000000000', 'Stream-Fork-Sub-Offset': '1' })).status).toBe(201)
   expect(await read(current, 'json-subpartial')).toBe('[9007199254740993]')
   expect((await request(peer, 'json-child', 'POST', '[42]', { 'Content-Type': 'application/json' })).status).toBe(204)
   expect(await read(current, 'json-grandchild')).toBe(json)

@@ -2,7 +2,7 @@
 CREATE TABLE __SCHEMA__.installation (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   id uuid NOT NULL UNIQUE,
-  storage_version integer NOT NULL CHECK (storage_version = 2),
+  storage_version integer NOT NULL CHECK (storage_version = 3),
   storage_identity text,
   serving_epoch uuid NOT NULL DEFAULT gen_random_uuid(),
   serving_state text NOT NULL DEFAULT 'active' CHECK (serving_state IN ('active', 'recovering')),

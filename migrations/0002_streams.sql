@@ -11,12 +11,14 @@ CREATE TABLE __SCHEMA__.streams (
   tenant_id text COLLATE "C" NOT NULL,
   path text COLLATE "C" NOT NULL,
   content_type text NOT NULL,
-  tail_offset text COLLATE "C" NOT NULL DEFAULT '0000000000000000_0000000000000000'
-    CHECK (tail_offset ~ '^[0-9]{16}_[0-9]{16}$'),
+  tail_offset text COLLATE "C" NOT NULL DEFAULT '0000000000000000_00000000000000000000000000000000'
+    CHECK (tail_offset ~ '^[0-9]{16}_[0-9a-f]{32}$'),
+  write_epoch uuid NOT NULL,
+  write_history uuid NOT NULL,
   hot_bytes bigint NOT NULL DEFAULT 0 CHECK (hot_bytes >= 0),
   hot_frames integer NOT NULL DEFAULT 0 CHECK (hot_frames >= 0),
-  hot_start_offset text COLLATE "C" NOT NULL DEFAULT '0000000000000000_0000000000000000'
-    CHECK (hot_start_offset ~ '^[0-9]{16}_[0-9]{16}$'),
+  hot_start_offset text COLLATE "C" NOT NULL DEFAULT '0000000000000000_00000000000000000000000000000000'
+    CHECK (hot_start_offset ~ '^[0-9]{16}_[0-9a-f]{32}$'),
   change_version bigint NOT NULL DEFAULT 0 CHECK (change_version >= 0),
   last_seq text COLLATE "C",
   closed boolean NOT NULL DEFAULT false,
@@ -40,7 +42,7 @@ CREATE TABLE __SCHEMA__.streams (
   CONSTRAINT fork_source_fk FOREIGN KEY (tenant_id, source_id) REFERENCES __SCHEMA__.streams (tenant_id, id),
   CONSTRAINT fork_configuration CHECK (
     (source_id IS NULL AND fork_offset IS NULL AND fork_sub_offset = 0 AND fork_depth = 0 AND NOT edge_active)
-    OR (source_id IS NOT NULL AND source_id <> id AND fork_offset ~ '^[0-9]{16}_[0-9]{16}$' AND fork_depth > 0)
+    OR (source_id IS NOT NULL AND source_id <> id AND fork_offset ~ '^[0-9]{16}_[0-9a-f]{32}$' AND fork_depth > 0)
   )
 );
 
@@ -64,7 +66,7 @@ CREATE TABLE __SCHEMA__.appends (
   message_ends integer[],
   PRIMARY KEY (stream_id, end_offset),
   CHECK (start_offset < end_offset),
-  CHECK (start_offset ~ '^[0-9]{16}_[0-9]{16}$' AND end_offset ~ '^[0-9]{16}_[0-9]{16}$'),
+  CHECK (start_offset ~ '^[0-9]{16}_[0-9a-f]{32}$' AND end_offset ~ '^[0-9]{16}_[0-9a-f]{32}$'),
   CHECK (message_ends IS NULL OR (cardinality(message_ends) > 0 AND message_ends[cardinality(message_ends)] = octet_length(payload))),
   CONSTRAINT append_payload_bytes CHECK (payload_bytes > 0 AND (payload IS NULL OR octet_length(payload) = payload_bytes))
 );

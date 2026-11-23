@@ -9,7 +9,7 @@ import { createDurableStreams } from '../../src/index.js'
 const streamId = '00000000-0000-4000-8000-000000000002'
 function frame(start: string, text: string, rowId = text): RealtimeAppend {
   const payload = Buffer.from(text)
-  return { rowId, streamId, start, end: advanceOffset(start, payload.length), payload, messageEnds: null }
+  return { rowId, streamId, start, end: advanceOffset(start), payload, messageEnds: null }
 }
 const a = frame(ZERO_OFFSET, 'a'), b = frame(a.end, 'b'), c = frame(b.end, 'c')
 test.each([false, true])('live subscriptions and SQL never precede authentication/authorization (authenticated=%s)', async (authenticated) => {

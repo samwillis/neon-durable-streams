@@ -237,7 +237,7 @@ test('retirement fences an uploading worker before it can publish or discard loc
 test('inventory verifies orphans before collection and rediscovers late resumed uploads', async () => {
   await enable()
   const streamId = randomUUID(), chunkId = randomUUID(), payload = Buffer.from('late immutable orphan')
-  const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET, payload.length), payload, messageEnds: null }] })
+  const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET), payload, messageEnds: null }] })
   const key = `v1/${installationId}/${streamId}/${chunkId}/${chunkDigest(bytes)}.ndsc`
   await objects.put(key, bytes)
   expect((await phase(3)).inventoriedObjects).toBe(1)
@@ -340,7 +340,7 @@ test.each(['sealed', 'hot'])('pending inherited ack validation retains %s ancest
   if (mode === 'sealed') expect(deleted).toBeGreaterThanOrEqual(2)
   await phase(2)
   await sql('UPDATE ds.reclamation_policy SET metadata_phase=3'); await phase(5)
-  if (mode === 'sealed') expect((await sql('SELECT end_deltas FROM ds.chunks WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
+  if (mode === 'sealed') expect((await sql('SELECT frame_count FROM ds.chunks WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
   else expect((await sql('SELECT end_offset FROM ds.appends WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
   const body = JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, acks: [{ stream: 'inherited-child', offset: anchor }] })
   expect((await request(value, `${sub}/ack`, 'POST', body, { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
@@ -458,7 +458,7 @@ test('inventory preserves live chunks, quarantines corrupt objects, and handles 
   await phase(3); await phase(4)
   expect((await sql('SELECT quarantine_reason FROM ds.chunk_objects WHERE object_key=$1', [badKey])).rows[0].quarantine_reason).toBe('Invalid immutable chunk envelope')
   const streamId = randomUUID(), chunkId = randomUUID(), payload = Buffer.from('disappearing')
-  const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET,payload.length), payload, messageEnds: null }] })
+  const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET), payload, messageEnds: null }] })
   const goneKey = `v1/${installationId}/${streamId}/${chunkId}/${chunkDigest(bytes)}.ndsc`
   await objects.put(goneKey,bytes)
   await sql('UPDATE ds.reclamation_policy SET inventory_completed_at=NULL')

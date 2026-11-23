@@ -32,7 +32,7 @@ const keyring = parseSubscriptionKeyring(env.DURABLE_STREAMS_KEYRING),
 function server(storage: ChunkStorage = objects, maxChunkAgeMs = 3_600_000, cacheBytes = 32 * 1024 * 1024) {
   const value = createDurableStreams({
     postgres: { ...postgresTestLimits, pool, schema },
-    storage: { objects: storage, maxChunkAgeMs, cacheBytes },
+    storage: { objects: storage, maxChunkAgeMs, cacheBytes, maxChunkFrames: 1024 },
     subscriptions: { keyring },
     auth: { authenticate: () => ({ tenantId: 'compact', subject: 'fixture' }), authorize: () => true },
     onError: (error) => errors.push(error),
@@ -67,7 +67,7 @@ test('1024 variable-size frames seal without retained rows; one replay page fetc
   const id = (await pool.query(`SELECT id FROM "${schema}".streams WHERE path='packed'`)).rows[0].id
   const parts = Array.from({ length: 1023 }, (_, i) => String.fromCharCode(97 + (i % 26)).repeat((i % 23) + 1)),
     offsets = [ZERO_OFFSET]
-  for (const part of [...parts, 'last']) offsets.push(advanceOffset(offsets.at(-1)!, Buffer.byteLength(part)))
+  for (let index = 0; index < 1024; index++) offsets.push(advanceOffset(offsets.at(-1)!, id.replaceAll('-', '')))
   await transaction(pool, {}, async (client) => {
     await client.query(
       `INSERT INTO "${schema}".appends(stream_id,start_offset,end_offset,payload,payload_bytes)
@@ -89,8 +89,9 @@ test('1024 variable-size frames seal without retained rows; one replay page fetc
   expect((await request(writer, 'packed', 'POST', 'last')).status).toBe(204)
   expect((await writer.maintain()).sealed).toBe(1)
   expect((await pool.query(`SELECT count(*) FROM "${schema}".appends WHERE stream_id=$1`, [id])).rows[0].count).toBe('0')
-  const manifest = (await pool.query(`SELECT end_deltas FROM "${schema}".chunks WHERE stream_id=$1`, [id])).rows[0]
-  expect(manifest.end_deltas).toHaveLength(1024)
+  const manifest = (await pool.query(`SELECT frame_count,block_directory FROM "${schema}".chunks WHERE stream_id=$1`, [id])).rows[0]
+  expect(manifest.frame_count).toBe(1024)
+  expect(manifest.block_directory.byteLength).toBeLessThan(512)
   let gets = 0
   const reader = server({
     ...objects,
@@ -113,7 +114,7 @@ test('1024 variable-size frames seal without retained rows; one replay page fetc
   expect(actual).toBe(parts.join('') + 'last')
   expect(pages).toBe(1)
   expect(gets).toBe(1)
-  const invalid = advanceOffset(ZERO_OFFSET, 2)
+  const invalid = offsets[1]!.slice(0, 17) + 'f'.repeat(32)
   expect(offsets).not.toContain(invalid)
   expect((await request(reader, `packed?offset=${invalid}`)).status).toBe(400)
   const forkHeaders = { 'Stream-Forked-From': '/v1/stream/packed', 'Stream-Fork-Offset': offsets[300]! }
@@ -214,7 +215,7 @@ test('atomic ack batches validate sealed interior boundaries, inherited ranges a
         'POST',
         body([
           { stream: 'acks/a', offset: anchors['acks/a'] },
-          { stream: 'acks/b', offset: advanceOffset(ZERO_OFFSET, 1) },
+          { stream: 'acks/b', offset: advanceOffset(ZERO_OFFSET) },
         ]),
         auth,
       )

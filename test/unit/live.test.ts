@@ -16,7 +16,7 @@ test.each([false, true])('cancellation retains reader capacity until detached re
   const closeWatch = vi.fn(), closeAppends = vi.fn(), report = vi.fn()
   const watchAppends = vi.fn(() => ({ ready: Promise.resolve(), close: closeAppends }))
   const initial = { stream: { id: '00000000-0000-4000-8000-000000000001', change_version: '0', content_type: 'text/plain', closed: false, ttl_seconds: null, expires_at: null } as never,
-    body: Buffer.alloc(0), next: '0000000000000000_0000000000000000', upToDate: true, hasData: false, validatedAt: performance.now(), validUntil: Infinity } satisfies ReadResult
+    body: Buffer.alloc(0), next: '0000000000000000_00000000000000000000000000000000', upToDate: true, hasData: false, validatedAt: performance.now(), validUntil: Infinity } satisfies ReadResult
   const store = { reserveRead: () => () => {}, reserveBody: () => () => {}, guard: {
     async run(_options: unknown, work: (client: unknown) => Promise<unknown>) { return work({ query: async () => ({ rows: [{ max_readers: 1 }], rowCount: 1 }) }) },
     releaseLiveLease: releaseLease,

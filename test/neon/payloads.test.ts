@@ -82,7 +82,7 @@ test('committed payload rows flow through Realtime without replaying SQL for eve
     const content = await live.readUntil('5;')
     for (let i = 0; i < 6; i++) expect(content).toContain(`${i};`)
     expect(replay.mock.calls.length).toBeLessThan(4)
-    expect(watches[live.watchIndex]!.after).toBe('0000000000000000_0000000000000000')
+    expect(watches[live.watchIndex]!.after).toBe('0000000000000000_00000000000000000000000000000000')
   } finally { await live.close() }
 }, 20_000)
 
@@ -257,7 +257,7 @@ test('a Realtime installation with the wrong serving epoch cannot supply payload
   const rejected: unknown[] = [], updates: AppendUpdate[] = []
   const isolated = createNeonRealtimeNotifier({ url: env.NEON_REALTIME_URL!, secret: env.NEON_REALTIME_SECRET!, database: new URL(env.TEST_DATABASE_URL!).pathname.slice(1), onError: (error) => rejected.push(error) })
   const watch = isolated.watchAppends!({ schema, tenantId: 'payload', streamId: stream!.id,
-    after: '0000000000000000_0000000000000000', installation: { ...installation, serving_epoch: randomUUID() } }, (update) => updates.push(update))
+    after: '0000000000000000_00000000000000000000000000000000', installation: { ...installation, serving_epoch: randomUUID() } }, (update) => updates.push(update))
   try {
     await request(handler, 'wrong-epoch', 'POST', 'must-not-relay')
     await expect(watch.ready).rejects.toThrow('Realtime installation identity differs')
@@ -265,3 +265,30 @@ test('a Realtime installation with the wrong serving epoch cannot supply payload
     expect(rejected.length).toBeGreaterThan(0)
   } finally { watch.close(); isolated.close() }
 }, 30_000)
+
+test('an interrupted SSE data event resumes from its last completed checkpoint', async () => {
+  const installation = await inspectInstallation(pool, { schema })
+  const value = server(installation.environment_id ? { environmentId: installation.environment_id } : {})
+  const data = 'durable;'.repeat(32768)
+  const created = await request(value, 'interrupted-control', 'PUT', data, { 'Stream-Closed': 'true' })
+  expect(created.status).toBe(201)
+  const checkpoint = created.headers.get('Stream-Next-Offset')!
+  await value.maintain({ forceHot: true, maxChunks: 1 })
+  const start = '0000000000000000_00000000000000000000000000000000'
+  const partial = await request(value, `interrupted-control?live=sse&offset=${start}`)
+  expect(partial.status).toBe(200)
+  const reader = partial.body!.getReader()
+  let unfinished = Buffer.from((await reader.read()).value!).toString()
+  unfinished += Buffer.from((await reader.read()).value!).toString()
+  expect(unfinished).toContain('event: data')
+  expect(unfinished).not.toContain('event: control')
+  await reader.cancel()
+  const replay = await request(value, `interrupted-control?live=sse&offset=${start}`)
+  const complete = await replay.text()
+  const events = complete.split('\n\n').filter(Boolean)
+  expect(events).toHaveLength(2)
+  expect(events[0]!.replace(/^event: data\ndata:/, '').replace(/\ndata:/g, '\n')).toBe(data)
+  const control = JSON.parse(events[1]!.slice('event: control\ndata:'.length))
+  expect(control.streamNextOffset).toBe(checkpoint)
+  expect(control.streamClosed).toBe(true)
+})

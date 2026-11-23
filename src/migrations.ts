@@ -6,7 +6,7 @@ import { validateSchema } from './path.js'
 import { transaction } from './transaction.js'
 
 export const MIGRATION_IDS = ['0001_installation', '0002_streams', '0003_storage', '0004_subscriptions'] as const
-export const STORAGE_VERSION = 2
+export const STORAGE_VERSION = 3
 
 export interface Migration {
   readonly id: string

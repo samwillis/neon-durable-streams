@@ -61,7 +61,7 @@ test('replay crosses sealed and hot data after a new server instance, preserving
   expect((await request(writer, 'restart', 'POST', 'hot')).status).toBe(204)
   const stats = await pool.query(`SELECT a.payload FROM "${schema}".appends a JOIN "${schema}".streams s ON s.id = a.stream_id WHERE s.path = 'restart' ORDER BY a.end_offset`)
   expect(stats.rows).toEqual([{ payload: Buffer.from('hot') }])
-  expect((await pool.query(`SELECT c.end_deltas FROM "${schema}".chunks c JOIN "${schema}".streams s ON s.id=c.stream_id WHERE s.path='restart' ORDER BY c.end_offset`)).rows).toEqual([{ end_deltas: [13] }, { end_deltas: [13] }])
+  expect((await pool.query(`SELECT c.frame_count FROM "${schema}".chunks c JOIN "${schema}".streams s ON s.id=c.stream_id WHERE s.path='restart' ORDER BY c.end_offset`)).rows).toEqual([{ frame_count: 1 }, { frame_count: 1 }])
   const fresh = server()
   expect(await readAll(fresh, 'restart')).toBe('start---once----hot')
   expect((await request(fresh, 'restart', 'POST', 'different', tuple)).status).toBe(204)

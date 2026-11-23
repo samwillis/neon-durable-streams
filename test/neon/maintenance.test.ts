@@ -19,7 +19,7 @@ const objects = createS3ChunkStorage({ endpoint: env.AWS_ENDPOINT_URL_S3, region
 const keyring = parseSubscriptionKeyring(env.DURABLE_STREAMS_KEYRING)
 const errors: unknown[] = []
 const handler = createDurableStreams({ postgres: { pool, schema, ...postgresTestLimits }, storage: { objects, targetChunkBytes: 32, maxChunkFrames: 4 },
-  subscriptions: { keyring }, auth: { authenticate: () => ({ tenantId: 'maintenance', subject: 'fixture' }), authorize: () => true }, onError: (error) => errors.push(error) })
+  limits: { maxPageFrames: 128 }, subscriptions: { keyring }, auth: { authenticate: () => ({ tenantId: 'maintenance', subject: 'fixture' }), authorize: () => true }, onError: (error) => errors.push(error) })
 const request = (path: string, method = 'GET', body?: string, headers?: Record<string, string>) => handler.fetch(new Request(`https://fixture.test/v1/stream/${path}`, { method,
   headers: { 'Content-Type': 'text/plain', ...headers }, ...(body !== undefined ? { body } : {}) }))
 beforeAll(async () => { await migrate(direct, { schema, storageIdentity: objects.identity }); await initializeSubscriptions(direct, { schema, keyring }) })
@@ -48,7 +48,7 @@ test('a tiny soft budget still gives wake publication and sealing a turn under o
   const stream = (await pool.query<{ id: string; change_version: string }>(`SELECT id, change_version FROM "${schema}".streams WHERE path = 'fair/source'`)).rows[0]!
   let offset = ZERO_OFFSET
   const frames = Array.from({ length: 130 }, (_, i) => {
-    const start = offset; offset = advanceOffset(offset, 1)
+    const start = offset; offset = advanceOffset(offset, stream.id.replaceAll('-', ''))
     return { start, end: offset, version: String(BigInt(stream.change_version) + BigInt(i + 1)) }
   })
   // Seed valid committed append intent in one setup transaction. Automatic

@@ -44,7 +44,7 @@ const server = createDurableStreams({ postgres: { pool }, auth: {
 const result = await server.fetch(new Request('https://example.test/v1/stream/test'))
 if (result.status !== 401) throw new Error('Unexpected unauthenticated behavior')
 const plan = await migrationPlan('consumer_schema')
-if (plan.length !== 4 || !plan[0]!.sql.includes('"consumer_schema".installation') || !plan[1]!.sql.includes('fork_source_fk') || !plan[2]!.sql.includes('end_deltas') || !plan[3]!.sql.includes('webhook_signing_keys')) throw new Error('Packaged SQL migrations missing')
+if (plan.length !== 4 || !plan[0]!.sql.includes('"consumer_schema".installation') || !plan[1]!.sql.includes('fork_source_fk') || !plan[2]!.sql.includes('block_directory') || !plan[3]!.sql.includes('webhook_signing_keys')) throw new Error('Packaged SQL migrations missing')
 await server.close()
 await pool.end()
 `)

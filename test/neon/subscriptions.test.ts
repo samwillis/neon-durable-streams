@@ -218,7 +218,7 @@ test('a late-committing earlier change is delivered after a later change was alr
   const entered = deferred(), resume = deferred()
   const late = transaction(pool, { timeoutMs: 60_000 }, async (client) => {
     const stream = (await client.query<{ id: string; tail_offset: string; change_version: string }>(`SELECT * FROM "${schema}".streams WHERE tenant_id = 'a' AND path = 'ordering/a' FOR NO KEY UPDATE`)).rows[0]!
-    const payload = Buffer.from('late commit'), next = advanceOffset(stream.tail_offset, payload.length)
+    const payload = Buffer.from('late commit'), next = advanceOffset(stream.tail_offset)
     await client.query(`INSERT INTO "${schema}".appends (stream_id,start_offset,end_offset,payload,payload_bytes) VALUES ($1,$2,$3,$4,$5)`, [stream.id, stream.tail_offset, next, payload, payload.length])
     await client.query(`UPDATE "${schema}".streams SET tail_offset = $2, change_version = change_version + 1, hot_frames = hot_frames + 1, hot_bytes = hot_bytes + $3 WHERE id = $1`, [stream.id, next, payload.length])
     await client.query(`INSERT INTO "${schema}".stream_changes (stream_id,version,before_offset,after_offset,kind) VALUES ($1,$2,$3,$4,'appended')`, [stream.id, String(BigInt(stream.change_version) + 1n), stream.tail_offset, next])
@@ -381,7 +381,7 @@ test('acks validate inherited sealed frame boundaries before advancing a fork cu
   await request('ack-source', 'DELETE')
   await maintain()
   const value = await claim(name)
-  expect((await ack(name, value, [{ stream: 'ack-child/a', offset: advanceOffset(ZERO_OFFSET, 1) }])).status).toBe(409)
+  expect((await ack(name, value, [{ stream: 'ack-child/a', offset: advanceOffset(ZERO_OFFSET) }])).status).toBe(409)
   expect((await ack(name, value, [{ stream: 'ack-child/a', offset: first.headers.get('Stream-Next-Offset')! }], false)).status).toBe(200)
   const body = await (await request(subPath(name))).json() as { streams: { acked_offset: string }[] }
   expect(body.streams[0]!.acked_offset).toBe(first.headers.get('Stream-Next-Offset'))

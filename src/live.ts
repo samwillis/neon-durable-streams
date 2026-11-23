@@ -167,6 +167,7 @@ export class LiveReads {
     const assertActive = () => {
       // Timer callbacks can run after promise continuations when a suspended
       // isolate resumes. Check monotonic elapsed time before any new emission.
+      if (expiresAt !== undefined && Date.now() >= expiresAt) abort.abort(new StreamError(401, 'AUTH_EXPIRED', 'Authentication expired'))
       if (performance.now() >= hardDeadline) abort.abort()
       abort.signal.throwIfAborted()
     }
@@ -321,7 +322,7 @@ export class LiveReads {
             ending = true
             clearTimeout(rotation)
             abort.signal.removeEventListener('abort', end)
-            const complete = eofPending && output === undefined
+            const complete = output === undefined
             first = undefined
             output?.return(undefined)
             output = undefined

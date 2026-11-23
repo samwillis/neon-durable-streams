@@ -24,7 +24,7 @@ The quality target is a production library. The unpublished release candidate pr
 
 ## Current implementation
 
-The four-file [database baseline](docs/migrations.md) installs a compact hot/chunk layout: sealing deletes append rows and keeps a bounded boundary array per manifest. Defaults seal at 4 MiB, 1,024 frames, or one hour from the first append; replay uses a bounded verified-object cache. Earlier development migration histories require a fresh schema.
+The four-file [database baseline](docs/migrations.md) installs a compact hot/chunk layout: sealing deletes append rows and keeps one verified directory entry per object block. Ordinal/history offsets eliminate per-append sealed SQL metadata. Defaults seal at 4 MiB, 131,072 frames, or one hour; replay uses verified HTTP ranges and a bounded block cache. Earlier development migration histories require a fresh schema.
 
 The API supports PUT/POST/GET/HEAD/DELETE, JSON batching, producer deduplication/fencing, Stream-Seq, closure, TTL/absolute expiry, conditional reads, tenant isolation, and bounded replay pages. Long-poll and SSE are available with an explicitly configured notifier. Subscription control APIs are available with an explicitly configured persistent keyring. Consumer-owned database pools remain open when the handler closes; importing the library never provisions resources or migrates a database.
 

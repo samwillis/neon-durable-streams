@@ -47,7 +47,7 @@ CREATE TABLE __SCHEMA__.subscription_members (
   FOREIGN KEY (tenant_id, subscription_id) REFERENCES __SCHEMA__.subscriptions (tenant_id, id),
   FOREIGN KEY (tenant_id, stream_id) REFERENCES __SCHEMA__.streams (tenant_id, id),
   CHECK (explicit_link OR glob_link),
-  CHECK (acked_offset ~ '^[0-9]{16}_[0-9]{16}$')
+  CHECK (acked_offset ~ '^[0-9]{16}_[0-9a-f]{32}$')
 );
 CREATE INDEX subscription_members_stream ON __SCHEMA__.subscription_members (stream_id, subscription_id);
 

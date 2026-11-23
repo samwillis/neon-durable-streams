@@ -101,7 +101,7 @@ test('partial fork preparation pins sealed bytes but cannot publish an edge onto
   const parent = await sealed('partial-source')
   const block = blockedStorage(), reader = server(block.storage)
   const response = request(reader, 'partial-child', 'PUT', undefined, {
-    'Stream-Forked-From': '/v1/stream/partial-source', 'Stream-Fork-Offset': '0000000000000000_0000000000000000', 'Stream-Fork-Sub-Offset': '3',
+    'Stream-Forked-From': '/v1/stream/partial-source', 'Stream-Fork-Offset': '0000000000000000_00000000000000000000000000000000', 'Stream-Fork-Sub-Offset': '3',
   })
   try {
     await Promise.race([block.entered.promise, response.then((value) => { throw new Error(`Fork returned HTTP ${value.status} before object I/O`) })])
@@ -150,7 +150,7 @@ test('Neon Object Storage provides bounded prefix inventory and idempotent exact
   try {
     for (let i = 0; i < 2; i++) {
       const streamId = randomUUID(), chunkId = randomUUID(), payload = Buffer.from(`inventory-${i}`)
-      const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET, payload.length), payload, messageEnds: null }] })
+      const bytes = encodeChunk({ installationId, streamId, chunkId, frames: [{ start: ZERO_OFFSET, end: advanceOffset(ZERO_OFFSET), payload, messageEnds: null }] })
       const key = `${prefix}${streamId}/${chunkId}/${chunkDigest(bytes)}.ndsc`
       keys.push(key)
       await objects.put(key, bytes)

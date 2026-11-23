@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Pool, PoolClient, QueryResultRow } from 'pg'
 import { StorageCompatibilityError, StreamError } from './errors.js'
-import { advanceOffset, parseOffset, ZERO_OFFSET } from './offset.js'
+import { advanceOffset, ordinalOffset, parseOffset, ZERO_OFFSET } from './offset.js'
 import { formatPayloads, mediaType, preparePayload } from './payload.js'
 import { validateSchema } from './path.js'
 import { InstallationGuard } from './installation.js'
@@ -12,6 +12,7 @@ import { replayEtag, matchesEtag } from './etag.js'
 import { ReplayBudget } from './replay-budget.js'
 import { ChunkManager } from './storage.js'
 import type { StorageOptions } from './storage.js'
+import { unpackBlockDirectory } from './block-codec.js'
 import { decodeReplayRow } from './replay-plan.js'
 import type { StoredFrame, ReplayRow } from './replay-plan.js'
 import type { ChunkFrame } from './chunk-codec.js'
@@ -47,6 +48,8 @@ export interface StreamMetadata extends QueryResultRow {
   fork_depth: number
   edge_active: boolean
   ref_count: number
+  write_epoch: string
+  write_history: string
   hot_frames: number
   hot_bytes: string
 }
@@ -97,6 +100,7 @@ interface StoreOptions {
   readonly maxPageFrames?: number | undefined
   readonly replayTimeoutMs?: number | undefined
   readonly maxReplayMemoryBytes?: number | undefined
+  readonly consumesChanges?: boolean | undefined
   readonly storage?: StorageOptions | undefined
   readonly environmentId?: string | undefined
   readonly timeouts?: Pick<TransactionOptions, 'timeoutMs' | 'lockTimeoutMs'> | undefined
@@ -105,6 +109,8 @@ interface PinnedFrames { readonly frames: readonly StoredFrame[]; readonly lease
 interface ReplayPlan extends Omit<ReadResult, 'body'>, PinnedFrames {
   readonly etag: string
   readonly notModified: boolean
+  readonly start: string
+  readonly condition: string | null | undefined
 }
 
 /** Transactional stream state and bounded replay planning. */
@@ -121,6 +127,7 @@ export class PostgresStreamStore {
   private readonly reclamation: ReclamationManager
   private readonly replayBudget: ReplayBudget
   private readonly reservationBytes: number
+  private readonly consumesChanges: boolean
   close(): void { this.replayBudget.close(); this.chunks?.close() }
   reserveRead(): () => void { return this.replayBudget.acquire(this.reservationBytes) }
   reserveBody(bytes: number): () => void { return this.replayBudget.acquire(Math.max(1, bytes)) }
@@ -132,6 +139,7 @@ export class PostgresStreamStore {
   ) {
     const { maxStoredBytes = 1024 * 1024, maxPageBytes = 2 * 1024 * 1024, maxPageFrames = 8192, replayTimeoutMs = 60_000,
       maxReplayMemoryBytes = 256 * 1024 * 1024, storage, environmentId, timeouts } = options
+    this.consumesChanges = options.consumesChanges ?? false
     this.maxStoredBytes = maxStoredBytes
     this.maxPageBytes = maxPageBytes
     this.maxPageFrames = maxPageFrames
@@ -260,11 +268,13 @@ export class PostgresStreamStore {
         return { stream: existing, created: false }
       }
       const id = randomUUID()
-      const tail = payload.bytes.length ? advanceOffset(ZERO_OFFSET, payload.bytes.length) : ZERO_OFFSET
+      const epoch = (await this.guard.snapshot()).serving_epoch
+      const history = id.replaceAll('-', '')
+      const tail = payload.bytes.length ? advanceOffset(ZERO_OFFSET, history) : ZERO_OFFSET
       const result = await client.query<StreamMetadata>(`INSERT INTO ${this.schema}.streams
-        (id, tenant_id, path, content_type, tail_offset, change_version, closed, ttl_seconds, expires_at,hot_bytes,hot_frames)
-        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8,$9,$10) RETURNING *`,
-      [id, tenant, path, options.contentType, tail, options.closed, options.ttlSeconds ?? null, options.expiresAt ?? null,payload.bytes.length,payload.bytes.length ? 1 : 0])
+        (id, tenant_id, path, content_type, tail_offset, change_version, closed, ttl_seconds, expires_at,hot_bytes,hot_frames,write_epoch,write_history)
+        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8,$9,$10,$11,$1) RETURNING *`,
+      [id, tenant, path, options.contentType, tail, options.closed, options.ttlSeconds ?? null, options.expiresAt ?? null,payload.bytes.length,payload.bytes.length ? 1 : 0,epoch])
       const stream = result.rows[0]!
       await client.query(`UPDATE ${this.schema}.paths SET active_stream_id = $3 WHERE tenant_id = $1 AND path = $2`, [tenant, path, id])
       if (payload.bytes.length) await this.insertAppend(client, id, ZERO_OFFSET, tail, payload.bytes, payload.messageEnds, true)
@@ -300,57 +310,78 @@ export class PostgresStreamStore {
     if (!result.rowCount) throw new StreamError(400, 'OFFSET_NOT_BOUNDARY', 'Offset is not a returned boundary')
   }
 
-  /** Staging and sealed alternatives share one statement snapshot. The index
-   * locates one manifest before searching its bounded native directory. */
+  /** A dense ordinal interval authenticates every interior checkpoint using one
+   * history suffix. No per-append SQL directory survives sealing. */
   private boundaryInLineage(offset: string): string {
-    const delta = `(substring(${offset},18)::bigint-substring(c.start_offset,18)::bigint)`
     return `${offset}<=l.cap AND (EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.stream_id=l.id AND a.end_offset=${offset})
-      OR EXISTS (SELECT 1 FROM LATERAL (SELECT start_offset,end_deltas FROM ${this.schema}.chunks
+      OR EXISTS (SELECT 1 FROM LATERAL (SELECT start_offset,end_offset FROM ${this.schema}.chunks
         WHERE stream_id=l.id AND state='sealed' AND end_offset>=${offset} ORDER BY end_offset LIMIT 1) c
-        WHERE c.start_offset<=${offset} AND (c.start_offset=${offset} OR array_position(c.end_deltas,
-          CASE WHEN left(c.start_offset,16)=left(${offset},16) AND ${delta} BETWEEN 1 AND 2147483647 THEN ${delta}::integer ELSE NULL END) IS NOT NULL)))`
+        WHERE c.start_offset=${offset} OR (substring(${offset},1,16)::bigint>substring(c.start_offset,1,16)::bigint
+          AND substring(${offset},1,16)::bigint<=substring(c.end_offset,1,16)::bigint
+          AND substring(${offset},18)=substring(c.end_offset,18))))`
   }
 
   private async framePlan(client: PoolClient, id: string, start: string, limit = this.maxPageFrames, bytes = this.maxPageBytes - 2): Promise<readonly StoredFrame[]> {
-    const end = `left(c.start_offset,17)||lpad((substring(c.start_offset,18)::bigint+c.end_deltas[i])::text,16,'0')`
-    const before = `left(c.start_offset,17)||lpad((substring(c.start_offset,18)::bigint+CASE WHEN i=1 THEN 0 ELSE c.end_deltas[i-1] END)::text,16,'0')`
-    const result = await client.query<ReplayRow>(`${this.lineage()}, local_frames AS (
-        SELECT f.*,NULL::uuid AS chunk_id,NULL::integer AS ordinal FROM lineage l CROSS JOIN LATERAL (
-          SELECT stream_id,start_offset,end_offset,payload_bytes FROM ${this.schema}.appends
-          WHERE stream_id=l.id AND end_offset>$2 AND end_offset<=l.cap ORDER BY end_offset LIMIT $4
-        ) f
-      ), sealed_sources AS MATERIALIZED (
-        SELECT c.*,l.cap FROM lineage l CROSS JOIN LATERAL (
-          SELECT id,stream_id,start_offset,end_offset,end_deltas,frame_count FROM ${this.schema}.chunks
-          WHERE stream_id=l.id AND state='sealed' AND end_offset>$2 ORDER BY end_offset LIMIT $4
-        ) c WHERE c.start_offset<l.cap AND l.cap>$2 ORDER BY c.start_offset LIMIT $4
-      ), sealed_ranges AS (
-        SELECT *,CASE WHEN start_offset>=$2 THEN 1 ELSE array_position(end_deltas,(substring($2,18)::bigint-substring(start_offset,18)::bigint)::integer)+1 END AS first_frame,
-          CASE WHEN end_offset<=cap THEN frame_count ELSE array_position(end_deltas,(substring(cap,18)::bigint-substring(start_offset,18)::bigint)::integer) END AS last_frame
-        FROM sealed_sources
-      ), sealed_budget AS (
-        SELECT *,sum(last_frame-first_frame+1) OVER (ORDER BY start_offset) AS frames_through FROM sealed_ranges
-      ), sealed_frames AS (
-        SELECT c.stream_id,(${before}) COLLATE "C" AS start_offset,(${end}) COLLATE "C" AS end_offset,
-          c.end_deltas[i]-CASE WHEN i=1 THEN 0 ELSE c.end_deltas[i-1] END-5 AS payload_bytes,c.id AS chunk_id,i AS ordinal
-        FROM sealed_budget c CROSS JOIN LATERAL generate_series(c.first_frame,
-          LEAST(c.last_frame,c.first_frame+($4-(c.frames_through-(c.last_frame-c.first_frame+1)))::integer-1)) i
-        WHERE c.frames_through-(c.last_frame-c.first_frame+1)<$4
-      ), candidates AS MATERIALIZED (
-        SELECT * FROM local_frames UNION ALL SELECT * FROM sealed_frames ORDER BY end_offset LIMIT $4
-      ), bounded AS (SELECT *,sum(payload_bytes) OVER (ORDER BY end_offset) AS bytes FROM candidates), selected AS (
-        SELECT stream_id,chunk_id,min(start_offset) AS start_offset,max(end_offset) AS end_offset,sum(payload_bytes)::integer AS payload_bytes,
-          min(ordinal) AS first_frame,max(ordinal) AS last_frame FROM bounded WHERE bytes<=$3
-        GROUP BY stream_id,chunk_id,CASE WHEN chunk_id IS NULL THEN end_offset ELSE NULL END
-      ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.end_deltas,c.block_directory,c.start_offset AS chunk_start
-        FROM selected s LEFT JOIN ${this.schema}.appends a ON s.chunk_id IS NULL AND a.stream_id=s.stream_id AND a.end_offset=s.end_offset
-        LEFT JOIN ${this.schema}.chunks c ON c.id=s.chunk_id ORDER BY s.start_offset`, [id, start, bytes, limit])
-    let expected = start
-    for (const range of result.rows) {
+    const result = await client.query<ReplayRow>(`${this.lineage()}, local_sources AS (
+      SELECT f.*,l.cap FROM lineage l CROSS JOIN LATERAL (
+        SELECT stream_id,start_offset,end_offset,payload_bytes FROM ${this.schema}.appends
+        WHERE stream_id=l.id AND end_offset>$2 AND end_offset<=l.cap ORDER BY end_offset LIMIT $4
+      ) f
+    ), local_budget AS (
+      SELECT *,sum(payload_bytes) OVER (ORDER BY end_offset)-payload_bytes AS preceding_bytes FROM local_sources
+    ), sealed_sources AS (
+      SELECT c.*,l.cap FROM lineage l CROSS JOIN LATERAL (
+        SELECT * FROM ${this.schema}.chunks WHERE stream_id=l.id AND state='sealed'
+          AND end_offset>$2 AND start_offset<l.cap ORDER BY end_offset LIMIT $4
+      ) c WHERE l.cap>$2
+    ), sealed_budget AS (
+      SELECT *,sum(payload_bytes) OVER (ORDER BY end_offset)-payload_bytes AS preceding_bytes FROM sealed_sources
+    ), candidates AS (
+      SELECT stream_id,start_offset,end_offset,payload_bytes,cap,NULL::uuid AS chunk_id FROM local_budget WHERE preceding_bytes<$3
+      UNION ALL
+      SELECT stream_id,start_offset,end_offset,payload_bytes::integer,cap,id AS chunk_id FROM sealed_budget WHERE preceding_bytes<$3+134217728
+      ORDER BY start_offset LIMIT $4
+    ) SELECT s.*,a.payload,a.message_ends,c.object_key,c.sha256,c.encoded_bytes,c.frame_count,c.block_directory,
+        c.start_offset AS chunk_start,c.end_offset AS chunk_end,CASE WHEN c.id IS NOT NULL THEN 1 END AS first_frame,c.frame_count AS last_frame
+      FROM candidates s LEFT JOIN ${this.schema}.appends a ON s.chunk_id IS NULL AND a.stream_id=s.stream_id AND a.end_offset=s.end_offset
+      LEFT JOIN ${this.schema}.chunks c ON c.id=s.chunk_id ORDER BY s.start_offset`, [id, start, bytes, limit])
+    const planned: StoredFrame[] = []
+    let expected = start, count = 0, projected = 0
+    const add = (range: StoredFrame, frames: number) => {
       if (range.start_offset !== expected || range.end_offset <= expected) throw new Error('Durable replay plan has a gap or overlap')
-      expected = range.end_offset
+      const previous = planned.at(-1)
+      if (previous?.storage === 'object' && range.storage === 'object' && previous.manifest.id === range.manifest.id) {
+        planned[planned.length - 1] = { ...previous, end_offset: range.end_offset, lastFrame: range.lastFrame,
+          payload_bytes: previous.payload_bytes + range.payload_bytes, exactBytes: previous.exactBytes && range.exactBytes }
+      } else planned.push(range)
+      expected = range.end_offset; count += frames; projected += range.payload_bytes
     }
-    return result.rows.map(decodeReplayRow)
+    outer: for (const row of result.rows) {
+      const source = decodeReplayRow(row)
+      if (source.storage === 'postgres') {
+        if (count >= limit || projected >= bytes) break
+        add(source, 1)
+        continue
+      }
+      const { manifest } = source
+      const directory = unpackBlockDirectory(manifest.blockDirectory, manifest.encodedBytes, manifest.frameCount)
+      if (directory[0]!.start !== manifest.start || directory.at(-1)!.end !== manifest.end
+        || directory.reduce((sum, block) => sum + block.payloadBytes, 0) !== source.payload_bytes) throw new Error('Block directory differs from manifest')
+      const base = parseOffset(manifest.start).ordinal, history = parseOffset(manifest.end).history
+      const first = Math.max(0, Number(parseOffset(start).ordinal - base))
+      const last = Math.min(manifest.frameCount, Number(parseOffset(row.cap!).ordinal - base))
+      for (const block of directory) {
+        if (parseOffset(block.end).history !== history) throw new Error('Chunk crosses history spans')
+        const from = Math.max(first, block.firstFrame), through = Math.min(last, block.firstFrame + block.frameCount, from + limit - count)
+        if (through <= from) continue
+        if (count >= limit || projected >= bytes) break outer
+        const before = from === 0 ? manifest.start : ordinalOffset(base + BigInt(from), history)
+        const end = ordinalOffset(base + BigInt(through), history)
+        add({ ...source, start_offset: before, end_offset: end, payload_bytes: block.payloadBytes,
+          firstFrame: from + 1, lastFrame: through, exactBytes: from === block.firstFrame && through === block.firstFrame + block.frameCount }, through - from)
+      }
+    }
+    return planned
   }
 
   private async materialize(plan: PinnedFrames, signal?: AbortSignal): Promise<readonly ChunkFrame[]> {
@@ -436,12 +467,12 @@ export class PostgresStreamStore {
       const ttl = options.ttlSeconds ?? (options.expiresAt ? null : source.ttl_seconds)
       const expiry = options.expiresAt ?? (options.ttlSeconds !== undefined ? null : source.expires_at)
       const id = randomUUID()
-      await client.query(`INSERT INTO ${this.schema}.streams (id, tenant_id, path, content_type, tail_offset, change_version, closed, ttl_seconds, expires_at, source_id, fork_offset, fork_sub_offset, fork_depth, edge_active,hot_start_offset)
-        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $5, $10, $11, true,$5)`,
-      [id, tenant, path, source.content_type, anchor, options.closed, ttl, expiry, source.id, options.subOffset, source.fork_depth + 1])
+      await client.query(`INSERT INTO ${this.schema}.streams (id, tenant_id, path, content_type, tail_offset, change_version, closed, ttl_seconds, expires_at, source_id, fork_offset, fork_sub_offset, fork_depth, edge_active,hot_start_offset,write_epoch,write_history)
+        VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8, $9, $5, $10, $11, true,$5,$12,$1)`,
+      [id, tenant, path, source.content_type, anchor, options.closed, ttl, expiry, source.id, options.subOffset, source.fork_depth + 1,(await this.guard.snapshot()).serving_epoch])
       let next = anchor
       for (const frame of [...(prefix ? [prefix.frame] : []), ...(payload.bytes.length ? [{ payload: payload.bytes, messageEnds: payload.messageEnds }] : [])]) {
-        const end = advanceOffset(next, frame.payload.length)
+        const end = advanceOffset(next, id.replaceAll('-', ''))
         await this.insertAppend(client, id, next, end, frame.payload, frame.messageEnds, next === anchor)
         next = end
       }
@@ -469,6 +500,23 @@ export class PostgresStreamStore {
     if ('error' in outcome) throw outcome.error
     if ('prepare' in outcome) throw new Error('Fork prefix was not resolved')
     return outcome
+  }
+
+  /** A surviving prefix keeps its tokens; the first write after recovery starts a
+   * fresh dense span. Freeze the previous hot span before entering the new one. */
+  private async writeHistory(client: PoolClient, stream: StreamMetadata): Promise<string> {
+    const epoch = (await this.guard.snapshot()).serving_epoch
+    if (stream.write_epoch !== epoch) {
+      await this.chunks?.freeze(client, stream.id, true)
+      const history = randomUUID()
+      await client.query(`UPDATE ${this.schema}.streams SET write_epoch=$2,write_history=$3 WHERE id=$1`, [stream.id, epoch, history])
+      stream.write_epoch = epoch
+      stream.write_history = history
+      // A lower work limit may leave an older span queued. Its next freeze
+      // stops at the history boundary; inserting the due record is idempotent.
+      if (this.chunks) stream.hot_frames = 0
+    }
+    return stream.write_history.replaceAll('-', '')
   }
 
   private async insertAppend(client: PoolClient, id: string, start: string, end: string, bytes: Uint8Array, ends: readonly number[] | null, firstHot: boolean): Promise<void> {
@@ -511,7 +559,8 @@ export class PostgresStreamStore {
       if (!options.body.length && !options.close) throw new StreamError(400, 'EMPTY_APPEND', 'Append body must not be empty')
       const payload = options.body.length ? preparePayload(options.body, stream.content_type) : { bytes: Buffer.alloc(0), messageEnds: null }
       this.checkPayload(payload.bytes)
-      const next = payload.bytes.length ? advanceOffset(stream.tail_offset, payload.bytes.length) : stream.tail_offset
+      const history = payload.bytes.length ? await this.writeHistory(client, stream) : undefined
+      const next = payload.bytes.length ? advanceOffset(stream.tail_offset, history) : stream.tail_offset
       if (payload.bytes.length) await this.insertAppend(client, stream.id, stream.tail_offset, next, payload.bytes, payload.messageEnds, stream.hot_frames===0)
       if (producer) await client.query(`INSERT INTO ${this.schema}.producers (stream_id, producer_id, epoch, last_seq)
         VALUES ($1, $2, $3, $4) ON CONFLICT (stream_id, producer_id) DO UPDATE SET epoch = EXCLUDED.epoch, last_seq = EXCLUDED.last_seq`,
@@ -537,12 +586,13 @@ export class PostgresStreamStore {
   async appendWake(client: PoolClient, tenant: string, path: string, events: readonly Record<string, unknown>[]): Promise<void> {
     const stream = await this.lock(client, tenant, path)
     if (!stream || stream.deleted_at || stream.expired || stream.closed || mediaType(stream.content_type) !== 'application/json') throw new StreamError(409, 'WAKE_STREAM_UNAVAILABLE', 'Create an open JSON wake stream before issuing wakes')
+    const history = events.length ? await this.writeHistory(client, stream) : undefined
     let next = stream.tail_offset
     let addedBytes=0,addedFrames=0
     let parts: Buffer[] = [], ends: number[] = [], bytes = 0
     const flush = async () => {
       if (!bytes) return
-      const end = advanceOffset(next, bytes)
+      const end = advanceOffset(next, history)
       await this.insertAppend(client, stream.id, next, end, Buffer.concat(parts, bytes), ends,stream.hot_frames===0 && addedFrames===0)
       addedBytes+=bytes; addedFrames++
       next = end
@@ -631,9 +681,10 @@ export class PostgresStreamStore {
     const installation = await this.guard.snapshot()
     const etag = replayEtag({ generationId: stream.id, servingEpoch: installation.serving_epoch,
       start, end: next, contentType: stream.content_type, closed: stream.closed })
-    const notModified = offset !== 'now' && matchesEtag(condition, etag)
+    const exact = frames.reduce((sum, frame) => sum + frame.payload_bytes, 0) <= this.maxPageBytes - overhead
+    const notModified = exact && offset !== 'now' && matchesEtag(condition, etag)
     const lease = notModified ? undefined : await this.pins.acquire(client, frames)
-    return { stream, frames, lease, deadline, next, etag, notModified, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
+    return { stream, frames, lease, deadline, next, etag, notModified, start, condition: offset === 'now' ? undefined : condition, upToDate: next === stream.tail_offset, hasData: frames.length > 0,
       validatedAt: observedAt, validUntil: observedAt + (stream.valid_for_ms == null ? Infinity : Number(stream.valid_for_ms)) }
   }
 
@@ -644,11 +695,23 @@ export class PostgresStreamStore {
       signal?.throwIfAborted()
       return { ...plan, body: Buffer.alloc(0) }
     }
-    const frames = await this.materialize(plan, signal)
+    const loaded = await this.materialize(plan, signal)
+    const frames: ChunkFrame[] = []
+    let payloadBytes = 0
+    const maximum = this.maxPageBytes - (mediaType(plan.stream.content_type) === 'application/json' ? 1 : 0)
+    for (const frame of loaded) {
+      if (payloadBytes + frame.payload.length > maximum || frames.length >= this.maxPageFrames) break
+      frames.push(frame); payloadBytes += frame.payload.length
+    }
+    if (loaded.length && !frames.length) throw new Error('Replay page cannot fit its first frame')
+    const next = frames.at(-1)?.end ?? plan.start
+    const etag = replayEtag({ generationId: plan.stream.id, servingEpoch: (await this.guard.snapshot()).serving_epoch,
+      start: plan.start, end: next, contentType: plan.stream.content_type, closed: plan.stream.closed })
+    const notModified = matchesEtag(plan.condition, etag)
     if (plan.frames.some((frame) => frame.storage === 'object')) await this.guard.check()
-    const body = formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type)
+    const body = notModified ? Buffer.alloc(0) : formatPayloads(frames.map((frame) => frame.payload), plan.stream.content_type)
     assertReplayDeadline(plan.deadline)
-    return { stream: plan.stream, body, next: plan.next, upToDate: plan.upToDate, hasData: plan.hasData, etag: plan.etag,
+    return { stream: plan.stream, body, next, upToDate: next === plan.stream.tail_offset, hasData: frames.length > 0, etag, notModified,
       validatedAt: plan.validatedAt, validUntil: plan.validUntil }
   }
 
@@ -709,7 +772,7 @@ export class PostgresStreamStore {
       retired++
     }
     const chunks = this.chunks ? await this.chunks.maintain(options) : { frozen: 0, sealed: 0 }
-    const collected = await this.reclamation.maintain()
+    const collected = await this.reclamation.maintain(!this.consumesChanges)
     const { worked: reclamationWorked, ...counts } = collected
     return { ...chunks, retired, ...counts, reclamationWorked }
   }

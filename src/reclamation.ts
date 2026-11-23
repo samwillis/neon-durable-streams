@@ -41,8 +41,9 @@ export class ReclamationManager {
       AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_wake_streams w WHERE w.stream_id=${id})
       AND NOT EXISTS (SELECT 1 FROM ${this.schema}.subscription_pending_links l WHERE l.stream_id=${id})`
   }
-  async maintain(): Promise<ReclamationResult & { worked: boolean }> {
+  async maintain(pruneUnusedChanges = false): Promise<ReclamationResult & { worked: boolean }> {
     const result = emptyReclamation()
+    if (pruneUnusedChanges) result.prunedRows = await this.guard.run({}, (client) => this.pruneOutbox(client))
     const phase = await this.guard.run({}, async (client) => {
       const policy = (await client.query<{ enabled: boolean; work_phase: number }>(`SELECT enabled,work_phase FROM ${this.schema}.reclamation_policy FOR UPDATE`)).rows[0]!
       if (!policy.enabled) return undefined
@@ -50,14 +51,14 @@ export class ReclamationManager {
       await client.query(`UPDATE ${this.schema}.reclamation_policy SET work_phase=(work_phase+1)%${COLLECTION_TASKS.length}`)
       return policy.work_phase
     })
-    if (phase === undefined) return { ...result, worked: false }
+    if (phase === undefined) return { ...result, worked: result.prunedRows > 0 }
     switch (COLLECTION_TASKS[phase]) {
       case 'retire': result.reclaimedChunks = await this.retire(); break
       case 'collect': result.deletedObjects = await this.collect(); break
-      case 'pruneChunk': result.prunedRows = await this.pruneChunk(); break
+      case 'pruneChunk': result.prunedRows += await this.pruneChunk(); break
       case 'inventory': result.inventoriedObjects = await this.inventory(); break
       case 'verifyOrphan': await this.verifyOrphan(); break
-      case 'pruneMetadata': result.prunedRows = await this.pruneMetadata(); break
+      case 'pruneMetadata': result.prunedRows += await this.pruneMetadata(); break
     }
     // Even an empty phase must not end an unbudgeted round before other phases.
     return { ...result, worked: true }

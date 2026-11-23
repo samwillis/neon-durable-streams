@@ -161,7 +161,7 @@ export function createDurableStreams(options: ServerOptions): DurableStreamsServ
   const store = new PostgresStreamStore(options.postgres.pool, options.postgres.schema ?? 'durable_streams', {
     maxStoredBytes: options.limits?.maxStoredBytes, maxPageBytes: options.limits?.maxPageBytes, maxPageFrames: options.limits?.maxPageFrames,
     replayTimeoutMs: options.limits?.replayTimeoutMs,
-    maxReplayMemoryBytes: options.limits?.maxReplayMemoryBytes,
+    maxReplayMemoryBytes: options.limits?.maxReplayMemoryBytes, consumesChanges: !!options.subscriptions,
     storage: options.storage, environmentId: options.postgres.environmentId,
     timeouts: { ...(options.postgres.transactionTimeoutMs !== undefined ? { timeoutMs: options.postgres.transactionTimeoutMs } : {}),
       ...(options.postgres.lockTimeoutMs !== undefined ? { lockTimeoutMs: options.postgres.lockTimeoutMs } : {}) },

@@ -1,24 +1,12 @@
--- Chunk manifests and compact boundary directories. Frozen staging is owned
--- by immutable (stream_id, start_offset, end_offset] ranges.
-CREATE FUNCTION __SCHEMA__.valid_directory(d integer[], n integer, bytes bigint, first_offset text, last_offset text)
-RETURNS boolean LANGUAGE sql IMMUTABLE STRICT PARALLEL SAFE AS $$
-  SELECT array_ndims(d)=1 AND array_lower(d,1)=1 AND cardinality(d)=n
-    AND n BETWEEN 1 AND 1024 AND left(first_offset,16)=left(last_offset,16)
-    AND d[n]::bigint=substring(last_offset,18)::bigint-substring(first_offset,18)::bigint
-    AND d[n]::bigint=bytes+5::bigint*n
-    AND NOT EXISTS (SELECT 1 FROM generate_subscripts(d,1) i
-      WHERE d[i] IS NULL OR d[i]::bigint-CASE WHEN i=1 THEN 0 ELSE d[i-1] END < 6)
-$$;
-
+-- One manifest per immutable object; directories contain one entry per verified block.
 CREATE TABLE __SCHEMA__.chunks (
   id uuid PRIMARY KEY,
   stream_id uuid NOT NULL REFERENCES __SCHEMA__.streams (id),
   start_offset text COLLATE "C" NOT NULL,
   end_offset text COLLATE "C" NOT NULL,
   state text NOT NULL CHECK (state IN ('frozen', 'sealed')),
-  frame_count integer NOT NULL CHECK (frame_count BETWEEN 1 AND 1024),
+  frame_count integer NOT NULL CHECK (frame_count BETWEEN 1 AND 131072),
   payload_bytes bigint NOT NULL CHECK (payload_bytes > 0),
-  end_deltas integer[],
   block_directory bytea,
   claim_token uuid,
   claim_epoch bigint NOT NULL DEFAULT 0,
@@ -32,16 +20,16 @@ CREATE TABLE __SCHEMA__.chunks (
   UNIQUE (stream_id, id),
   UNIQUE (stream_id, end_offset),
   CHECK (start_offset < end_offset),
-  CHECK (start_offset ~ '^[0-9]{16}_[0-9]{16}$' AND end_offset ~ '^[0-9]{16}_[0-9]{16}$'),
+  CHECK (start_offset ~ '^[0-9]{16}_[0-9a-f]{32}$' AND end_offset ~ '^[0-9]{16}_[0-9a-f]{32}$'),
   CHECK ((state = 'frozen' AND object_key IS NULL AND sha256 IS NULL AND encoded_bytes IS NULL AND sealed_at IS NULL)
     OR (state = 'sealed' AND object_key IS NOT NULL AND sha256 ~ '^[0-9a-f]{64}$' AND encoded_bytes > 0 AND sealed_at IS NOT NULL)),
   retired_at timestamptz,
   CONSTRAINT chunk_claim CHECK ((claim_token IS NULL) = (claim_until IS NULL)),
-  CONSTRAINT chunk_directory_shape CHECK
-    (end_deltas IS NULL OR __SCHEMA__.valid_directory(end_deltas,frame_count,payload_bytes,start_offset,end_offset)),
+  CONSTRAINT chunk_dense_ordinals CHECK
+    (substring(end_offset,1,16)::bigint-substring(start_offset,1,16)::bigint=frame_count),
   CONSTRAINT sealed_directory_required CHECK
-    ((state='sealed' AND end_deltas IS NOT NULL AND block_directory IS NOT NULL AND octet_length(block_directory)>0)
-      OR (state='frozen' AND end_deltas IS NULL AND block_directory IS NULL))
+    ((state='sealed' AND block_directory IS NOT NULL AND octet_length(block_directory)>0)
+      OR (state='frozen' AND block_directory IS NULL))
 );
 CREATE INDEX chunks_pending ON __SCHEMA__.chunks (created_at) WHERE state = 'frozen';
 CREATE INDEX chunks_retired ON __SCHEMA__.chunks (retired_at, id) WHERE retired_at IS NOT NULL;

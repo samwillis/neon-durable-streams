@@ -1,11 +1,12 @@
-import { advanceOffset, parseOffset } from './offset.js'
+import { advanceOffset, isSuccessor, parseOffset } from './offset.js'
 import { chunkDigest, ChunkIntegrityError, MAX_CHUNK_BYTES } from './chunk-types.js'
 import type { Chunk, ChunkFrame, ChunkIdentity } from './chunk-types.js'
 
-const MAGIC = Buffer.from('NDSBLK02')
+const MAGIC = Buffer.from('NDSBLK03')
 const HEADER_BYTES = 68
 const DIRECTORY_FIXED_BYTES = 56
 const MAX_FRAMES = 131072
+const MAX_BLOCK_FRAMES = 8192
 const MAX_OFFSET_BYTES = 255
 
 function validateOffset(value: string): void {
@@ -72,10 +73,10 @@ export function encodeBlockObject(chunk: Chunk, targetBlockBytes = 65536): Block
   for (const [index, frame] of chunk.frames.entries()) {
     validateOffset(frame.start)
     validateOffset(frame.end)
-    if (frame.start !== previous || !frame.payload.length || frame.end !== advanceOffset(frame.start, frame.payload.length)) throw new ChunkIntegrityError('Noncontiguous block frame')
+    if (frame.start !== previous || !frame.payload.length || !isSuccessor(frame.start, frame.end)) throw new ChunkIntegrityError('Noncontiguous block frame')
     previous = frame.end
     const length = encodedFrameLength(frame)
-    if (current.frames.length && current.encodedBytes >= targetBlockBytes) {
+    if (current.frames.length && (current.frames.length >= MAX_BLOCK_FRAMES || current.encodedBytes >= targetBlockBytes || parseOffset(current.frames.at(-1)!.end).history !== parseOffset(frame.end).history)) {
       blocks.push(current)
       current = { frames: [], encodedBytes: 0, payloadBytes: 0, firstFrame: index }
     }
@@ -166,9 +167,9 @@ export function unpackBlockDirectory(bytes: Buffer, objectBytes: number, frameCo
     position += endLength
     validateOffset(start)
     validateOffset(end)
-    if (firstFrame !== nextFrame || !count || firstFrame + count > frameCount || !payloadBytes || byteStart !== nextByte
+    if (firstFrame !== nextFrame || !count || count > MAX_BLOCK_FRAMES || firstFrame + count > frameCount || !payloadBytes || byteStart !== nextByte
       || byteLength < count * 3 || payloadBytes > byteLength || byteStart + byteLength > objectBytes
-      || start >= end || (previousEnd !== undefined && start !== previousEnd)) throw new ChunkIntegrityError('Noncontiguous block directory')
+      || start >= end || parseOffset(end).ordinal - parseOffset(start).ordinal !== BigInt(count) || (previousEnd !== undefined && start !== previousEnd)) throw new ChunkIntegrityError('Noncontiguous block directory')
     blocks.push({ firstFrame, frameCount: count, payloadBytes, byteStart, byteLength, sha256, start, end })
     nextFrame += count
     nextByte += byteLength
@@ -217,7 +218,7 @@ export function decodeBlock(bytes: Buffer, block: ChunkBlock): readonly ChunkFra
       try { JSON.parse(`[${new TextDecoder('utf-8', { fatal: true }).decode(payload.subarray(0, -1))}]`) }
       catch { throw new ChunkIntegrityError('Invalid block JSON') }
     }
-    const end = advanceOffset(next, length)
+    const end = advanceOffset(next, parseOffset(block.end).history)
     frames.push({ start: next, end, payload, messageEnds })
     next = end
     payloadBytes += length

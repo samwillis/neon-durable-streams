@@ -10,7 +10,7 @@ const framesFrom = (payloads: readonly Uint8Array[]) => {
   let next = ZERO_OFFSET
   return payloads.map((payload) => {
     const start = next
-    next = advanceOffset(start, payload.length)
+    next = advanceOffset(start)
     return { start, end: next, payload: Buffer.from(payload), messageEnds: null }
   })
 }
@@ -18,11 +18,11 @@ const framesFrom = (payloads: readonly Uint8Array[]) => {
 test('block binary encoding has explicit compact lengths and a packed physical directory', () => {
   const frames = framesFrom([Buffer.from('hi')])
   const encoded = encodeBlockObject({ ...identity, frames })
-  // Header 68, directory 56 + two 33-byte offsets, one 4-byte binary frame.
-  expect(encoded.bytes.length).toBe(194)
-  expect(encoded.directory[0]).toMatchObject({ firstFrame: 0, frameCount: 1, payloadBytes: 2, byteStart: 190, byteLength: 4 })
-  expect(encoded.bytes.subarray(190).toString('hex')).toBe('02006869')
-  expect(encoded.bytes.toString('ascii', 0, 8)).toBe('NDSBLK02')
+  // Header 68, directory 56 + two 49-byte offsets, one 4-byte binary frame.
+  expect(encoded.bytes.length).toBe(226)
+  expect(encoded.directory[0]).toMatchObject({ firstFrame: 0, frameCount: 1, payloadBytes: 2, byteStart: 222, byteLength: 4 })
+  expect(encoded.bytes.subarray(222).toString('hex')).toBe('02006869')
+  expect(encoded.bytes.toString('ascii', 0, 8)).toBe('NDSBLK03')
   expect(unpackBlockDirectory(encoded.packedDirectory, encoded.bytes.length, 1)).toEqual(encoded.directory)
   expect(decodeBlockObject(encoded.bytes, identity, chunkDigest(encoded.bytes))).toEqual({ ...identity, frames })
 })
@@ -48,7 +48,7 @@ test('JSON message deltas preserve exact numbers, UTF-8 and batch boundaries acr
   const frames = ['[9007199254740993,1e400,-0,"🐘"]', '[{"value":[1,2]},true,null]'].map((input) => {
     const prepared = preparePayload(Buffer.from(input), 'application/json')
     const start = next
-    next = advanceOffset(start, prepared.bytes.length)
+    next = advanceOffset(start)
     return { start, end: next, payload: prepared.bytes, messageEnds: prepared.messageEnds }
   })
   const encoded = encodeBlockObject({ ...identity, frames }, 1)
@@ -94,4 +94,12 @@ test('a valid checksum cannot hide malformed integers, invalid message counts or
     const bytes = Buffer.from(input)
     expect(() => decodeBlock(bytes, { ...block, byteLength: bytes.length, sha256: chunkDigest(bytes) })).toThrow(ChunkIntegrityError)
   }
+})
+
+
+test('tiny frames have a decoding-work bound independent of a large byte target', () => {
+  const frames = framesFrom(Array.from({ length: 8193 }, () => Buffer.from('x')))
+  const encoded = encodeBlockObject({ ...identity, frames }, 16 * 1024 * 1024)
+  expect(encoded.directory.map((block) => block.frameCount)).toEqual([8192, 1])
+  expect(decodeBlockObject(encoded.bytes, identity, chunkDigest(encoded.bytes)).frames).toEqual(frames)
 })

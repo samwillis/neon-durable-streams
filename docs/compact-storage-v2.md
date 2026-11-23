@@ -1,53 +1,49 @@
-# Compact Postgres storage
+# Postgres and object storage layout
 
-The four-file [database baseline](migrations.md) installs the canonical compact layout directly. Immutable objects retain binary format v1. The [design review](postgres-efficiency-v2.md) records the alternatives and original synthetic measurement.
+The four-file [baseline](migrations.md) installs storage version 3, [ordinal/history offsets](offset-design.md), and [verified block objects](block-storage-format.md). Development installations use a fresh schema and empty object namespace. The package contains one codec and one schema layout.
 
 ## Data ownership
 
-Postgres retains exact payloads and JSON message indexes only for HOT and FROZEN append rows. After upload and full read-back verification, one publication transaction writes the sealed manifest's exact boundary array and deletes that chunk's append rows. A failed claim, checksum, or frame-count check leaves the old representation intact. Installation, worker, and retirement fences remain in force.
+Postgres retains payloads and JSON element indexes for hot and frozen appends. A frozen manifest owns an immutable `(stream_id,start_offset,end_offset]` staging range. Rotation advances the stream's hot floor without updating individual append rows. Uploads run outside SQL transactions. Publication requires the current worker claim, serving epoch and unexpired lease, writes the verified manifest and block directory, and deletes that exact staging range atomically.
 
-A frozen manifest owns its immutable `(stream_id, start_offset, end_offset]` staging range. A monotonic `hot_start_offset` advances under the stream lock when a prefix freezes. Freezing checks contiguity/count/bytes and updates the descriptor/head without updating any append row. Staging needs only its `(stream_id,end_offset)` primary index and stream foreign key; the redundant append `chunk_id`, assignment foreign key, and hot/chunk secondary indexes are removed. Sealing and bounded frozen cleanup address exact stream/range predicates. This avoids introducing another HOT descriptor state or per-append active-chunk updates.
+After sealing, Postgres retains one chunk manifest and one upload/deletion ledger entry per object, plus one packed directory entry per block. It retains no append rows, append indexes, offset arrays or byte-length arrays for sealed history. Each chunk's ordinal interval and history identifier validate interior checkpoints. Actual frame lengths and JSON element indexes live inside verified blocks.
 
-A sealed manifest has one `integer[]` of cumulative end positions relative to its original start. With `D[0]=0`, frame `i` has payload length `D[i]-D[i-1]-5`. Directories have at most 1,024 entries and signed 32-bit relative deltas. The schema validates dimensions, lower bound, strict increments, frame count, epoch, final offset, and total payload size. Absolute wire offsets are unchanged.
+An ordinary append updates its stream head once. A due record is inserted on the first hot append; later appends leave it unchanged. Producer state retains the latest epoch/sequence per producer identity. Subscription change records are an outbox, consumed after fanout commits. Without a subscription coordinator, maintenance independently prunes changes for tenants with no active subscriptions, under the same registry lock used by registration. That housekeeping runs even when object collection is disabled.
 
-There is no relational row or B-tree entry per sealed append. Remaining SQL history consists of O(chunks) manifests and approximately four raw boundary bytes per append, plus array/TOAST/page overhead. JSON element boundaries are stored in objects, not these SQL arrays. Producer state remains one latest epoch/sequence per producer identity; completed outbox records are consumed after fanout intent commits.
-
-Boundary validation for reads, ordinary forks, and atomic acknowledgement batches uses the staged/sealed alternatives under one statement snapshot. A containing ancestor chunk can extend beyond a fork cap; only its contributing frames enter the read plan. Acknowledgements continue validating every supplied boundary before updating any cursor, including valid post-wake-snapshot appends. They require no object download.
-
-Replay plans return one descriptor per selected sealed chunk and bounded local frames. Object I/O starts after SQL ends and after pins have been acquired. Each object is checked against its full checksum, identity, and directory. A response copies selected frames and retains the existing frame/byte/deadline bounds. Sealing produces Realtime row removals; the existing unordered payload query, contiguous-offset checks, and durable gap recovery handle this handover.
-
-## Chunk and cache policy
+## Defaults and bounds
 
 ```ts
 storage: {
   objects,
   targetChunkBytes: 4 * 1024 * 1024,
-  maxChunkFrames: 1024,
+  maxChunkFrames: 131072,
   maxChunkAgeMs: 3_600_000,
+  blockBytes: 65536,
   cacheBytes: 32 * 1024 * 1024,
+  readAhead: 0, // Set to 1 for at most one following object read.
 }
 ```
 
-These are the defaults. Count and payload size rotate on the write path. A persisted `hot_chunks` due record is created on the first append of a hot chunk; later appends leave it unchanged. Ordinary appends update the stream head once. The due queue replaces the stream index whose predicate referenced the frequently updated frame counter, allowing HOT updates when PostgreSQL's other conditions permit them.
+Size, frame count, history transition and first-append age bound chunks. The triggering append can exceed the payload target by one maximum frame. The encoded hard ceiling is 128 MiB and each block decodes at most 8192 frames. Normal maintenance preserves younger small tails. `maintain({ forceHot: true })` explicitly drains earlier. The host must schedule and monitor maintenance; storage outages accumulate staging.
 
-Normal `maintain()` seals age-due tails and uploads frozen chunks. Its frequency does not force one tiny object per cron tick. An explicit `maintain({ forceHot: true })` drains nonempty tails and is appropriate for administration or deterministic tests. The old `freezeHot` option is rejected. The one-hour age controls hot residency, not durability: acknowledged hot payloads are already committed to Postgres. Work must still be scheduled and monitored; a sustained worker or Object Storage outage accumulates staging/backlog.
+Replay defaults to 2 MiB and 8192 frames per page, with a maximum configurable frame-work limit of 131072. Objects, blocks and response pages have independent sizes. A partial seek requests only its selected blocks, coalescing adjacent missing blocks into one HTTP range. Dense reads may verify a whole object. Cache hits still perform authorization, lifecycle, serving-epoch and pin checks.
 
-The verified-object cache is per server instance, with a default 32 MiB accounting budget, at most 256 retained entries, and at most 128 coalesced pending fetches. Accounting includes encoded bytes and decoded frame/index overhead. `cacheBytes: 0` disables retention while preserving concurrent fetch coalescing. Cache identity includes storage/installation/stream/chunk identity, checksum, and encoded length. Pins, authorization, lifecycle, expiry, and serving epochs are validated independently of hits. Closing the server releases retained entries and prevents late loads from refilling it.
+The verified cache accounts for owned bytes and decoded frame/index overhead: 32 MiB by default, at most 256 retained entries, 128 pending fetch groups, 4096 pending blocks and 128 MiB of pending encoded reads. `cacheBytes: 0` disables retention while preserving concurrent sharing. One reader's cancellation releases its interest; the last reader aborts shared I/O and awaits settlement before releasing its pin. Closing is terminal and prevents late cache refill.
 
-The budget covers retained cache state, not all concurrent replay/network memory. The S3 adapter and live admission retain their separate concurrency/queue bounds. Decoding a cold v1 chunk requires the whole object even when one small frame is requested. Eviction, a cold Function, or routing to a different instance can require another download. Range GETs require a future independently verifiable block/index format; a whole-object checksum does not authenticate a standalone range.
+A separate replay/body admission budget defaults to 256 MiB and 128 reservations. Planning reserves the configured page's working set; a completed page transfers to an actual retained-body reservation. Ordinary response bodies serve 64 KiB views under downstream demand and hold that reservation until consumption, cancellation, authentication expiry, shutdown or the response deadline (five minutes by default). These budgets cover separate allocations and must be sized together with the Node heap, Realtime buffers and sealer working sets.
 
-At 32 bytes per append, a full 1,024-frame chunk still has only 32 KiB of payload and v1 still spends 74 bytes on each frame header. Very sparse streams can create smaller objects at their age deadline. These are remaining costs to size explicitly; this change does not introduce cross-stream packing or compaction.
+## Replay correctness
 
-## Installation
+Ordinary reads without sliding TTL use one coherent snapshot without locking the stream head. The plan captures generation, lifecycle, capped fork ancestry and staged bytes or immutable manifests, then acquires replay pins before releasing the snapshot. Sliding TTL renewal uses the locked writer path. Object I/O holds no SQL transaction.
 
-Run the complete [database baseline](migrations.md) before serving. Older unreleased development histories require a fresh schema; their preparation, backfill, and conversion tooling has been removed from the package. The migration ledger and checksums remain for future schema changes. Immutable object format v1 is unchanged.
+The Function expands block directories rather than generating a SQL row per sealed append. Complete block totals bound page planning; boundary blocks may require decoding to set the final exact frame checkpoint. Every selected block is verified before HTTP headers. Formatting makes one owned response page. SSE encodes bounded fragments and emits a control checkpoint after its complete data event. An interruption before control remains resumable from the preceding completed checkpoint.
 
-The native Function example exposes explicit forced draining only through its authenticated manual maintenance route. Cron and hints use normal due maintenance. `DS_MAX_CHUNK_AGE_MS` defaults to one hour; the cron integration fixture overrides it to one second so scheduled age-based sealing can be tested within a bounded test duration. The separate hints-only fixture keeps the production age default.
+ETags include generation, serving epoch, encoding, page bounds, content type and closure. Where metadata determines the page boundary, matching conditionals skip object reads and pins. Other conditionals verify the exact page before comparing. `offset=now` ignores conditionals and has no ETag.
+
+Forks inherit their parent's tokens only through the anchor. A partial prefix becomes a child frame. Restoration retains surviving tokens and lazily mints a fresh write history, preventing abandoned checkpoints from validating rewritten content at the same ordinal. The authorized Realtime query remains unordered and payload-carrying; the Function orders, deduplicates, checks contiguity, and replays durable data on gaps or invalidation.
 
 ## Collection and qualification
 
-Current-data object reachability and historical boundary metadata have distinct lifetimes. A directory can remain necessary for a pending subscription acknowledgement after object bytes become collectible. Metadata collection therefore retains ancestor directories and local HOT/FROZEN frame metadata while child-generation metadata remains, then prunes in dependency order. Regressions cover inherited acks after fork deletion with both unsealed parent frames and physically collected sealed objects, before outbox invalidation fences the wake.
+Current reachability and checkpoint metadata have distinct lifetimes. Pending inherited acknowledgements can need a manifest after its object bytes become collectible. Collection retains ancestry metadata until dependent generations and pending work can be pruned safely. Replay pins, upload intents, worker fencing and exact-key deletion protect current reads. Provider or matching backups own historical database/object recovery. Collection is explicitly configured; see the [collection contract](reclamation-v1.md).
 
-Whole-parent retention for live forks, replay pins, upload intents, exact-key deletion retries, and serving-epoch fencing remain. Historical database/object recovery remains provider/backup-owned, and collection remains disabled by default. See the [collection contract](reclamation-v1.md).
-
-Actual-Neon qualification covers 1,024 variable-size frames, eight replay pages with one object fetch, cache-disabled cold replay, interior seeks/forks, atomic sealed ack batches, post-snapshot appends, first-append age, explicit drains, one ordinary stream-head update, transactional baseline failure/retry, rejection of old development histories, and v1 object continuity. The complete pinned 338-case protocol suite must pass with subscriptions and collection enabled. Deployed Function/webhook, hints/cron recovery, process-loss, and restore checks remain required. Exact revisions and reports belong in the [qualification index](qualification/README.md); historical qualification remains scoped to its recorded source revision.
+The [replay plan](replay-performance-plan.md) records implementation and qualification status. Historical measurements retain their source hashes; they do not certify later builds. The final gate includes the full pinned conformance suite, actual Neon regression, process-loss, deployed consumers, hints/cron, independently packed instances and both provider recovery drills.
