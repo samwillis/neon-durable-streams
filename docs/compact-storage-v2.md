@@ -70,7 +70,7 @@ The native Function example exposes explicit forced draining only through its au
 
 ## Collection and qualification
 
-Current-data object reachability and historical boundary metadata have distinct lifetimes. A directory can remain necessary for a pending subscription acknowledgement after object bytes become collectible. Metadata collection therefore retains ancestor directories while child-generation metadata remains, then prunes in dependency order. The regression covers an inherited ack after fork deletion and physical object collection, before outbox invalidation fences that wake.
+Current-data object reachability and historical boundary metadata have distinct lifetimes. A directory can remain necessary for a pending subscription acknowledgement after object bytes become collectible. Metadata collection therefore retains ancestor directories and local HOT/FROZEN frame metadata while child-generation metadata remains, then prunes in dependency order. Regressions cover inherited acks after fork deletion with both unsealed parent frames and physically collected sealed objects, before outbox invalidation fences the wake.
 
 Whole-parent retention for live forks, replay pins, upload intents, exact-key deletion retries, and serving-epoch fencing remain. Historical database/object recovery remains provider/backup-owned, and collection remains disabled by default. See the [collection contract](reclamation-v1.md).
 

@@ -244,11 +244,11 @@ export class ReclamationManager {
   }
   private async pruneGeneration(client: PoolClient, final: boolean): Promise<number> {
     const stream = (await client.query<{ id: string }>(`SELECT s.id FROM ${this.schema}.streams s WHERE ${this.unreferenced()} AND ${this.noSubscriptionRefs('s.id')}
+      AND NOT EXISTS (SELECT 1 FROM ${this.schema}.streams child WHERE child.source_id=s.id)
       AND NOT EXISTS (SELECT 1 FROM ${this.schema}.chunks c WHERE c.stream_id=s.id)
       AND NOT EXISTS (SELECT 1 FROM ${this.schema}.stream_changes j WHERE j.stream_id=s.id)
       ${final ? `AND NOT EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.stream_id=s.id)
-        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.producers p WHERE p.stream_id=s.id)
-        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.streams child WHERE child.source_id=s.id)` : `AND (EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.stream_id=s.id) OR EXISTS (SELECT 1 FROM ${this.schema}.producers p WHERE p.stream_id=s.id))`}
+        AND NOT EXISTS (SELECT 1 FROM ${this.schema}.producers p WHERE p.stream_id=s.id)` : `AND (EXISTS (SELECT 1 FROM ${this.schema}.appends a WHERE a.stream_id=s.id) OR EXISTS (SELECT 1 FROM ${this.schema}.producers p WHERE p.stream_id=s.id))`}
       ORDER BY s.deleted_at,s.id LIMIT 1 FOR UPDATE OF s SKIP LOCKED`)).rows[0]
     if (!stream) return 0
     if (final) {

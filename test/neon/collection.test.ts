@@ -23,9 +23,9 @@ const objects = createS3ChunkStorage({ endpoint: env.AWS_ENDPOINT_URL_S3, region
 let schema: string, installationId: string
 const servers: DurableStreamsServer[] = []
 const sql = (text: string, params: unknown[] = []) => direct.query(text.replaceAll('ds.', `"${schema}".`), params)
-function server(storage: ChunkStorage = objects, subscriptions?: Parameters<typeof createDurableStreams>[0]['subscriptions'], clientPool = pool) {
+function server(storage: ChunkStorage = objects, subscriptions?: Parameters<typeof createDurableStreams>[0]['subscriptions'], clientPool = pool, targetChunkBytes = 4) {
   const value = createDurableStreams({ postgres: { ...postgresTestLimits, pool: clientPool, schema, environmentId: 'collection-test' },
-    storage: { objects: storage, targetChunkBytes: 4 }, ...(subscriptions ? { subscriptions } : {}),
+    storage: { objects: storage, targetChunkBytes }, ...(subscriptions ? { subscriptions } : {}),
     auth: { authenticate: () => ({ tenantId: 'collection', subject: 'test' }), authorize: () => true } })
   servers.push(value); return value
 }
@@ -310,11 +310,11 @@ test('pruned signed wakes still fence authentic tokens, and recreated subscripti
   expect((await request(value, `${name}/ack`, 'POST', next.body, { ...json, Authorization: `Bearer ${next.token}` })).status).toBe(409)
 }, 120_000)
 
-test('pending inherited ack validation retains ancestor directories after fork deletion and object collection', async () => {
+test.each(['sealed', 'hot'])('pending inherited ack validation retains %s ancestor boundaries after fork deletion', async (mode) => {
   await enable()
   const keyring = parseSubscriptionKeyring(env.DURABLE_STREAMS_KEYRING!)
   await initializeSubscriptions(direct, { schema, keyring })
-  const value = server(objects, { keyring }), json = { 'Content-Type': 'application/json' }
+  const value = server(objects, { keyring }, pool, mode === 'hot' ? 1024 * 1024 : 4), json = { 'Content-Type': 'application/json' }
   await request(value, 'inherited-source', 'PUT', 'first;')
   const anchor = (await request(value, 'inherited-source', 'POST', 'second;')).headers.get('Stream-Next-Offset')!
   await value.maintain()
@@ -326,7 +326,10 @@ test('pending inherited ack validation retains ancestor directories after fork d
   await request(value, 'inherited-child', 'POST', 'child;')
   await value.maintain()
   const claim = await (await request(value, `${sub}/claim`, 'POST', '{"worker":"fixture"}', json)).json() as { token: string; wake_id: string; generation: number }
-  await request(value, 'inherited-source', 'DELETE'); await request(value, 'inherited-child', 'DELETE')
+  await request(value, 'inherited-source', 'DELETE')
+  // Fan out only the parent's deletion while its live child still holds it.
+  await value.maintain()
+  await request(value, 'inherited-child', 'DELETE')
   // Finish logical parent detachment without running subscription fanout.
   const lifecycle = new PostgresStreamStore(pool, schema, { environmentId: 'collection-test', storage: { objects, targetChunkBytes: 4 } })
   await lifecycle.maintain({ maxChunks: 1 }); lifecycle.close()
@@ -334,9 +337,11 @@ test('pending inherited ack validation retains ancestor directories after fork d
   await phase(0); await phase(0)
   let deleted = 0
   for (let i = 0; i < 4; i++) deleted += (await phase(1)).deletedObjects
-  expect(deleted).toBeGreaterThanOrEqual(2)
+  if (mode === 'sealed') expect(deleted).toBeGreaterThanOrEqual(2)
   await phase(2)
-  expect((await sql('SELECT end_deltas FROM ds.chunks WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
+  await sql('UPDATE ds.reclamation_policy SET metadata_phase=3'); await phase(5)
+  if (mode === 'sealed') expect((await sql('SELECT end_deltas FROM ds.chunks WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
+  else expect((await sql('SELECT end_offset FROM ds.appends WHERE stream_id=$1', [parent])).rows).toHaveLength(2)
   const body = JSON.stringify({ wake_id: claim.wake_id, generation: claim.generation, acks: [{ stream: 'inherited-child', offset: anchor }] })
   expect((await request(value, `${sub}/ack`, 'POST', body, { ...json, Authorization: `Bearer ${claim.token}` })).status).toBe(200)
   await value.maintain()
