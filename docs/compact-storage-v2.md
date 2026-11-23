@@ -34,6 +34,8 @@ A separate replay/body admission budget defaults to 256 MiB and 128 reservations
 
 ## Replay correctness
 
+Reader checkpoints belong to clients. Request cursors remain in Function memory; temporary SQL pins and admission leases do not store reader offsets. Durable subscription acknowledgements are the separately requested persistent cursors.
+
 Ordinary reads without sliding TTL use one coherent snapshot without locking the stream head. The plan captures generation, lifecycle, capped fork ancestry and staged bytes or immutable manifests, then acquires replay pins before releasing the snapshot. Sliding TTL renewal uses the locked writer path. Object I/O holds no SQL transaction.
 
 The Function expands block directories rather than generating a SQL row per sealed append. Complete block totals bound page planning; boundary blocks may require decoding to set the final exact frame checkpoint. Every selected block is verified before HTTP headers. Formatting makes one owned response page. SSE encodes bounded fragments and emits a control checkpoint after its complete data event. An interruption before control remains resumable from the preceding completed checkpoint.
